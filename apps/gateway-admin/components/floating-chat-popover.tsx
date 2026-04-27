@@ -50,24 +50,43 @@ const DEFAULT_CONFIG: PersistConfig = {
   sendPageContext: false,
 }
 
-function readPersistedState(): PersistedState {
+/** In-memory cache so concurrent callers read the same base state. */
+let _persistedStateCache: PersistedState | null = null
+
+export function readPersistedState(): PersistedState {
+  if (_persistedStateCache !== null) return _persistedStateCache
   try {
     const raw = typeof localStorage !== 'undefined'
       ? localStorage.getItem(PERSIST_KEY)
       : null
-    if (!raw) return {}
-    return JSON.parse(raw) as PersistedState
+    if (!raw) {
+      _persistedStateCache = {}
+      return {}
+    }
+    _persistedStateCache = JSON.parse(raw) as PersistedState
+    return _persistedStateCache
   } catch {
+    _persistedStateCache = {}
     return {}
   }
 }
 
-function writePersistedState(state: PersistedState) {
+export function writePersistedState(state: PersistedState) {
+  _persistedStateCache = state
   try {
     localStorage.setItem(PERSIST_KEY, JSON.stringify(state))
   } catch {
     // localStorage may be unavailable
   }
+}
+
+/**
+ * Atomically patch the persisted state using an in-memory cache.
+ * Prevents concurrent read-modify-write races across components.
+ */
+export function patchPersistedState(patch: Partial<PersistedState>) {
+  const current = readPersistedState()
+  writePersistedState({ ...current, ...patch })
 }
 
 function clampPosition(x: number, y: number, w: number, h: number): Position {
@@ -185,7 +204,7 @@ export function FloatingChatPopover({
 
   // ---- Window resize clamp (debounced) ----
   React.useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>
+    let timer: ReturnType<typeof setTimeout> | undefined
     function onResize() {
       clearTimeout(timer)
       timer = setTimeout(() => {
@@ -309,10 +328,8 @@ export function FloatingChatPopover({
     setPosition(clamped)
 
     // Persist if configured
-    const persisted = readPersistedState()
-    const cfg = persisted.config ?? DEFAULT_CONFIG
-    if (cfg.persistPosition) {
-      writePersistedState({ ...persisted, position: clamped })
+    if ((readPersistedState().config ?? DEFAULT_CONFIG).persistPosition) {
+      patchPersistedState({ position: clamped })
     }
 
     dragRef.current = null
@@ -346,10 +363,8 @@ export function FloatingChatPopover({
     resizeRef.current.active = false
 
     // Persist size
-    const persisted = readPersistedState()
-    const cfg = persisted.config ?? DEFAULT_CONFIG
-    if (cfg.persistSize) {
-      writePersistedState({ ...persisted, size })
+    if ((readPersistedState().config ?? DEFAULT_CONFIG).persistSize) {
+      patchPersistedState({ size })
     }
 
     resizeRef.current = null
@@ -362,8 +377,7 @@ export function FloatingChatPopover({
     setConfig(newConfig)
     onConfigChange?.(newConfig)
 
-    const persisted = readPersistedState()
-    writePersistedState({ ...persisted, config: newConfig })
+    patchPersistedState({ config: newConfig })
   }, [effectiveConfig, onConfigChange])
 
   // ---- Mobile Sheet ----

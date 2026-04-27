@@ -19,15 +19,13 @@
  */
 
 import * as React from 'react'
-import { Plus, Settings2, SidebarOpen, Zap } from 'lucide-react'
+import { Plus, SidebarOpen, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { Separator } from '@/components/ui/separator'
 import { SessionSidebar } from '@/components/chat/session-sidebar'
 import { MessageThread } from '@/components/chat/message-thread'
 import { ChatInput } from '@/components/chat/chat-input'
-import { SettingsPanel } from '@/components/chat/settings-panel'
 import { ACP_AGENT, ensurePromptRunId } from '@/lib/chat/use-chat-session-controller'
 import { createAcpFetcher } from '@/lib/acp/fetch'
 import {
@@ -44,7 +42,7 @@ export type FloatingChatShellProps = {
   config?: PersistConfig
 }
 
-export const FloatingChatShell = React.memo(function FloatingChatShell({
+export function FloatingChatShell({
   config,
 }: FloatingChatShellProps) {
   // ---- Context consumers ----
@@ -56,11 +54,7 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
 
   // ---- Local state ----
   const [sessionPanelOpen, setSessionPanelOpen] = React.useState(true)
-  const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
-  const [systemPrompt, setSystemPrompt] = React.useState('')
-  const [temperature, setTemperature] = React.useState(0.7)
-  const [maxTokens, setMaxTokens] = React.useState(8192)
 
   const providerReady = Boolean(providerHealth?.ready)
 
@@ -97,7 +91,7 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
         const body: {
           prompt: string
           attachments?: AttachmentRef[]
-          pageContext?: typeof pageContext
+          pageContext?: NonNullable<typeof pageContext>
         } = {
           prompt: payload.text,
           ...(payload.attachments.length > 0 && { attachments: payload.attachments }),
@@ -189,27 +183,6 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
             </span>
           </div>
 
-          <Separator orientation="vertical" className="h-4 bg-aurora-border-default" />
-
-          <TooltipProvider delayDuration={400}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label={settingsOpen ? 'Close settings' : 'Open settings'}
-                  onClick={() => setSettingsOpen((open) => !open)}
-                  className={cn(
-                    'size-7 rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
-                    settingsOpen && 'bg-aurora-hover-bg text-aurora-text-primary',
-                  )}
-                >
-                  <Settings2 className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">Settings</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
         </div>
       </header>
 
@@ -241,19 +214,7 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
           />
         </div>
 
-        {settingsOpen && (
-          <SettingsPanel
-            agent={selectedAgent}
-            onClose={() => setSettingsOpen(false)}
-            systemPrompt={systemPrompt}
-            onSystemPromptChange={setSystemPrompt}
-            temperature={temperature}
-            onTemperatureChange={setTemperature}
-            maxTokens={maxTokens}
-            onMaxTokensChange={setMaxTokens}
-          />
-        )}
       </div>
     </div>
   )
-})
+}

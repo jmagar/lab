@@ -31,9 +31,22 @@ import {
 import {
   consumeSessionEventBuffer,
 } from './use-session-events'
+import { sessionEventCache, sessionLastSeqCache } from './session-event-cache'
+import {
+  type ProviderListPayload,
+  type SessionCreatePayload,
+  type ErrorPayload,
+  type RawSessionSummary,
+  toRun,
+  normalizeProviderHealth,
+  normalizeProviderList,
+  extractCreatedSession,
+  readJsonSafe,
+  errorMessageFromPayload,
+  sameProviderList,
+} from './acp-normalizers'
 import type { ACPAgent, ACPRun, ACPProject } from '@/components/chat/types'
 import type { BridgeSessionSummary, ProviderHealth, BridgeEvent } from '@/lib/acp/types'
-import type { AttachmentRef } from '@/lib/fs/types'
 import type { SessionEventConnectionState } from './use-session-events'
 import {
   ACP_AGENT,
@@ -123,145 +136,6 @@ export function useChatSessionStream(): ChatSessionStreamContextValue {
   if (!ctx) throw new Error('useChatSessionStream must be used within ChatSessionProvider')
   return ctx
 }
-
-// ---- Helper types ----
-
-type ProviderListPayload = {
-  providers?: Array<{
-    name?: string
-    available?: boolean
-    version?: string | null
-    error?: string | null
-    command?: string | null
-    args?: string[] | null
-  }>
-  provider?: ProviderHealth
-}
-
-type SessionCreatePayload = {
-  session?: BridgeSessionSummary
-} & BridgeSessionSummary
-
-type ErrorPayload = {
-  message?: string
-  error?: string
-  kind?: string
-}
-
-type RawSessionSummary = {
-  id: string
-  provider: string
-  title: string
-  cwd: string
-  status?: string
-  state?: string
-  createdAt?: string
-  updatedAt?: string
-  providerSessionId?: string
-  agentName?: string
-  agentVersion?: string
-  created_at?: string
-  updated_at?: string
-  provider_session_id?: string
-  agent_name?: string
-  agent_version?: string
-}
-
-// ---- Helper functions (not in context values) ----
-
-function normalizeSessionSummary(session: RawSessionSummary): BridgeSessionSummary {
-  return {
-    id: session.id,
-    provider: session.provider,
-    title: session.title,
-    cwd: session.cwd,
-    status: (session.status ?? session.state ?? 'idle') as BridgeSessionSummary['status'],
-    createdAt: session.createdAt ?? session.created_at ?? '',
-    updatedAt: session.updatedAt ?? session.updated_at ?? '',
-    providerSessionId: session.providerSessionId ?? session.provider_session_id ?? '',
-    agentName: session.agentName ?? session.agent_name ?? 'Codex',
-    agentVersion: session.agentVersion ?? session.agent_version ?? 'unknown',
-  }
-}
-
-function toRun(session: RawSessionSummary): ACPRun {
-  const normalized = normalizeSessionSummary(session)
-  return {
-    id: normalized.id,
-    projectId: 'workspace',
-    agentId: normalized.provider,
-    provider: normalized.provider,
-    title: normalized.title,
-    createdAt: new Date(normalized.createdAt),
-    updatedAt: new Date(normalized.updatedAt),
-    status: normalized.status,
-    providerSessionId: normalized.providerSessionId,
-    cwd: normalized.cwd,
-  }
-}
-
-function normalizeProviderHealth(payload: ProviderListPayload): ProviderHealth {
-  if (payload.provider) {
-    return payload.provider
-  }
-
-  const provider = payload.providers?.[0]
-  return {
-    provider: provider?.name ?? 'codex',
-    ready: Boolean(provider?.available),
-    command: '',
-    args: [],
-    message: provider?.error ?? '',
-  }
-}
-
-function normalizeProviderList(payload: ProviderListPayload): ProviderHealth[] {
-  if (payload.provider) {
-    return [payload.provider]
-  }
-
-  return (payload.providers ?? []).map((provider) => ({
-    provider: provider.name ?? 'codex-acp',
-    ready: Boolean(provider.available),
-    command: provider.command ?? '',
-    args: provider.args ?? [],
-    message: provider.error ?? '',
-  }))
-}
-
-function extractCreatedSession(payload: SessionCreatePayload): RawSessionSummary {
-  return payload.session ?? payload
-}
-
-async function readJsonSafe<T>(response: Response): Promise<T | null> {
-  const text = await response.text()
-  if (!text) {
-    return null
-  }
-
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    return null
-  }
-}
-
-function errorMessageFromPayload(payload: ErrorPayload | null, fallback: string) {
-  return payload?.message ?? payload?.error ?? fallback
-}
-
-function sameProviderList(a: ProviderHealth[], b: ProviderHealth[]): boolean {
-  if (a.length !== b.length) return false
-  return a.every((item, i) => item.provider === b[i]?.provider && item.ready === b[i]?.ready)
-}
-
-// ---- Module-level SSE caches (shared with useSessionEvents) ----
-// These must stay in sync with the caches in use-session-events.ts.
-// We use them here only for reading initial state when streamEnabled toggles.
-// The actual SSE subscription is managed inside the provider.
-
-const sessionEventCache = new Map<string, BridgeEvent[]>()
-const sessionLastSeqCache = new Map<string, number>()
 
 // ---- Provider props ----
 
@@ -446,6 +320,12 @@ export function ChatSessionProvider({
           }))
           throw new Error(message)
         }
+        // Narrow: if payload has an `id` field it is a SessionCreatePayload; otherwise ErrorPayload
+        const isSessionPayload = 'id' in payload || ('session' in payload && payload.session != null)
+        if (!isSessionPayload) {
+          const message = errorMessageFromPayload(payload as ErrorPayload, 'Failed to create ACP session.')
+          throw new Error(message)
+        }
         const run = toRun(extractCreatedSession(payload as SessionCreatePayload))
         setRuns((current) => integrateCreatedRun(current, run))
         setSelectedRunId(run.id)
@@ -515,19 +395,26 @@ export function ChatSessionProvider({
     }
   }, [providers, selectedProviderId])
 
-  // Auto-bootstrap first session — only after first FAB click (streamEnabled)
+  // Auto-bootstrap first session — only after first FAB click (streamEnabled) and
+  // after sessions have been loaded so we don't race with refreshSessions.
   React.useEffect(() => {
-    if (!streamEnabled) return
+    if (!streamEnabled || !sessionsLoaded) return
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) return
 
+    const abortController = new AbortController()
     void (async () => {
       try {
-        await createSession()
+        if (!abortController.signal.aborted) {
+          await createSession()
+        }
       } catch {
         // providerHealth.message carries the failure detail
       }
     })()
-  }, [createSession, providerHealth?.ready, runs.length, selectedRunId, streamEnabled])
+    return () => {
+      abortController.abort()
+    }
+  }, [createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded, streamEnabled])
 
   // Update run status from session events (bail-out setter for re-render efficiency)
   React.useEffect(() => {
@@ -596,15 +483,19 @@ export function ChatSessionProvider({
           const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
           buffer = consumed.buffer
 
-          for (const event of consumed.events) {
-            lastSeqRef.current = event.seq
-            sessionLastSeqCache.set(selectedRunId, event.seq)
-            setEvents((current) => {
-              const next = appendSessionEvent(current, event)
-              sessionEventCache.set(selectedRunId, next)
-              return next
-            })
-          }
+          if (consumed.events.length === 0) return
+
+          // Batch: apply all events from this chunk in one setEvents call
+          setEvents((current) => {
+            let next = current
+            for (const event of consumed.events) {
+              lastSeqRef.current = event.seq
+              sessionLastSeqCache.set(selectedRunId, event.seq)
+              next = appendSessionEvent(next, event)
+            }
+            sessionEventCache.set(selectedRunId, next)
+            return next
+          })
         }
 
         while (true) {

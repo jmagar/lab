@@ -17,7 +17,12 @@ import { FloatingChatFab } from '@/components/floating-chat-fab'
 import { FloatingChatPopover } from '@/components/floating-chat-popover'
 import { FloatingChatShell } from '@/components/floating-chat-shell'
 import { PageContextSync } from '@/components/page-context-sync'
-import type { PersistConfig } from '@/components/floating-chat-popover'
+import {
+  readPersistedState,
+  patchPersistedState,
+  DEFAULT_CONFIG,
+  type PersistConfig,
+} from '@/components/floating-chat-popover'
 
 export function AdminLayoutClient({
   children,
@@ -26,22 +31,20 @@ export function AdminLayoutClient({
 }) {
   const [open, setOpen] = React.useState(() => {
     try {
-      const raw = typeof localStorage !== 'undefined'
-        ? localStorage.getItem('labby:floating-chat:state')
-        : null
-      if (!raw) return false
-      const parsed = JSON.parse(raw) as { open?: boolean; config?: PersistConfig }
-      return Boolean(parsed?.config?.persistOpen && parsed?.open)
+      const persisted = readPersistedState()
+      return Boolean(persisted.config?.persistOpen && persisted.open)
     } catch {
       return false
     }
   })
 
-  const [config, setConfig] = React.useState<PersistConfig>({
-    persistOpen: true,
-    persistPosition: true,
-    persistSize: true,
-    sendPageContext: false,
+  // lab-gych.15: initialize config from localStorage
+  const [config, setConfig] = React.useState<PersistConfig>(() => {
+    try {
+      return readPersistedState().config ?? DEFAULT_CONFIG
+    } catch {
+      return DEFAULT_CONFIG
+    }
   })
 
   // openModals ref — shared between FAB and CommandPalette
@@ -50,8 +53,16 @@ export function AdminLayoutClient({
   // First-open ref — ChatSessionProvider registers its callback here
   const onFirstOpenRef = React.useRef<(() => void) | null>(null)
   const hasOpenedOnce = React.useRef(false)
-  // State-based lazy mount for FloatingChatShell
-  const [shellMounted, setShellMounted] = React.useState(false)
+
+  // lab-gych.7: initialize shellMounted from the same localStorage check as `open`
+  const [shellMounted, setShellMounted] = React.useState(() => {
+    try {
+      const persisted = readPersistedState()
+      return Boolean(persisted.config?.persistOpen && persisted.open)
+    } catch {
+      return false
+    }
+  })
 
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
 
@@ -63,42 +74,39 @@ export function AdminLayoutClient({
     return () => media.removeEventListener('change', sync)
   }, [])
 
+  // lab-gych.7: when hydrating with open=true on first mount, seed hasOpenedOnce
+  // and fire the stream-start callback
+  React.useEffect(() => {
+    if (open && !hasOpenedOnce.current) {
+      hasOpenedOnce.current = true
+      onFirstOpenRef.current?.()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // intentionally runs once on mount
+
+  // lab-gych.8: side effects (stream start, shellMounted, localStorage write) live
+  // in a useEffect watching `open`, NOT inside the setState updater
+  React.useEffect(() => {
+    // First open: trigger stream start and mount shell
+    if (open && !hasOpenedOnce.current) {
+      hasOpenedOnce.current = true
+      onFirstOpenRef.current?.()
+      setShellMounted(true)
+    } else if (open && !shellMounted) {
+      setShellMounted(true)
+    }
+
+    // Persist open state
+    patchPersistedState({ open })
+  }, [open]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleToggle = React.useCallback(() => {
-    setOpen((prev) => {
-      const next = !prev
-      // First open: trigger stream start and mount shell
-      if (next && !hasOpenedOnce.current) {
-        hasOpenedOnce.current = true
-        onFirstOpenRef.current?.()
-        setShellMounted(true)
-      }
-      // Persist open state
-      try {
-        const raw = localStorage.getItem('labby:floating-chat:state')
-        const parsed = raw ? JSON.parse(raw) : {}
-        localStorage.setItem(
-          'labby:floating-chat:state',
-          JSON.stringify({ ...parsed, open: next }),
-        )
-      } catch {
-        // localStorage unavailable
-      }
-      return next
-    })
+    // lab-gych.8: pure updater — no side effects inside setState
+    setOpen((prev) => !prev)
   }, [])
 
   const handleClose = React.useCallback(() => {
     setOpen(false)
-    try {
-      const raw = localStorage.getItem('labby:floating-chat:state')
-      const parsed = raw ? JSON.parse(raw) : {}
-      localStorage.setItem(
-        'labby:floating-chat:state',
-        JSON.stringify({ ...parsed, open: false }),
-      )
-    } catch {
-      // localStorage unavailable
-    }
   }, [])
 
   return (

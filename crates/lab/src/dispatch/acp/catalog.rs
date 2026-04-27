@@ -136,6 +136,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 required: false,
                 description: "Caller principal for ownership verification",
             },
+            ParamSpec {
+                name: "page_context",
+                ty: "object",
+                required: false,
+                description: "Optional page context: {route, entityType?, entityId?} — prepends a compact context prefix to the prompt",
+            },
         ],
     },
     ActionSpec {

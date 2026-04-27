@@ -31,6 +31,11 @@ export function createAcpFetcher() {
       headers.set(key, value)
     }
 
+    // Set Content-Type for requests with a body, unless the caller already set it.
+    if (init?.body != null && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+
     return fetch(`${acpBase}${path}`, {
       ...init,
       headers,
