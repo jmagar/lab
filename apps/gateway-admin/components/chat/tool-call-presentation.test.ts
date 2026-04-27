@@ -121,6 +121,7 @@ test('getInlineArtifact applies TERMINAL_RENDER_TAIL_BYTES at concatenation (O3)
 
 test('getDisplayText strips OSC sequences (R7)', () => {
   // OSC-8 hyperlink with javascript: URI (R7 hostile input)
+  // Each input contains two OSC sequences with visible text between or around them.
   const withOscJavascript = '\x1b]8;;javascript:alert(1)\x07click me\x1b]8;;\x07'
   const withOscData = '\x1b]8;;data:text/html,<h1>XSS</h1>\x1b\\click me\x1b]8;;\x1b\\'
   // OSC-52 clipboard escape
@@ -133,6 +134,23 @@ test('getDisplayText strips OSC sequences (R7)', () => {
   assert.ok(!result1.includes('javascript:'), 'javascript: URI must be stripped')
   assert.ok(!result2.includes('data:text/html'), 'data: URI must be stripped')
   assert.ok(!result3.includes('c2Vuc2l0aXZlCg'), 'OSC-52 clipboard data must be stripped')
+  // Visible text between OSC sequences must be preserved (not accidentally stripped).
+  assert.ok(result1.includes('click me'), 'visible text between OSC sequences must be preserved')
+  assert.ok(result2.includes('click me'), 'visible text between OSC sequences must be preserved')
+})
+
+test('getDisplayText handles single chunk larger than TERMINAL_RENDER_TAIL_BYTES (O3)', () => {
+  // A single chunk that exceeds the 256 KiB tail cap. Previous logic silently
+  // returned an empty string in this case. Verify the tail is returned instead.
+  const bigChunk = 'a'.repeat(300 * 1024) // 300 KiB — exceeds 256 KiB cap
+  const result = getDisplayText([bigChunk])
+  const expectedLen = 256 * 1024 // TERMINAL_RENDER_TAIL_BYTES = 262_144
+  assert.ok(
+    result.length === expectedLen,
+    `expected ${expectedLen} code units, got ${result.length}`,
+  )
+  // Verify it is the tail that is returned (last char of the big chunk).
+  assert.ok(result.endsWith('a'), 'tail content must match the source chunk tail')
 })
 
 test('getDisplayText strips ANSI escape sequences (R1)', () => {
