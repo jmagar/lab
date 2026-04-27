@@ -810,6 +810,10 @@ fn load_or_generate_hmac_key() -> Vec<u8> {
         }
     }
     tracing::warn!(
+        surface = "acp",
+        service = "persistence",
+        action = "hmac_key_init",
+        kind = "ephemeral_key",
         "LAB_ACP_HMAC_SECRET is not set; using an ephemeral non-random HMAC key. \
          Set LAB_ACP_HMAC_SECRET in ~/.lab/.env for persistent, \
          cryptographically-random protection."

@@ -127,7 +127,7 @@ ACP event handling details:
 ### Ordering guarantees
 
 Events within a session carry a monotonically increasing `seq` number assigned by a
-mutex-guarded counter in the server registry. A single fanout goroutine writes to all
+mutex-guarded counter in the server registry. A single fanout task writes to all
 subscribers, so ordering is preserved end-to-end. Events from different sessions have
 independent counters and are not ordered relative to each other.
 

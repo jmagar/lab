@@ -24,8 +24,6 @@ pub fn is_sensitive_key(key: &str) -> bool {
             | "code"
             | "cwd"
             | "terminal_id"
-            | "signal"
-            | "data"
     ) || normalized.ends_with("_token")
         || normalized.ends_with("_secret")
         || normalized.ends_with("_password")
