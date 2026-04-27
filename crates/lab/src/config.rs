@@ -545,6 +545,9 @@ pub struct AuthFileConfig {
     /// Optional authorization-code lifetime override in seconds.
     #[serde(default)]
     pub auth_code_ttl_secs: Option<u64>,
+    /// Bootstrap admin Google email — required in oauth mode.
+    #[serde(default)]
+    pub admin_email: Option<String>,
 }
 
 /// Resolve auth configuration from config file + environment variables.
@@ -616,6 +619,11 @@ pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::Auth
             &mut merged,
             "LAB_AUTH_CODE_TTL_SECS",
             config.auth_code_ttl_secs.map(|value| value.to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_ADMIN_EMAIL",
+            config.admin_email.clone(),
         );
     }
 
@@ -1378,6 +1386,7 @@ mod tests {
             access_token_ttl_secs: Some(120),
             refresh_token_ttl_secs: Some(3600),
             auth_code_ttl_secs: Some(45),
+            admin_email: Some("admin@example.com".to_string()),
         };
 
         let resolved = resolve_auth(Some(&cfg)).expect("auth config should resolve");

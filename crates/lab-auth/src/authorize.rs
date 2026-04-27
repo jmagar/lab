@@ -313,11 +313,9 @@ pub async fn callback(
     // not surface as a JSON HTTP error. The denial reason is sourced from the
     // AuthError so we only log once (inside check_email_allowlist).
     let allowed = state.resolve_allowed_emails().await?;
-    if let Err(denial) = check_email_allowlist(
-        google.email.as_deref(),
-        google.email_verified,
-        &allowed,
-    ) {
+    if let Err(denial) =
+        check_email_allowlist(google.email.as_deref(), google.email_verified, &allowed)
+    {
         let mut redirect_target = url::Url::parse(&request.redirect_uri).map_err(|error| {
             // Unreachable in practice: redirect_uri was validated against the
             // client's registered URIs before being stored.
@@ -1438,9 +1436,7 @@ Iy60nwnOxK6B5mZV2Cs+kv8=
                 server.uri().parse::<Url>().unwrap(),
                 server.uri().parse::<Url>().unwrap().join("/token").unwrap(),
             )
-            .with_jwks_endpoint(
-                server.uri().parse::<Url>().unwrap().join("/certs").unwrap(),
-            );
+            .with_jwks_endpoint(server.uri().parse::<Url>().unwrap().join("/certs").unwrap());
             AuthState::for_tests(
                 (*base_state.config).clone(),
                 base_state.store.clone(),
@@ -1610,8 +1606,14 @@ Iy60nwnOxK6B5mZV2Cs+kv8=
                 .unwrap();
             let redirect = Url::parse(location).unwrap();
             let params: std::collections::HashMap<_, _> = redirect.query_pairs().collect();
-            assert!(params.contains_key("code"), "expected code in redirect: {location}");
-            assert!(!params.contains_key("error"), "unexpected error in redirect: {location}");
+            assert!(
+                params.contains_key("code"),
+                "expected code in redirect: {location}"
+            );
+            assert!(
+                !params.contains_key("error"),
+                "unexpected error in redirect: {location}"
+            );
         }
 
         /// Email not in admin or allowed_users must be rejected in the browser-login

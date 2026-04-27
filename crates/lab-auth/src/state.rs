@@ -269,11 +269,7 @@ mod tests {
         // Admin is always first; DB rows follow in created_at ASC order.
         assert_eq!(
             emails,
-            vec![
-                "admin@example.com",
-                "alice@example.com",
-                "bob@example.com"
-            ]
+            vec!["admin@example.com", "alice@example.com", "bob@example.com"]
         );
     }
 
@@ -293,10 +289,7 @@ mod tests {
             .unwrap();
         let emails = state.resolve_allowed_emails().await.unwrap();
         // "admin@example.com" from DB is deduped; "other@example.com" remains.
-        assert_eq!(
-            emails,
-            vec!["admin@example.com", "other@example.com"]
-        );
+        assert_eq!(emails, vec!["admin@example.com", "other@example.com"]);
     }
 
     #[tokio::test]

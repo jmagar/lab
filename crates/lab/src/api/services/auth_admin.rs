@@ -103,16 +103,11 @@ fn require_admin(ctx: &AuthContext, admin_email: &str) -> Result<(), ToolError> 
 ///
 /// 404 (not 503) is used when OAuth is not configured — the endpoint simply
 /// does not exist in bearer-only mode.
-fn require_oauth_state(
-    state: &AppState,
-) -> Result<&lab_auth::state::AuthState, ToolError> {
-    state
-        .oauth_state
-        .as_deref()
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "not_found".to_string(),
-            message: "allowlist management is only available in OAuth mode".to_string(),
-        })
+fn require_oauth_state(state: &AppState) -> Result<&lab_auth::state::AuthState, ToolError> {
+    state.oauth_state.as_deref().ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "not_found".to_string(),
+        message: "allowlist management is only available in OAuth mode".to_string(),
+    })
 }
 
 /// Extract `admin_email` from `auth_config`.
@@ -209,13 +204,7 @@ async fn list_allowed_emails(
     };
 
     log_auth_dispatch(action, req_id.as_deref(), start, None);
-    no_store(
-        (
-            StatusCode::OK,
-            Json(json!({ "entries": entries })),
-        )
-            .into_response(),
-    )
+    no_store((StatusCode::OK, Json(json!({ "entries": entries }))).into_response())
 }
 
 #[derive(Deserialize)]
@@ -319,13 +308,7 @@ async fn add_allowed_email(
         "auth.allowed_user.add complete"
     );
     log_auth_dispatch(action, req_id.as_deref(), start, None);
-    no_store(
-        (
-            StatusCode::CREATED,
-            Json(json!({ "entry": entry })),
-        )
-            .into_response(),
-    )
+    no_store((StatusCode::CREATED, Json(json!({ "entry": entry }))).into_response())
 }
 
 /// `DELETE /v1/auth/allowed-emails/:email`
