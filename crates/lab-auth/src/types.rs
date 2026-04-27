@@ -207,6 +207,18 @@ pub struct UpstreamOauthStateRow {
     pub expires_at: i64,
 }
 
+/// A row from the `allowed_users` table.
+///
+/// Email is always stored and returned in lowercase. `added_by` is the subject
+/// of the admin who added the entry. Never log `email` directly — use
+/// `util::fingerprint(email)` for safe diagnostic output.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllowedUserRow {
+    pub email: String,
+    pub added_by: String,
+    pub created_at: i64,
+}
+
 impl std::fmt::Debug for UpstreamOauthStateRow {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("UpstreamOauthStateRow")

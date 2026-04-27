@@ -8,12 +8,15 @@ use tracing::warn;
 
 use crate::error::AuthError;
 use crate::types::{
-    AuthorizationCodeRow, AuthorizationRequestRow, BrowserLoginStateRow, BrowserSessionRow,
-    RefreshTokenRow, RegisteredClient, UpstreamOauthCredentialRow, UpstreamOauthStateRow,
+    AllowedUserRow, AuthorizationCodeRow, AuthorizationRequestRow, BrowserLoginStateRow,
+    BrowserSessionRow, RefreshTokenRow, RegisteredClient, UpstreamOauthCredentialRow,
+    UpstreamOauthStateRow,
 };
 
 const UPSTREAM_OAUTH_STATE_MAX_TTL_SECS: i64 = 600;
-use crate::util::{ensure_restrictive_permissions, now_unix, set_restrictive_permissions};
+use crate::util::{
+    ensure_restrictive_permissions, fingerprint, now_unix, set_restrictive_permissions,
+};
 
 const SQLITE_BUSY_TIMEOUT_MS: u64 = 5_000;
 const SQLITE_POOL_SIZE: usize = 4;
@@ -731,6 +734,75 @@ impl SqliteStore {
         .await
     }
 
+    /// Add an email address to the allowlist.
+    ///
+    /// `email` is normalised to lowercase before storage. Returns
+    /// `AuthError::Validation` if the email is already present.
+    pub async fn add_allowed_user(
+        &self,
+        email: &str,
+        added_by: &str,
+        created_at: i64,
+    ) -> Result<(), AuthError> {
+        let email = email.to_lowercase();
+        let fp = fingerprint(&email);
+        let added_by = added_by.to_string();
+        self.with_conn(move |conn| {
+            let changed = conn
+                .execute(
+                    "INSERT INTO allowed_users (email, added_by, created_at)
+                     VALUES (?1, ?2, ?3)",
+                    params![email, added_by, created_at],
+                )
+                .map_err(|error| match error {
+                    rusqlite::Error::SqliteFailure(ref e, _)
+                        if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+                    {
+                        AuthError::Validation(format!(
+                            "email fingerprint {fp} is already in the allowlist"
+                        ))
+                    }
+                    other => sqlite_error(other),
+                })?;
+            debug_assert_eq!(changed, 1);
+            Ok(())
+        })
+        .await
+    }
+
+    /// Remove an email address from the allowlist.
+    ///
+    /// Idempotent: returns `Ok(())` even if the email was not present.
+    pub async fn remove_allowed_user(&self, email: &str) -> Result<(), AuthError> {
+        let email = email.to_lowercase();
+        self.with_conn(move |conn| {
+            conn.execute("DELETE FROM allowed_users WHERE email = ?1", params![email])
+                .map_err(sqlite_error)?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Return all allowlist rows ordered by `created_at ASC`.
+    pub async fn list_allowed_users(&self) -> Result<Vec<AllowedUserRow>, AuthError> {
+        self.with_conn(move |conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT email, added_by, created_at
+                     FROM allowed_users
+                     ORDER BY created_at ASC",
+                )
+                .map_err(sqlite_error)?;
+            let rows = stmt
+                .query_map([], row_to_allowed_user)
+                .map_err(sqlite_error)?
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(sqlite_error)?;
+            Ok(rows)
+        })
+        .await
+    }
+
     async fn with_conn<T, F>(&self, op: F) -> Result<T, AuthError>
     where
         T: Send + 'static,
@@ -865,7 +937,12 @@ fn open_connection(path: &Path) -> Result<Connection, AuthError> {
             client_id       TEXT NOT NULL,
             created_at      INTEGER NOT NULL,
             PRIMARY KEY (upstream_name, subject)
-        ) WITHOUT ROWID;",
+        ) WITHOUT ROWID;
+        CREATE TABLE IF NOT EXISTS allowed_users (
+            email       TEXT PRIMARY KEY NOT NULL,
+            added_by    TEXT NOT NULL,
+            created_at  INTEGER NOT NULL
+        );",
     )
     .map_err(sqlite_error)?;
 
@@ -896,6 +973,14 @@ fn validate_or_reopen_connection(conn: &mut Connection, path: &Path) -> Result<(
 #[allow(clippy::needless_pass_by_value)]
 fn sqlite_error(error: rusqlite::Error) -> AuthError {
     AuthError::Storage(format!("sqlite error: {error}"))
+}
+
+fn row_to_allowed_user(row: &rusqlite::Row<'_>) -> rusqlite::Result<AllowedUserRow> {
+    Ok(AllowedUserRow {
+        email: row.get(0)?,
+        added_by: row.get(1)?,
+        created_at: row.get(2)?,
+    })
 }
 
 fn row_to_authorization_request(
@@ -996,8 +1081,8 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::types::{
-        AuthorizationCodeRow, BrowserSessionRow, RefreshTokenRow, UpstreamOauthCredentialRow,
-        UpstreamOauthStateRow,
+        AllowedUserRow, AuthorizationCodeRow, BrowserSessionRow, RefreshTokenRow,
+        UpstreamOauthCredentialRow, UpstreamOauthStateRow,
     };
 
     use crate::util::now_unix;
@@ -1440,5 +1525,106 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    // ── allowed_users tests ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn allowed_users_add_and_list() {
+        let store = temp_store().await;
+        store
+            .add_allowed_user("alice@example.com", "admin", now_unix())
+            .await
+            .unwrap();
+        let rows = store.list_allowed_users().await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].email, "alice@example.com");
+        assert_eq!(rows[0].added_by, "admin");
+    }
+
+    #[tokio::test]
+    async fn allowed_users_duplicate_returns_validation_error() {
+        let store = temp_store().await;
+        let now = now_unix();
+        store
+            .add_allowed_user("bob@example.com", "admin", now)
+            .await
+            .unwrap();
+        let err = store
+            .add_allowed_user("bob@example.com", "admin2", now)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, crate::error::AuthError::Validation(_)),
+            "expected Validation, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn allowed_users_input_is_lowercased() {
+        let store = temp_store().await;
+        store
+            .add_allowed_user("Alice@Example.COM", "admin", now_unix())
+            .await
+            .unwrap();
+        let rows = store.list_allowed_users().await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].email, "alice@example.com");
+    }
+
+    #[tokio::test]
+    async fn allowed_users_remove_nonexistent_is_idempotent() {
+        let store = temp_store().await;
+        // Must not error even when no row exists.
+        store
+            .remove_allowed_user("nobody@example.com")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn allowed_users_list_ordered_by_created_at_asc() {
+        let store = temp_store().await;
+        let base = now_unix();
+        store
+            .add_allowed_user("third@example.com", "admin", base + 2)
+            .await
+            .unwrap();
+        store
+            .add_allowed_user("first@example.com", "admin", base)
+            .await
+            .unwrap();
+        store
+            .add_allowed_user("second@example.com", "admin", base + 1)
+            .await
+            .unwrap();
+        let rows = store.list_allowed_users().await.unwrap();
+        let emails: Vec<&str> = rows.iter().map(|r| r.email.as_str()).collect();
+        assert_eq!(
+            emails,
+            vec![
+                "first@example.com",
+                "second@example.com",
+                "third@example.com"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn allowed_users_schema_bootstrap_is_idempotent() {
+        // Open the same file twice; second open must not error.
+        let path = temp_db_path();
+        let _store1 = SqliteStore::open(path.clone()).await.unwrap();
+        let _store2 = SqliteStore::open(path).await.unwrap();
+    }
+
+    // Ensure AllowedUserRow is importable as the right type in tests.
+    #[allow(dead_code)]
+    fn _assert_allowed_user_row_type() -> AllowedUserRow {
+        AllowedUserRow {
+            email: String::new(),
+            added_by: String::new(),
+            created_at: 0,
+        }
     }
 }
