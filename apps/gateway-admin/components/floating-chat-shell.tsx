@@ -50,7 +50,7 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
   // ---- Context consumers ----
   const { runs, selectedRun, selectedRunId, providerHealth, providers, agents, projects, pageContext } =
     useChatSessionData()
-  const { createSession, selectRun, refreshSessions } = useChatSessionActions()
+  const { createSession, selectRun, refreshSessions, selectAgent } = useChatSessionActions()
   const { connectionState } = useChatSessionConnection()
   const { messages } = useChatSessionStream()
 
@@ -129,11 +129,6 @@ export const FloatingChatShell = React.memo(function FloatingChatShell({
       // providerHealth.message carries the failure detail
     }
   }, [createSession])
-
-  const selectAgent = React.useCallback((_providerId: string) => {
-    // provider selection is handled by useChatSessionActions.selectAgent
-    // local agent selection just for visual state in this shell
-  }, [])
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

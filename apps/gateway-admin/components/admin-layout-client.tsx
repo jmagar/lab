@@ -16,6 +16,7 @@ import { ChatSessionProvider } from '@/lib/chat/chat-session-provider'
 import { FloatingChatFab } from '@/components/floating-chat-fab'
 import { FloatingChatPopover } from '@/components/floating-chat-popover'
 import { FloatingChatShell } from '@/components/floating-chat-shell'
+import { PageContextSync } from '@/components/page-context-sync'
 import type { PersistConfig } from '@/components/floating-chat-popover'
 
 export function AdminLayoutClient({
@@ -105,6 +106,7 @@ export function AdminLayoutClient({
       onFirstOpenRef={onFirstOpenRef}
       isMobileViewport={isMobileViewport}
     >
+      <PageContextSync />
       {children}
       <FloatingChatFab
         open={open}

@@ -208,10 +208,15 @@ export function FloatingChatPopover({
     // Focus the panel itself
     panel.focus()
 
-    // Inert the rest of the page
-    const appRoot = document.querySelector('#__next') as HTMLElement | null
-    if (appRoot) {
-      appRoot.inert = true
+    // Inert all direct body children except the panel itself (App Router compatible).
+    // document.body.inert would block the panel too since it's a descendant.
+    const toRestore: HTMLElement[] = []
+    for (const child of Array.from(document.body.children)) {
+      const el = child as HTMLElement
+      if (el !== panel && !el.contains(panel)) {
+        el.inert = true
+        toRestore.push(el)
+      }
     }
 
     function onKeyDown(event: KeyboardEvent) {
@@ -245,8 +250,8 @@ export function FloatingChatPopover({
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      if (appRoot) {
-        appRoot.inert = false
+      for (const el of toRestore) {
+        el.inert = false
       }
     }
   }, [open, onClose, isMobileViewport])
