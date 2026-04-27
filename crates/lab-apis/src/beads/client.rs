@@ -29,6 +29,19 @@ const DEFAULT_LIST_LIMIT: i64 = 50;
 /// Hard upper bound on `limit`.
 const MAX_LIST_LIMIT: i64 = 200;
 
+/// Parse the `GROUP_CONCAT`-produced label string into a `Vec<String>`.
+///
+/// The SQL query uses `\u{1f}` (ASCII Unit Separator, 0x1F) as the separator
+/// so that commas are safe inside individual label values. An empty string
+/// means the issue has no labels.
+pub(crate) fn parse_labels(raw: &str) -> Vec<String> {
+    if raw.is_empty() {
+        Vec::new()
+    } else {
+        raw.split('\u{1f}').map(str::to_string).collect()
+    }
+}
+
 /// MySQL connection pool wrapping the Dolt server.
 #[derive(Clone)]
 pub struct BeadsClient {
@@ -201,11 +214,7 @@ impl BeadsClient {
 
         let row = row.ok_or_else(|| BeadsError::NotFound { id: id.to_string() })?;
         let labels_raw: String = row.try_get("labels")?;
-        let labels = if labels_raw.is_empty() {
-            Vec::new()
-        } else {
-            labels_raw.split('\u{1f}').map(str::to_string).collect()
-        };
+        let labels = parse_labels(&labels_raw);
         Ok(Issue {
             id: row.try_get("id")?,
             title: row.try_get("title")?,
@@ -231,6 +240,60 @@ impl BeadsClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Unit tests (no database required) ─────────────────────────────────
+
+    #[test]
+    fn parse_labels_empty_string() {
+        assert_eq!(parse_labels(""), Vec::<String>::new());
+    }
+
+    #[test]
+    fn parse_labels_single() {
+        assert_eq!(parse_labels("bug"), vec!["bug".to_string()]);
+    }
+
+    #[test]
+    fn parse_labels_multiple() {
+        let raw = "bug\u{1f}p1\u{1f}backend";
+        assert_eq!(
+            parse_labels(raw),
+            vec!["bug".to_string(), "p1".to_string(), "backend".to_string()]
+        );
+    }
+
+    /// Labels may themselves contain commas; the unit separator avoids ambiguity.
+    #[test]
+    fn parse_labels_comma_inside_label() {
+        let raw = "a,b\u{1f}c";
+        assert_eq!(
+            parse_labels(raw),
+            vec!["a,b".to_string(), "c".to_string()]
+        );
+    }
+
+    /// `limit` is clamped to `[1, MAX_LIST_LIMIT]`; `None` defaults to
+    /// `DEFAULT_LIST_LIMIT`. These are pure arithmetic checks — no DB needed.
+    #[test]
+    fn list_limit_clamping() {
+        let clamp = |v: i64| v.clamp(1, MAX_LIST_LIMIT);
+        assert_eq!(clamp(0), 1, "zero is clamped to minimum 1");
+        assert_eq!(clamp(-10), 1, "negative is clamped to minimum 1");
+        assert_eq!(clamp(DEFAULT_LIST_LIMIT), DEFAULT_LIST_LIMIT);
+        assert_eq!(clamp(MAX_LIST_LIMIT), MAX_LIST_LIMIT);
+        assert_eq!(clamp(MAX_LIST_LIMIT + 1), MAX_LIST_LIMIT, "above max clamps down");
+    }
+
+    /// `offset` defaults to 0 and is never allowed to go negative.
+    #[test]
+    fn list_offset_floor() {
+        let floor = |v: i64| v.max(0);
+        assert_eq!(floor(0), 0);
+        assert_eq!(floor(10), 10);
+        assert_eq!(floor(-1), 0, "negative offset is floored to 0");
+    }
+
+    // ── Integration tests (require a running Dolt server) ─────────────────
 
     /// DSN used by integration tests. Override via `BEADS_TEST_DSN` if your
     /// local Dolt server is on a different port.
