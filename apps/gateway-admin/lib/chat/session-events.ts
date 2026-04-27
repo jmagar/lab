@@ -3,16 +3,20 @@ import type { ACPMessage, ActivityItem, TranscriptTerminal, TranscriptToolCall }
 
 // ---------------------------------------------------------------------------
 // ACP Terminal chunk eviction constants (C1/R3/O5)
+//
+// All size limits are in UTF-16 code units (String.prototype.length), not
+// actual bytes. For ASCII/BMP terminal output (the common case) these are
+// equivalent. Non-BMP characters (emoji, etc.) count as two code units.
 // ---------------------------------------------------------------------------
 
-/** Per-chunk pre-push cap. Chunks larger than this are sliced to the tail. */
-const MAX_CHUNK_BYTES = 64 * 1024 // 64 KB
+/** Per-chunk pre-push cap (in UTF-16 code units). Chunks larger than this are sliced to the tail. */
+const MAX_CHUNK_BYTES = 64 * 1024 // 64 KiB
 
-/** Per-terminal cap. Oldest chunks are evicted when totalBytes exceeds this. */
-const MAX_TOTAL_BYTES = 1 * 1024 * 1024 // 1 MB
+/** Per-terminal cap (in UTF-16 code units). Oldest chunks are evicted when totalBytes exceeds this. */
+const MAX_TOTAL_BYTES = 1 * 1024 * 1024 // 1 MiB
 
-/** On terminal_exit, compact chunks to this tail size. */
-const TERMINAL_RENDER_TAIL_BYTES = 256 * 1024 // 256 KB
+/** On terminal_exit, compact chunks to this tail size (in UTF-16 code units). */
+const TERMINAL_RENDER_TAIL_BYTES = 256 * 1024 // 256 KiB
 
 /** Max terminal_id length. Events with longer IDs are dropped. */
 const MAX_TERMINAL_ID_LENGTH = 128
