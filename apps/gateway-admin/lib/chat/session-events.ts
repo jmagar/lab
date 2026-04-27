@@ -337,13 +337,14 @@ export function resolveSessionStatusFromEvents(
   events: BridgeEvent[],
   fallback: BridgeSessionStatus = 'idle',
 ) {
-  let status = fallback
-  for (const event of events) {
-    if (event.kind === 'status' && isBridgeSessionStatus(event.status)) {
-      status = event.status
+  // Reverse scan — stop at the first (most-recent) status event: O(1) in the common case.
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i]
+    if (event && event.kind === 'status' && isBridgeSessionStatus(event.status)) {
+      return event.status
     }
   }
-  return status
+  return fallback
 }
 
 function upsertToolCall(toolCalls: TranscriptToolCall[], patch: ToolCallPatch): TranscriptToolCall[] {

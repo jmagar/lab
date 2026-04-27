@@ -19,6 +19,9 @@ use crate::dispatch::acp::dispatch::dispatch_with_registry;
 use crate::dispatch::acp::dispatch::validate_subscribe_ticket;
 use crate::dispatch::error::ToolError;
 
+/// Hard cap on incoming prompt text (64 000 chars ≈ 16 000 tokens at 4 chars/token).
+const PROMPT_MAX_CHARS: usize = 64_000;
+
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/provider", get(provider_health))
@@ -36,6 +39,9 @@ async fn provider_health(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
+    // TODO(phase-2): extract bearer principal from request extensions and pass it here
+    // so each caller only sees their own sessions. Until bearer auth is wired in the
+    // middleware layer this returns all sessions (anonymous == empty principal).
     match dispatch_with_registry(&state.acp_registry, "session.list", json!({})).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
@@ -64,9 +70,22 @@ async fn create_session(
     }
 }
 
+/// Optional structured page context from the frontend.
+/// All validation and injection logic lives in `dispatch/acp/page_context.rs`.
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PageContextBody {
+    route: String,
+    entity_type: Option<String>,
+    entity_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PromptBody {
     prompt: String,
+    /// Optional structured page context. Passed to dispatch; injection is handled there.
+    page_context: Option<PageContextBody>,
 }
 
 async fn prompt_session(
@@ -81,9 +100,33 @@ async fn prompt_session(
         }
         .into_response();
     }
+
+    if body.prompt.len() > PROMPT_MAX_CHARS {
+        return ToolError::InvalidParam {
+            message: format!(
+                "prompt exceeds maximum allowed length ({} > {} chars)",
+                body.prompt.len(),
+                PROMPT_MAX_CHARS
+            ),
+            param: "prompt".to_string(),
+        }
+        .into_response();
+    }
+
+    // Pass page_context as a JSON object to the dispatch layer.
+    // All sanitization and prefix assembly happens there — HTTP handler is a thin shim.
+    let page_context_value = body.page_context.as_ref().map(|ctx| {
+        json!({
+            "route": ctx.route,
+            "entityType": ctx.entity_type,
+            "entityId": ctx.entity_id,
+        })
+    });
+
     let params = json!({
         "session_id": session_id,
         "text": body.prompt.trim(),
+        "page_context": page_context_value,
     });
     match dispatch_with_registry(&state.acp_registry, "session.prompt", params).await {
         Ok(v) => Json(v).into_response(),
@@ -138,8 +181,13 @@ async fn stream_events(
             }
         }
     } else {
-        // No ticket — anonymous principal (bead 7 note: auth wired in Phase 2).
-        String::new()
+        // No ticket provided — reject immediately (Phase 2 will wire full auth;
+        // until then, every SSE caller must obtain a ticket via session.subscribe_ticket).
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(json!({ "kind": "auth_failed", "message": "SSE ticket required; call session.subscribe_ticket first" })),
+        )
+            .into_response();
     };
 
     let since = query.since.unwrap_or(0);

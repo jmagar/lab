@@ -12,6 +12,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 
 use super::catalog::ACTIONS;
 use super::client::require_registry;
+use super::page_context::{PageContextInput, build_prompt_with_context};
 use super::params::{opt_str, opt_u64, require_str};
 
 /// SSE ticket lifetime in seconds.
@@ -171,7 +172,7 @@ pub async fn dispatch_with_registry(
         "session.prompt" => {
             let session_id = require_str(&params, "session_id")?;
             let principal = opt_str(&params, "principal").unwrap_or("");
-            let text = params
+            let raw_text = params
                 .get("text")
                 .and_then(|v| v.as_str())
                 .filter(|s| !s.is_empty())
@@ -180,7 +181,21 @@ pub async fn dispatch_with_registry(
                     param: "text".to_string(),
                 })?;
 
-            registry.prompt_session(session_id, text, principal).await?;
+            // Optional structured page context (HTTP / MCP / CLI can all supply it).
+            let page_ctx = params.get("page_context").and_then(|v| v.as_object()).map(|obj| {
+                PageContextInput {
+                    route: obj.get("route").and_then(|v| v.as_str()).unwrap_or(""),
+                    entity_type: obj.get("entityType").and_then(|v| v.as_str()),
+                    entity_id: obj.get("entityId").and_then(|v| v.as_str()),
+                }
+            });
+            let effective_text = build_prompt_with_context(
+                session_id,
+                raw_text,
+                page_ctx.as_ref(),
+            );
+
+            registry.prompt_session(session_id, &effective_text, principal).await?;
             to_json(json!({ "ok": true, "session_id": session_id }))
         }
 
