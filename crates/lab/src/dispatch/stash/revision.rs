@@ -1,8 +1,11 @@
 //! Revision save and list operations for the stash service.
 //!
 //! A revision is an immutable snapshot of a component's workspace content.
-//! The content digest is SHA-256 of all file contents concatenated in
-//! sorted-by-relative-path order.
+//! The content digest is SHA-256 over all files in sorted-by-relative-path
+//! order, where each file is hashed as a length-prefixed record:
+//!   `len(path_bytes) ++ path_bytes ++ len(file_bytes) ++ file_bytes`
+//! This prevents collisions between workspaces that differ only in how
+//! content is distributed across files.
 
 use std::path::{Path, PathBuf};
 
@@ -83,15 +86,25 @@ fn read_file_bytes(path: &Path) -> Result<Vec<u8>, ToolError> {
     })
 }
 
-/// Compute SHA-256 of all file contents in sorted order.
+/// Compute SHA-256 of all files in sorted order.
 ///
-/// Concatenates raw bytes of each file (sorted by relative path) then hashes
-/// the concatenation. Returns lowercase hex string.
+/// Each file is hashed as a length-prefixed record to prevent collisions
+/// between workspaces that differ only in how content is split across files:
+///
+///   `len(path_bytes as u64 LE) ++ path_bytes`
+///   `len(file_bytes as u64 LE) ++ file_bytes`
+///
+/// Files must be sorted by relative path before calling this function.
+/// Returns lowercase hex string.
 fn compute_digest(files: &[(PathBuf, PathBuf)]) -> Result<String, ToolError> {
     let mut hasher = Sha256::new();
-    for (_rel, abs) in files {
-        let bytes = read_file_bytes(abs)?;
-        hasher.update(&bytes);
+    for (rel, abs) in files {
+        let path_bytes = rel.as_os_str().as_encoded_bytes();
+        hasher.update(&(path_bytes.len() as u64).to_le_bytes());
+        hasher.update(path_bytes);
+        let file_bytes = read_file_bytes(abs)?;
+        hasher.update(&(file_bytes.len() as u64).to_le_bytes());
+        hasher.update(&file_bytes);
     }
     let result = hasher.finalize();
     Ok(hex::encode(result))
@@ -149,83 +162,71 @@ pub async fn save_revision(
     })?
 }
 
-fn save_revision_blocking(
+pub(super) fn save_revision_blocking(
     store: &StashStore,
     component_id: &str,
     label: Option<&str>,
 ) -> Result<StashRevision, ToolError> {
-    // Load component.
-    let component = store
-        .read_component(component_id)?
-        .ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "not_found".into(),
-            message: format!("component `{component_id}` not found"),
-        })?;
-
-    // Collect workspace files.
-    let workspace_dir = store.workspace_dir(component_id);
-
-    let (file_entries, file_count, unix_mode) = if component.workspace_shape
-        == StashWorkspaceShape::File
-    {
-        // Single-file workspace: the workspace dir contains exactly one file.
-        let filename = component
-            .workspace_root
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("file");
-        let ws_file = store.workspace_path(component_id, StashWorkspaceShape::File, Some(filename));
-        // Validate no symlink.
-        let meta = std::fs::symlink_metadata(&ws_file).map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("symlink_metadata `{}`: {e}", ws_file.display()),
-        })?;
-        if meta.file_type().is_symlink() {
-            return Err(ToolError::Sdk {
-                sdk_kind: "symlink_rejected".into(),
-                message: format!("symlink at `{}`", ws_file.display()),
-            });
-        }
-        let rel = PathBuf::from(filename);
-        let entries = vec![(rel, ws_file)];
-        let mode = component.unix_mode;
-        (entries, 1_usize, mode)
-    } else {
-        // Directory-shaped: walk workspace dir.
-        let entries = walk_files_sorted(&workspace_dir)?;
-        let count = entries.len();
-        (entries, count, None)
-    };
-
-    // Compute content digest (all file bytes concatenated in sorted order).
-    let content_digest = compute_digest(&file_entries)?;
-
-    // Generate revision ID.
-    let rev_id = ulid::Ulid::new().to_string().to_lowercase();
-
-    // Copy files to revision snapshot directory.
-    let files_dst = store.revision_files_path(&rev_id);
-    for (rel, abs_src) in &file_entries {
-        let dst = files_dst.join(rel);
-        copy_file_to(abs_src, &dst)?;
-    }
-
-    // Write meta.json and update head_revision_id under component lock.
-    let now = jiff::Timestamp::now().to_string();
-    let revision = StashRevision {
-        id: rev_id.clone(),
-        component_id: component_id.to_string(),
-        label: label.map(str::to_string),
-        content_digest,
-        created_at: now,
-        file_count,
-        unix_mode,
-    };
-
-    store.write_revision_meta(&revision)?;
-
-    // Update component head_revision_id under lock.
+    // Hold the component lock for the entire snapshot operation — walk, hash,
+    // copy, meta write, and head update — so a concurrent import cannot mutate
+    // files mid-walk.
     store.with_component_lock(component_id, || {
+        // Load component.
+        let component = store
+            .read_component(component_id)?
+            .ok_or_else(|| ToolError::Sdk {
+                sdk_kind: "not_found".into(),
+                message: format!("component `{component_id}` not found"),
+            })?;
+
+        // Collect workspace files by walking the workspace directory.
+        //
+        // For both file-shaped and directory-shaped components the live files
+        // reside under `workspace_dir(component_id)`.  Walking the directory
+        // directly (rather than relying on `workspace_root.file_name()`) is
+        // correct for file-shaped workspaces regardless of how `workspace_root`
+        // was stored during import (e.g. parent dir vs actual file path).
+        let workspace_dir = store.workspace_dir(component_id);
+        let file_entries = walk_files_sorted(&workspace_dir)?;
+        let file_count = file_entries.len();
+
+        // For file-shaped workspaces carry over the unix_mode stored on the
+        // component record (set at import time from the source executable bit).
+        let unix_mode = if component.workspace_shape == StashWorkspaceShape::File {
+            component.unix_mode
+        } else {
+            None
+        };
+
+        // Compute content digest with length-prefixed path + content records.
+        let content_digest = compute_digest(&file_entries)?;
+
+        // Generate revision ID.
+        let rev_id = ulid::Ulid::new().to_string().to_lowercase();
+
+        // Copy files to revision snapshot directory.
+        let files_dst = store.revision_files_path(&rev_id);
+        for (rel, abs_src) in &file_entries {
+            let dst = files_dst.join(rel);
+            copy_file_to(abs_src, &dst)?;
+        }
+
+        // Write meta.json.
+        let now = jiff::Timestamp::now().to_string();
+        let revision = StashRevision {
+            id: rev_id.clone(),
+            component_id: component_id.to_string(),
+            label: label.map(str::to_string),
+            content_digest,
+            created_at: now,
+            file_count,
+            unix_mode,
+        };
+        store.write_revision_meta(&revision)?;
+
+        // Update head_revision_id on the component record.
+        // We are already inside with_component_lock — do NOT call
+        // with_component_lock again here (would deadlock on flock).
         let mut comp = store
             .read_component(component_id)?
             .ok_or_else(|| ToolError::Sdk {
@@ -234,10 +235,10 @@ fn save_revision_blocking(
             })?;
         comp.head_revision_id = Some(rev_id.clone());
         comp.updated_at = jiff::Timestamp::now().to_string();
-        store.write_component(&comp)
-    })?;
+        store.write_component(&comp)?;
 
-    Ok(revision)
+        Ok(revision)
+    })
 }
 
 /// List all revisions for a component, in no particular order.
@@ -299,12 +300,15 @@ mod tests {
         comp
     }
 
+    /// Write a file-shaped component with `workspace_root` pointing at the
+    /// workspace *directory* (as `import_blocking` produces), not the file.
     fn write_file_component(store: &StashStore, id: &str) -> StashComponent {
         let ws_dir = store.workspace_dir(id);
         std::fs::create_dir_all(&ws_dir).unwrap();
         let ws_file = ws_dir.join("settings.json");
         std::fs::write(&ws_file, b"{\"key\": \"value\"}").unwrap();
 
+        // workspace_root = ws_dir (parent), matching import_blocking's output.
         let comp = StashComponent {
             id: id.to_string(),
             kind: StashComponentKind::Settings,
@@ -312,7 +316,7 @@ mod tests {
             label: None,
             head_revision_id: None,
             origin: None,
-            workspace_root: ws_file.clone(),
+            workspace_root: ws_dir.clone(), // directory, not the file — matches import_blocking
             workspace_shape: StashWorkspaceShape::File,
             unix_mode: None,
             created_at: "2026-04-26T12:00:00Z".to_string(),
@@ -352,9 +356,15 @@ mod tests {
         assert_eq!(rev.file_count, 1);
         assert!(!rev.content_digest.is_empty());
 
-        // Snapshot file should exist.
+        // Snapshot file should exist — named after the actual file, not the ULID dir.
         let files_dir = store.revision_files_path(&rev.id);
-        assert!(files_dir.join("settings.json").exists());
+        assert!(
+            files_dir.join("settings.json").exists(),
+            "settings.json must be in revision snapshot; got files: {:?}",
+            std::fs::read_dir(&files_dir)
+                .map(|it| it.filter_map(|e| e.ok().map(|e| e.file_name())).collect::<Vec<_>>())
+                .unwrap_or_default()
+        );
     }
 
     #[test]
@@ -391,5 +401,60 @@ mod tests {
         let rev1 = save_revision_blocking(&store, "comp-04", None).unwrap();
         let rev2 = save_revision_blocking(&store, "comp-04", None).unwrap();
         assert_eq!(rev1.content_digest, rev2.content_digest);
+    }
+
+    /// lab-qz6a.16 — SHA-256 digest must be collision-resistant when the same
+    /// total bytes are distributed differently across files.
+    ///
+    /// Without length-prefixed records, `{a:"foo", b:"bar"}` and
+    /// `{a:"foob", b:"ar"}` produce identical digests.
+    #[test]
+    fn digest_differs_for_different_path_content_split() {
+        // Build two in-memory file lists that have the same raw bytes but
+        // different (rel_path, content) pairings.
+        let tmp = tempdir().unwrap();
+
+        // Set 1: a.txt="foo", b.txt="bar"
+        let a1 = tmp.path().join("a.txt");
+        let b1 = tmp.path().join("b.txt");
+        std::fs::write(&a1, b"foo").unwrap();
+        std::fs::write(&b1, b"bar").unwrap();
+        let files1 = vec![
+            (PathBuf::from("a.txt"), a1),
+            (PathBuf::from("b.txt"), b1),
+        ];
+
+        // Set 2: a.txt="foob", b.txt="ar"  — same bytes total, different split
+        let a2 = tmp.path().join("c.txt");
+        let b2 = tmp.path().join("d.txt");
+        std::fs::write(&a2, b"foob").unwrap();
+        std::fs::write(&b2, b"ar").unwrap();
+        let files2 = vec![
+            (PathBuf::from("a.txt"), a2),
+            (PathBuf::from("b.txt"), b2),
+        ];
+
+        let d1 = compute_digest(&files1).unwrap();
+        let d2 = compute_digest(&files2).unwrap();
+        assert_ne!(d1, d2, "digests must differ when content split differs");
+    }
+
+    /// lab-qz6a.16 — digest must also differ when only the relative path changes
+    /// (same bytes, different filename).
+    #[test]
+    fn digest_differs_for_different_path_same_content() {
+        let tmp = tempdir().unwrap();
+
+        let f1 = tmp.path().join("file1.txt");
+        let f2 = tmp.path().join("file2.txt");
+        std::fs::write(&f1, b"hello").unwrap();
+        std::fs::write(&f2, b"hello").unwrap();
+
+        let files_a = vec![(PathBuf::from("alpha.txt"), f1.clone())];
+        let files_b = vec![(PathBuf::from("beta.txt"), f2.clone())];
+
+        let d_a = compute_digest(&files_a).unwrap();
+        let d_b = compute_digest(&files_b).unwrap();
+        assert_ne!(d_a, d_b, "digests must differ when path name differs");
     }
 }
