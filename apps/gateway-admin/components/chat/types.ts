@@ -33,6 +33,24 @@ export interface ACPRun {
   cwd: string
 }
 
+/**
+ * Chunked terminal output state for a tool call.
+ *
+ * rawChunks stores individual output chunks as received from ACP _meta.
+ * All renderers MUST go through getDisplayText(rawChunks) — direct consumption
+ * of rawChunks outside the helper is a violation of the sanitization boundary.
+ */
+export interface TranscriptTerminal {
+  /** Raw output chunks — use getDisplayText() before rendering. */
+  rawChunks: string[]
+  /** Running byte count maintained in O(1) on push and eviction. */
+  totalBytes: number
+  /** True when chunks have been evicted due to MAX_TOTAL_BYTES cap. */
+  truncated: boolean
+  /** Exit code from terminal_exit meta, null if not yet exited. */
+  exitCode?: number | null
+}
+
 export interface TranscriptToolCall {
   id: string
   title: string
@@ -42,6 +60,10 @@ export interface TranscriptToolCall {
   output?: unknown
   content?: unknown[] | null
   locations: string[]
+  permissionOptions?: Array<{ optionId: string; name: string; kind: string }>
+  permissionSelection?: string | null
+  /** ACP terminal display metadata — present when agent streams terminal output. */
+  terminal?: TranscriptTerminal | null
 }
 
 export interface ACPMessage {
@@ -53,6 +75,12 @@ export interface ACPMessage {
   isStreaming?: boolean
   thoughts: string[]
   toolCalls: TranscriptToolCall[]
+  /**
+   * Monotonic version incremented whenever this message's toolCalls change.
+   * Used as a memoization key so unchanged messages are not re-derived.
+   * C3: without this, virtualization is cosmetic — INP > 200ms at 10x volume.
+   */
+  version: number
 }
 
 export type ActivityItem = BridgeEvent
