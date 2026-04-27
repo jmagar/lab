@@ -188,8 +188,20 @@ pub async fn component_export(store: &StashStore, p: ExportParams) -> Result<Val
 /// `component.deploy` — deploy a component revision to a registered target.
 ///
 /// Runs the actual file copy inside `with_deploy_lock` to prevent concurrent
-/// deploys to the same component.
-pub fn component_deploy(store: &StashStore, p: DeployParams) -> Result<Value, ToolError> {
+/// deploys to the same component. Wrapped in `spawn_blocking` so the poll loop
+/// inside `with_deploy_lock` does not block a tokio worker thread.
+pub async fn component_deploy(store: &StashStore, p: DeployParams) -> Result<Value, ToolError> {
+    let store = store.clone();
+    tokio::task::spawn_blocking(move || component_deploy_blocking(&store, p))
+        .await
+        .map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("spawn_blocking panicked: {e}"),
+        })?
+}
+
+/// Synchronous inner implementation — runs inside `spawn_blocking`.
+fn component_deploy_blocking(store: &StashStore, p: DeployParams) -> Result<Value, ToolError> {
     // Load component.
     let component = store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
         sdk_kind: "not_found".into(),

@@ -139,7 +139,7 @@ pub async fn dispatch_with_store(
         }
         "component.deploy" => {
             let p = parse_deploy_params(&params)?;
-            service::component_deploy(store, p)
+            service::component_deploy(store, p).await
         }
         "providers.list" => service::providers_list(store, &params),
         "provider.link" => {
