@@ -8,7 +8,14 @@ pre-commit:
       # Convention enforcement: bans clap/rmcp/ratatui/anyhow/tabled in
       # lab-apis/lab-auth (per crates/lab-apis/CLAUDE.md). Just `bans` —
       # CI runs the full check (advisories/licenses/sources).
-      run: cargo deny check bans
+      # Guard: skip gracefully if cargo-deny is not installed locally.
+      # Install: cargo install cargo-deny
+      run: |
+        if ! command -v cargo-deny >/dev/null 2>&1; then
+          echo "cargo-deny not installed — skipping bans check (install with: cargo install cargo-deny)"
+          exit 0
+        fi
+        cargo deny check bans
     aurora-radius:
       glob: "{apps/gateway-admin/*.{ts,tsx,css},apps/gateway-admin/**/*.{ts,tsx,css}}"
       run: |

@@ -68,7 +68,13 @@ function isCommandK(event: KeyboardEvent): boolean {
   return (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k'
 }
 
+/** Returns true when running on macOS/iOS — safe in this 'use client' static-export component. */
+function isMacOS(): boolean {
+  return typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+}
+
 export function AppCommandPaletteTrigger() {
+  const modKey = isMacOS() ? '⌘' : 'Ctrl'
   return (
     <button
       type="button"
@@ -82,7 +88,7 @@ export function AppCommandPaletteTrigger() {
       </span>
       <KbdGroup>
         <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
-          Cmd
+          {modKey}
         </Kbd>
         <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
           K
