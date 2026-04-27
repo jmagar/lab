@@ -147,7 +147,7 @@ fn component_from_inline_config(
             kind,
             path: path.to_string(),
             name: path_name(path),
-            metadata: Some(value.clone()),
+            metadata: None,
         };
     }
 
