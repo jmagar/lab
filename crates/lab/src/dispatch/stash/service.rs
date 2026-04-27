@@ -17,9 +17,12 @@ use crate::dispatch::helpers::to_json;
 use crate::dispatch::stash::export;
 use crate::dispatch::stash::import;
 use crate::dispatch::stash::params::{
-    CreateParams, DeployParams, ExportParams, GetParams, ImportParams, RevisionsParams, SaveParams,
-    TargetAddParams, TargetRemoveParams, WorkspaceParams,
+    CreateParams, DeployParams, ExportParams, GetParams, ImportParams, LinkParams,
+    ProviderSyncParams, RevisionsParams, SaveParams, TargetAddParams, TargetRemoveParams,
+    WorkspaceParams,
 };
+use crate::dispatch::stash::provider::build_provider_record;
+use crate::dispatch::stash::providers::provider_from_record;
 use crate::dispatch::stash::revision;
 use crate::dispatch::stash::store::StashStore;
 
@@ -380,28 +383,143 @@ fn list_json_records_from_dir<T: serde::de::DeserializeOwned>(
     Ok(out)
 }
 
-/// `provider.link` — stub (provider support not yet implemented).
-pub fn provider_link(_store: &StashStore) -> Result<Value, ToolError> {
-    Err(ToolError::Sdk {
-        sdk_kind: "unsupported_provider".into(),
-        message: "provider support not yet implemented".into(),
-    })
+/// `provider.link` — register a provider and attach it to a component.
+///
+/// Validates the provider kind and config before writing the record.
+pub fn provider_link(store: &StashStore, p: LinkParams) -> Result<Value, ToolError> {
+    // Build record so we can validate the driver config before persisting.
+    let record = build_provider_record(&p.id, &p.kind, &p.label, p.config);
+
+    // Validate by constructing the provider (validates config shape).
+    let _provider = provider_from_record(&record)?;
+
+    // Verify the component exists.
+    store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "not_found".into(),
+        message: format!("component `{}` not found", p.id),
+    })?;
+
+    // Persist under the component advisory lock.
+    store.with_component_lock(&p.id, || store.write_provider(&record))?;
+
+    to_json(serde_json::json!({
+        "provider_id": record.id,
+        "component_id": record.component_id,
+        "kind": record.kind,
+        "label": record.label,
+    }))
 }
 
-/// `provider.push` — stub (provider support not yet implemented).
-pub fn provider_push(_store: &StashStore) -> Result<Value, ToolError> {
-    Err(ToolError::Sdk {
-        sdk_kind: "unsupported_provider".into(),
-        message: "provider support not yet implemented".into(),
-    })
+/// `provider.push` — push the component's current head revision to a provider.
+pub fn provider_push(store: &StashStore, p: ProviderSyncParams) -> Result<Value, ToolError> {
+    // Load provider record.
+    let record = store
+        .read_provider(&p.provider_id)?
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("provider `{}` not found", p.provider_id),
+        })?;
+
+    // Verify provider belongs to the requested component.
+    if record.component_id != p.id {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!(
+                "provider `{}` does not belong to component `{}`",
+                p.provider_id, p.id
+            ),
+        });
+    }
+
+    // Load component to get head revision.
+    let component = store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
+        sdk_kind: "not_found".into(),
+        message: format!("component `{}` not found", p.id),
+    })?;
+
+    let rev_id = component
+        .head_revision_id
+        .as_deref()
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("component `{}` has no saved revision to push", p.id),
+        })?;
+
+    let rev = store
+        .read_revision_meta(rev_id)?
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("revision `{rev_id}` not found"),
+        })?;
+
+    // Build provider and push.
+    let provider = provider_from_record(&record)?;
+    provider.push_revision(store, &p.id, &rev)?;
+
+    to_json(serde_json::json!({
+        "pushed": true,
+        "component_id": p.id,
+        "provider_id": p.provider_id,
+        "revision_id": rev_id,
+    }))
 }
 
-/// `provider.pull` — stub (provider support not yet implemented).
-pub fn provider_pull(_store: &StashStore) -> Result<Value, ToolError> {
-    Err(ToolError::Sdk {
-        sdk_kind: "unsupported_provider".into(),
-        message: "provider support not yet implemented".into(),
-    })
+/// `provider.pull` — pull the latest revision from a provider into the store.
+///
+/// Updates `head_revision_id` on the component if a new revision was received.
+pub fn provider_pull(store: &StashStore, p: ProviderSyncParams) -> Result<Value, ToolError> {
+    // Load provider record.
+    let record = store
+        .read_provider(&p.provider_id)?
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!("provider `{}` not found", p.provider_id),
+        })?;
+
+    // Verify provider belongs to the requested component.
+    if record.component_id != p.id {
+        return Err(ToolError::Sdk {
+            sdk_kind: "not_found".into(),
+            message: format!(
+                "provider `{}` does not belong to component `{}`",
+                p.provider_id, p.id
+            ),
+        });
+    }
+
+    // Build provider and pull.
+    let provider = provider_from_record(&record)?;
+    let pulled_rev = provider.pull_latest(store, &p.id)?;
+
+    match pulled_rev {
+        None => to_json(serde_json::json!({
+            "pulled": false,
+            "component_id": p.id,
+            "provider_id": p.provider_id,
+            "message": "no remote revisions found",
+        })),
+        Some(rev) => {
+            let rev_id = rev.id.clone();
+            // Update head_revision_id under advisory lock.
+            store.with_component_lock(&p.id, || {
+                let mut component =
+                    store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
+                        sdk_kind: "not_found".into(),
+                        message: format!("component `{}` not found", p.id),
+                    })?;
+                component.head_revision_id = Some(rev_id.clone());
+                store.write_component(&component)
+            })?;
+
+            to_json(serde_json::json!({
+                "pulled": true,
+                "component_id": p.id,
+                "provider_id": p.provider_id,
+                "revision_id": rev_id,
+                "file_count": rev.file_count,
+            }))
+        }
+    }
 }
 
 // ── Deploy targets ────────────────────────────────────────────────────────────

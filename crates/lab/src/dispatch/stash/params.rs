@@ -147,10 +147,6 @@ pub fn parse_deploy_params(params: &Value) -> Result<DeployParams, ToolError> {
 // ─── Provider sync ────────────────────────────────────────────────────────────
 
 /// `provider.link` — required `id`, `kind`, `label`, `config`.
-///
-/// Fields are parsed for validation; provider support is not yet implemented
-/// so they are not consumed by the stub dispatch.
-#[allow(dead_code)]
 pub struct LinkParams {
     pub id: String,
     pub kind: String,
@@ -175,10 +171,6 @@ pub fn parse_link_params(params: &Value) -> Result<LinkParams, ToolError> {
 }
 
 /// `provider.push` / `provider.pull` — required `id` + `provider_id`.
-///
-/// Fields are parsed for validation; provider support is not yet implemented
-/// so they are not consumed by the stub dispatch.
-#[allow(dead_code)]
 pub struct ProviderSyncParams {
     pub id: String,
     pub provider_id: String,
