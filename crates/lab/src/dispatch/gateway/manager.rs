@@ -1677,7 +1677,8 @@ impl GatewayManager {
         if !self.config.read().await.tool_search.enabled {
             return Err(ToolError::Sdk {
                 sdk_kind: "unknown_tool".to_string(),
-                message: "tool search is not enabled; tool_invoke requires tool_search mode".to_string(),
+                message: "tool search is not enabled; tool_invoke requires tool_search mode"
+                    .to_string(),
             });
         }
         let pool = self.current_pool().await.ok_or_else(|| ToolError::Sdk {
