@@ -10,7 +10,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::AuthError;
 
-pub(crate) fn now_unix() -> i64 {
+pub fn now_unix() -> i64 {
     let secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -25,7 +25,7 @@ pub(crate) fn random_token(bytes: usize) -> Result<String, AuthError> {
     Ok(URL_SAFE_NO_PAD.encode(buf))
 }
 
-pub(crate) fn fingerprint(value: &str) -> String {
+pub fn fingerprint(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     let mut output = String::with_capacity(12);
     for byte in &digest[..6] {

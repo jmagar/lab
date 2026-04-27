@@ -105,9 +105,12 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
     log_auth_dispatch_start("session.get", request_id.as_deref());
 
     if state.web_ui_auth_disabled {
+        // Dev mode bypasses auth entirely — treat the synthetic dev user as admin
+        // so admin UI is reachable in local development without real credentials.
         let response = no_store_json(serde_json::json!({
             "authenticated": true,
             "login_available": false,
+            "is_admin": true,
             "user": {
                 "sub": "labby-dev",
                 "email": serde_json::Value::Null,
@@ -126,17 +129,30 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
         return response;
     };
 
+    let admin_email = state
+        .auth_config
+        .as_ref()
+        .map(|cfg| cfg.admin_email.as_str())
+        .unwrap_or("");
+
     let body = match load_browser_session(&auth_state, &headers).await {
-        Ok(Some(session)) => serde_json::json!({
-            "authenticated": true,
-            "login_available": login_available,
-            "user": {
-                "sub": session.subject,
-                "email": session.email,
-            },
-            "expires_at": session.expires_at,
-            "csrf_token": session.csrf_token,
-        }),
+        Ok(Some(session)) => {
+            let is_admin = session
+                .email
+                .as_deref()
+                .is_some_and(|e| e.eq_ignore_ascii_case(admin_email) && !admin_email.is_empty());
+            serde_json::json!({
+                "authenticated": true,
+                "login_available": login_available,
+                "is_admin": is_admin,
+                "user": {
+                    "sub": session.subject,
+                    "email": session.email,
+                },
+                "expires_at": session.expires_at,
+                "csrf_token": session.csrf_token,
+            })
+        }
         Ok(None) => {
             let response = unauthenticated_session_response(login_available);
             log_auth_dispatch("session.get", request_id.as_deref(), start, None);
