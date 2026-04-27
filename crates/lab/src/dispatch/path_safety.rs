@@ -49,9 +49,13 @@ pub fn reject_symlink(path: &Path) -> Result<(), ToolError> {
         }
     };
     if metadata.file_type().is_symlink() {
-        return Err(ToolError::internal_message(
-            "refusing to operate on symlinked path",
-        ));
+        return Err(ToolError::Sdk {
+            sdk_kind: "symlink_rejected".into(),
+            message: format!(
+                "refusing to operate on symlinked path `{}`",
+                path.display()
+            ),
+        });
     }
     Ok(())
 }
@@ -93,7 +97,7 @@ mod tests {
         let link = dir.path().join("link.txt");
         std::os::unix::fs::symlink(&target, &link).unwrap();
         let err = reject_symlink(&link).unwrap_err();
-        assert_eq!(err.kind(), "internal_error");
+        assert_eq!(err.kind(), "symlink_rejected");
     }
 
     #[test]

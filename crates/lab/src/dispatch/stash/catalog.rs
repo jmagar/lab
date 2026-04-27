@@ -43,7 +43,7 @@ pub const ACTIONS: &[ActionSpec] = &[
             name: "id",
             ty: "string",
             required: true,
-            description: "Component ID (e.g. 'my-agent@local')",
+            description: "Component ID (lowercase ULID, e.g. '01aryz6s41tpz5x11k39dv3r2g')",
         }],
     },
     ActionSpec {
@@ -56,7 +56,7 @@ pub const ACTIONS: &[ActionSpec] = &[
                 name: "kind",
                 ty: "string",
                 required: true,
-                description: "Component kind (e.g. 'agent', 'skill', 'plugin')",
+                description: "Component kind: skill, agent, command, channel, monitor, hook, output_style, theme, settings, mcp_config, lsp_config, script, bin_file",
             },
             ParamSpec {
                 name: "name",
@@ -144,10 +144,10 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "component.export",
-        description: "Export a component to a local path. Destructive when include_secrets is true.",
-        // Marked destructive because include_secrets=true leaks secrets to disk.
-        // The dispatcher checks the include_secrets param at runtime before
-        // requiring confirmation for the non-secret path.
+        description: "Export a component to a local path [destructive]",
+        // Marked destructive because the action writes files to the filesystem.
+        // All exports require confirm: true — the dispatcher does not inspect
+        // include_secrets at runtime; destructive: true is the single gate.
         destructive: true,
         returns: "ExportResult",
         params: &[

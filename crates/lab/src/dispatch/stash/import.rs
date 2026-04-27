@@ -119,82 +119,24 @@ fn detect_dir_kind(dir: &Path) -> Result<StashComponentKind, ToolError> {
     }
 }
 
-// ── Size helpers ──────────────────────────────────────────────────────────────
+// ── Size helpers + copy ───────────────────────────────────────────────────────
 
-/// Walk a directory, reject symlinks, and return the total byte size.
+/// Walk a directory tree from `src` to `dst` in a single pass: reject symlinks,
+/// enforce per-file and total-workspace size limits, and copy each file as it is
+/// encountered.
 ///
-/// Returns `(total_size, file_paths)` where file_paths contains the absolute
-/// paths of all regular files found.
-fn walk_and_measure(dir: &Path) -> Result<(u64, Vec<PathBuf>), ToolError> {
-    let mut total: u64 = 0;
-    let mut files: Vec<PathBuf> = Vec::new();
-
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(current) = stack.pop() {
-        let read_dir = std::fs::read_dir(&current).map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("read_dir failed on `{}`: {e}", current.display()),
-        })?;
-        for entry in read_dir {
-            let entry = entry.map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".into(),
-                message: format!("read_dir entry error: {e}"),
-            })?;
-            let path = entry.path();
-            let meta = std::fs::symlink_metadata(&path).map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".into(),
-                message: format!("symlink_metadata failed on `{}`: {e}", path.display()),
-            })?;
-            if meta.file_type().is_symlink() {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "symlink_rejected".into(),
-                    message: format!(
-                        "symlink found at `{}`; stash does not track symlinks",
-                        path.display()
-                    ),
-                });
-            }
-            if meta.is_dir() {
-                stack.push(path);
-            } else {
-                let file_size = meta.len();
-                if file_size > limits::MAX_FILE_SIZE {
-                    return Err(ToolError::Sdk {
-                        sdk_kind: "file_too_large".into(),
-                        message: format!(
-                            "file `{}` is {} bytes, exceeds MAX_FILE_SIZE ({} bytes)",
-                            path.display(),
-                            file_size,
-                            limits::MAX_FILE_SIZE,
-                        ),
-                    });
-                }
-                total = total.saturating_add(file_size);
-                if total > limits::MAX_WORKSPACE_SIZE {
-                    return Err(ToolError::Sdk {
-                        sdk_kind: "workspace_too_large".into(),
-                        message: format!(
-                            "workspace exceeds MAX_WORKSPACE_SIZE ({} bytes)",
-                            limits::MAX_WORKSPACE_SIZE,
-                        ),
-                    });
-                }
-                files.push(path);
-            }
-        }
-    }
-    Ok((total, files))
-}
-
-/// Copy a directory tree from `src` to `dst`, creating `dst` if needed.
+/// Eliminates the TOCTOU window that existed when `walk_and_measure` and
+/// `copy_dir_recursive` were two separate passes — new entries injected between
+/// the old measurement and copy walks are no longer possible.
 ///
-/// All intermediate directories are created. Does not follow symlinks.
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
+/// `dst` is created if it does not already exist.
+fn walk_measure_and_copy(src: &Path, dst: &Path) -> Result<(), ToolError> {
     std::fs::create_dir_all(dst).map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("create_dir_all `{}`: {e}", dst.display()),
     })?;
 
+    let mut total_size: u64 = 0;
     let mut stack: Vec<(PathBuf, PathBuf)> = vec![(src.to_path_buf(), dst.to_path_buf())];
     while let Some((src_dir, dst_dir)) = stack.pop() {
         let read_dir = std::fs::read_dir(&src_dir).map_err(|e| ToolError::Sdk {
@@ -214,7 +156,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
             if meta.file_type().is_symlink() {
                 return Err(ToolError::Sdk {
                     sdk_kind: "symlink_rejected".into(),
-                    message: format!("symlink at `{}` rejected during copy", src_path.display()),
+                    message: format!(
+                        "symlink found at `{}`; stash does not track symlinks",
+                        src_path.display()
+                    ),
                 });
             }
             let file_name = src_path.file_name().ok_or_else(|| ToolError::Sdk {
@@ -229,6 +174,27 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
                 })?;
                 stack.push((src_path, dst_path));
             } else {
+                let file_size = meta.len();
+                if file_size > limits::MAX_FILE_SIZE {
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "file_too_large".into(),
+                        message: format!(
+                            "file `{}` is {file_size} bytes, exceeds MAX_FILE_SIZE ({} bytes)",
+                            src_path.display(),
+                            limits::MAX_FILE_SIZE,
+                        ),
+                    });
+                }
+                total_size = total_size.saturating_add(file_size);
+                if total_size > limits::MAX_WORKSPACE_SIZE {
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "workspace_too_large".into(),
+                        message: format!(
+                            "workspace exceeds MAX_WORKSPACE_SIZE ({} bytes)",
+                            limits::MAX_WORKSPACE_SIZE,
+                        ),
+                    });
+                }
                 std::fs::copy(&src_path, &dst_path).map_err(|e| ToolError::Sdk {
                     sdk_kind: "internal_error".into(),
                     message: format!(
@@ -249,6 +215,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
 ///
 /// # Arguments
 /// * `store` — the stash store to write to
+/// * `id` — the component ID to use (caller-supplied, must be a valid ULID string)
 /// * `source` — path to the file or directory to import (must not be a symlink)
 /// * `kind_override` — explicit kind; if `None`, auto-detection is attempted
 /// * `name` — component name (used in CLI/MCP surface)
@@ -264,6 +231,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
 /// * `invalid_param` — name is empty or exceeds `MAX_COMPONENT_NAME_LEN`
 pub async fn import_component(
     store: &StashStore,
+    id: &str,
     source: &Path,
     kind_override: Option<StashComponentKind>,
     name: &str,
@@ -290,13 +258,14 @@ pub async fn import_component(
     reject_symlink(source)?;
 
     // Capture source path, name, label for move into spawn_blocking.
+    let id = id.to_string();
     let source = source.to_path_buf();
     let name = name.to_string();
     let label = label.map(str::to_string);
     let store = store.clone();
 
     tokio::task::spawn_blocking(move || {
-        import_blocking(&store, &source, kind_override, &name, label.as_deref())
+        import_blocking(&store, &id, &source, kind_override, &name, label.as_deref())
     })
     .await
     .map_err(|e| ToolError::Sdk {
@@ -308,6 +277,7 @@ pub async fn import_component(
 /// Synchronous inner implementation — runs inside `spawn_blocking`.
 fn import_blocking(
     store: &StashStore,
+    id: &str,
     source: &Path,
     kind_override: Option<StashComponentKind>,
     name: &str,
@@ -381,26 +351,23 @@ fn import_blocking(
             .to_string();
         (Some(fname), mode)
     } else {
-        // Directory walk — validates symlinks and sizes.
-        walk_and_measure(source)?;
+        // Directory: kind is already detected above; defer the walk+copy to one
+        // combined pass below (after the workspace destination is known).
         (None, None)
     };
 
-    // Generate component ID.
-    let id = ulid::Ulid::new().to_string().to_lowercase();
-
-    // Ensure store directories exist.
-    store.ensure_dirs().map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("ensure_dirs: {e}"),
-    })?;
+    // Note: the component ID is supplied by the caller (id param) — do not
+    // generate a new ULID here. store.ensure_dirs() is called by dispatch.rs before this function
+    // is reached — no need to call it again here.
 
     // Compute destination path.
     let dst = store.workspace_path(&id, workspace_shape, filename.as_deref());
 
     // Copy source to workspace.
     if is_dir {
-        copy_dir_recursive(source, &dst)?;
+        // Single-pass walk: measure, enforce limits, reject symlinks, and copy.
+        // Fixes lab-qz6a.27 (TOCTOU) and lab-qz6a.30 (double walk).
+        walk_measure_and_copy(source, &dst)?;
     } else {
         // Ensure parent exists.
         if let Some(parent) = dst.parent() {
@@ -415,17 +382,15 @@ fn import_blocking(
         })?;
     }
 
-    // Build workspace root (directory for dir-shaped, parent for file-shaped).
-    let workspace_root = if is_dir {
-        dst.clone()
-    } else {
-        dst.parent().unwrap_or(&dst).to_path_buf()
-    };
+    // Build workspace root: the directory for dir-shaped, the file path itself
+    // for file-shaped. Revision code derives filenames from workspace_root.file_name(),
+    // so a file-shaped component must point at the file (not its parent directory).
+    let workspace_root = dst.clone();
 
     // Build and write component record under lock.
     let now = jiff::Timestamp::now().to_string();
     let component = StashComponent {
-        id: id.clone(),
+        id: id.to_string(),
         kind,
         name: name.to_string(),
         label: label.map(str::to_string),
@@ -549,7 +514,8 @@ mod tests {
         let src_dir = tempdir().unwrap();
         let src = src_dir.path().join("settings.json");
         std::fs::write(&src, b"{}").unwrap();
-        let comp = import_blocking(&store, &src, None, "my-settings", None).unwrap();
+        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let comp = import_blocking(&store, &id, &src, None, "my-settings", None).unwrap();
         assert_eq!(comp.kind, StashComponentKind::Settings);
         assert_eq!(comp.workspace_shape, StashWorkspaceShape::File);
         // Workspace file should exist.
@@ -567,7 +533,8 @@ mod tests {
         let src_dir = tempdir().unwrap();
         std::fs::write(src_dir.path().join("SKILL.md"), b"# Skill").unwrap();
         std::fs::write(src_dir.path().join("main.ts"), b"export {}").unwrap();
-        let comp = import_blocking(&store, src_dir.path(), None, "my-skill", None).unwrap();
+        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let comp = import_blocking(&store, &id, src_dir.path(), None, "my-skill", None).unwrap();
         assert_eq!(comp.kind, StashComponentKind::Skill);
         assert_eq!(comp.workspace_shape, StashWorkspaceShape::Directory);
         let ws = store.workspace_dir(&comp.id);
@@ -581,8 +548,9 @@ mod tests {
         let src_dir = tempdir().unwrap();
         let src = src_dir.path().join("settings.json");
         std::fs::write(&src, b"{}").unwrap();
+        let id = ulid::Ulid::new().to_string().to_lowercase();
         let err = rt
-            .block_on(import_component(&store, &src, None, "", None))
+            .block_on(import_component(&store, &id, &src, None, "", None))
             .unwrap_err();
         assert_eq!(err.kind(), "invalid_param");
     }
@@ -602,13 +570,14 @@ mod tests {
         std::fs::write(&src, br#"{"theme": "dark"}"#).unwrap();
 
         // Import via the production path.
-        let comp = import_blocking(&store, &src, None, "my-settings", None).unwrap();
+        let id = ulid::Ulid::new().to_string().to_lowercase();
+        let comp = import_blocking(&store, &id, &src, None, "my-settings", None).unwrap();
         assert_eq!(comp.workspace_shape, StashWorkspaceShape::File);
 
-        // workspace_root should be the parent directory (as import_blocking sets it).
+        // workspace_root should be the file path itself (Fix 7: was parent directory).
         assert!(
-            comp.workspace_root.is_dir(),
-            "workspace_root must be a directory after import, got: {}",
+            comp.workspace_root.is_file(),
+            "workspace_root must be the file path after import, got: {}",
             comp.workspace_root.display()
         );
 

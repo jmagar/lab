@@ -14,60 +14,45 @@ use crate::dispatch::stash::store::StashStore;
 
 // ── Path containment helper ───────────────────────────────────────────────────
 
-/// Ensure `target` is a child of `write_root`.
+/// Ensure `target` is a child of `write_root` using a **lexical** check only.
 ///
-/// Both paths are resolved via `canonicalize` before the check.  If
-/// `write_root` does not exist it is created.
+/// Does **not** create any directories — callers must create directories only
+/// during the actual write phase to avoid leaving partial directory trees when
+/// a later validation step fails.
+///
+/// The check normalises both paths by stripping `..` components via
+/// `Path::components` so it works even when the paths do not yet exist on disk.
 ///
 /// Returns `ToolError::Sdk { sdk_kind: "path_traversal" }` when `target`
 /// escapes `write_root`.
 fn ensure_target_within_write_root(write_root: &Path, target: &Path) -> Result<(), ToolError> {
-    // Ensure write_root exists so canonicalize works.
-    std::fs::create_dir_all(write_root).map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("create_dir_all `{}`: {e}", write_root.display()),
-    })?;
-
-    // Ensure parent of target exists for canonicalize.
-    if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("create_dir_all `{}`: {e}", parent.display()),
-        })?;
+    // Normalise a path lexically: resolve `.` and `..` without touching the
+    // filesystem.  This is safe for containment checks on paths that do not
+    // yet exist.
+    fn normalize(p: &Path) -> PathBuf {
+        let mut out = PathBuf::new();
+        for comp in p.components() {
+            match comp {
+                std::path::Component::ParentDir => {
+                    out.pop();
+                }
+                std::path::Component::CurDir => {}
+                c => out.push(c),
+            }
+        }
+        out
     }
 
-    let canonical_root = write_root.canonicalize().map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("canonicalize root `{}`: {e}", write_root.display()),
-    })?;
+    let norm_root = normalize(write_root);
+    let norm_target = normalize(target);
 
-    // For the target, if it doesn't exist yet, canonicalize its parent and
-    // append the filename.
-    let canonical_target = if target.exists() {
-        target.canonicalize().map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("canonicalize target `{}`: {e}", target.display()),
-        })?
-    } else {
-        let parent = target.parent().unwrap_or(target);
-        let canonical_parent = parent.canonicalize().map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("canonicalize parent `{}`: {e}", parent.display()),
-        })?;
-        let file_name = target.file_name().ok_or_else(|| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: "target path has no file name component".into(),
-        })?;
-        canonical_parent.join(file_name)
-    };
-
-    if !canonical_target.starts_with(&canonical_root) {
+    if !norm_target.starts_with(&norm_root) {
         return Err(ToolError::Sdk {
             sdk_kind: "path_traversal".into(),
             message: format!(
                 "output path `{}` escapes write root `{}`",
-                canonical_target.display(),
-                canonical_root.display()
+                norm_target.display(),
+                norm_root.display()
             ),
         });
     }
