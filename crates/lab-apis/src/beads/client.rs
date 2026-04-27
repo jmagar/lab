@@ -227,3 +227,52 @@ impl BeadsClient {
     }
 
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// DSN used by integration tests. Override via `BEADS_TEST_DSN` if your
+    /// local Dolt server is on a different port.
+    fn test_dsn() -> String {
+        std::env::var("BEADS_TEST_DSN")
+            .unwrap_or_else(|_| "mysql://root@127.0.0.1:3306/lab".to_string())
+    }
+
+    /// Basic smoke test for `list_issues()`: connecting to a live Dolt server
+    /// and listing issues with no filters should succeed and return a vec
+    /// (possibly empty).
+    ///
+    /// Run with: `cargo test -p lab-apis -- --ignored beads`
+    #[tokio::test]
+    #[ignore = "requires a running Dolt server (bd start)"]
+    async fn list_issues_basic() {
+        let client = BeadsClient::connect(&test_dsn())
+            .await
+            .expect("failed to connect to Dolt; start bd server and re-run");
+        let params = IssueListParams::default();
+        let issues = client
+            .list_issues(&params)
+            .await
+            .expect("list_issues failed");
+        // Returned slice may be empty on a fresh DB — just verify the call succeeds.
+        let _ = issues;
+    }
+
+    /// Verify that `get_issue()` returns `BeadsError::NotFound` for a
+    /// syntactically valid but non-existent id.
+    ///
+    /// Run with: `cargo test -p lab-apis -- --ignored beads`
+    #[tokio::test]
+    #[ignore = "requires a running Dolt server (bd start)"]
+    async fn get_issue_not_found() {
+        let client = BeadsClient::connect(&test_dsn())
+            .await
+            .expect("failed to connect to Dolt; start bd server and re-run");
+        let result = client.get_issue("nonexistent-0000").await;
+        assert!(
+            matches!(result, Err(BeadsError::NotFound { .. })),
+            "expected NotFound, got: {result:?}"
+        );
+    }
+}

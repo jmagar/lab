@@ -14,9 +14,14 @@ use crate::dispatch::error::ToolError;
 
 /// Returns a [`clap::builder::PossibleValuesParser`] for the given action catalog.
 ///
+/// Always includes the built-in `help` and `schema` actions so that every
+/// dispatch-style CLI shim accepts them without listing them in the catalog.
+///
 /// Use as `#[arg(value_parser = action_parser(ACTIONS))]` on `action` fields in CLI shims.
 pub fn action_parser(actions: &'static [ActionSpec]) -> clap::builder::PossibleValuesParser {
-    clap::builder::PossibleValuesParser::new(actions.iter().map(|a| a.name))
+    let service_actions = actions.iter().map(|a| a.name);
+    let builtins = ["help", "schema"];
+    clap::builder::PossibleValuesParser::new(service_actions.chain(builtins))
 }
 
 /// Print the canonical `[dry-run]` line for a service/action/params triple.

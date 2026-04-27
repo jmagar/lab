@@ -15,9 +15,10 @@
 //! the `root` user and no password — matching the bd tool's local Dolt
 //! defaults.
 //!
-//! Port-file parsing happens at startup (synchronous), but pool construction
-//! is async. We block on a small tokio runtime so `from_env` can stay sync
-//! and match the convention used by every other service.
+//! Port-file parsing happens at startup (synchronous). Pool construction uses
+//! `BeadsClient::lazy()`, which calls `connect_lazy` and returns immediately
+//! without opening a TCP connection — no async blocking at startup. The first
+//! actual query triggers the real connect.
 
 use std::path::PathBuf;
 
@@ -97,9 +98,16 @@ pub fn client_from_env() -> Option<BeadsClient> {
 }
 
 /// Structured error returned when beads is not configured / not reachable.
+///
+/// Covers all cases where `client_from_env()` returns `None`: the port env var
+/// is absent, the port value is not a valid u16, or the port file is missing or
+/// unreadable. Detailed diagnostics are emitted as tracing events by
+/// `resolve_dsn()` — callers should not add a secondary message here.
 pub fn unavailable_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "beads_unavailable".to_string(),
-        message: "beads database is not reachable (dolt-server.port not found)".to_string(),
+        message: "beads database is not configured or not reachable; \
+                  set BEADS_DOLT_PORT or ensure .beads/dolt-server.port is readable"
+            .to_string(),
     }
 }

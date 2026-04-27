@@ -18,17 +18,35 @@ pub fn issue_list_params(params: &Value) -> Result<IssueListParams, ToolError> {
 
     let limit = match params.get("limit") {
         None => None,
-        Some(v) => Some(v.as_i64().ok_or_else(|| ToolError::InvalidParam {
-            message: "parameter `limit` must be an integer".to_string(),
-            param: "limit".to_string(),
-        })?),
+        Some(v) => {
+            let n = v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: "parameter `limit` must be an integer".to_string(),
+                param: "limit".to_string(),
+            })?;
+            if n < 0 {
+                return Err(ToolError::InvalidParam {
+                    message: "parameter `limit` must not be negative".to_string(),
+                    param: "limit".to_string(),
+                });
+            }
+            Some(n)
+        }
     };
     let offset = match params.get("offset") {
         None => None,
-        Some(v) => Some(v.as_i64().ok_or_else(|| ToolError::InvalidParam {
-            message: "parameter `offset` must be an integer".to_string(),
-            param: "offset".to_string(),
-        })?),
+        Some(v) => {
+            let n = v.as_i64().ok_or_else(|| ToolError::InvalidParam {
+                message: "parameter `offset` must be an integer".to_string(),
+                param: "offset".to_string(),
+            })?;
+            if n < 0 {
+                return Err(ToolError::InvalidParam {
+                    message: "parameter `offset` must not be negative".to_string(),
+                    param: "offset".to_string(),
+                });
+            }
+            Some(n)
+        }
     };
 
     Ok(IssueListParams {
