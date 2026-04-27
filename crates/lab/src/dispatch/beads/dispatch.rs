@@ -31,6 +31,30 @@ fn beads_error_to_tool(err: BeadsError) -> ToolError {
     }
 }
 
+/// Dispatch with an optional pre-built client.
+///
+/// Used by the API handler so the help/schema branch is collapsed into a
+/// single entry point: built-in actions never need a configured client; any
+/// other action requires one or returns `beads_unavailable`.
+pub async fn dispatch_with_optional_client(
+    client: Option<&BeadsClient>,
+    action: &str,
+    params_value: Value,
+) -> Result<Value, ToolError> {
+    match action {
+        "help" => return Ok(help_payload("beads", ACTIONS)),
+        "schema" => {
+            let action_name = require_str(&params_value, "action")?;
+            return action_schema(ACTIONS, action_name);
+        }
+        _ => {}
+    }
+    let Some(client) = client else {
+        return Err(unavailable_error());
+    };
+    dispatch_with_client(client, action, params_value).await
+}
+
 /// Dispatch using a pre-built client (avoids per-request env reads and
 /// pool construction).
 pub async fn dispatch_with_client(

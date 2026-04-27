@@ -43,11 +43,18 @@ pub enum BeadsError {
 impl BeadsError {
     /// Stable kind tag for envelope mapping.
     #[must_use]
-    pub const fn kind(&self) -> &'static str {
+    pub fn kind(&self) -> &'static str {
         match self {
             Self::NotFound { .. } => "issue_not_found",
             Self::PortFileError { .. } | Self::InvalidPort { .. } => "beads_unavailable",
-            Self::Database(_) | Self::Config(_) => "internal_error",
+            Self::Database(e) => {
+                use sqlx_core::Error as E;
+                match e {
+                    E::Io(_) | E::PoolTimedOut | E::PoolClosed => "beads_unavailable",
+                    _ => "internal_error",
+                }
+            }
+            Self::Config(_) => "internal_error",
         }
     }
 
@@ -60,7 +67,15 @@ impl BeadsError {
             Self::PortFileError { .. } | Self::InvalidPort { .. } => {
                 "beads database is not reachable".to_string()
             }
-            Self::Database(_) => "database error".to_string(),
+            Self::Database(e) => {
+                use sqlx_core::Error as E;
+                match e {
+                    E::Io(_) | E::PoolTimedOut | E::PoolClosed => {
+                        "beads database is not reachable".to_string()
+                    }
+                    _ => "database error".to_string(),
+                }
+            }
             Self::Config(msg) => format!("invalid configuration: {msg}"),
         }
     }

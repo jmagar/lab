@@ -70,29 +70,39 @@ export function TaskDetail({ issue }: { issue: Issue }) {
         <TabsContent value="description">
           <Card>
             <CardContent className="p-6">
-              <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
-                {issue.description || <span className="text-muted-foreground">No description.</span>}
-              </pre>
+              {issue.description ? (
+                <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
+                  {issue.description}
+                </pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">No description.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="design">
           <Card>
             <CardContent className="p-6">
-              <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
-                {issue.design || <span className="text-muted-foreground">No design notes.</span>}
-              </pre>
+              {issue.design ? (
+                <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
+                  {issue.design}
+                </pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">No design notes.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
         <TabsContent value="acceptance">
           <Card>
             <CardContent className="p-6">
-              <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
-                {issue.acceptance_criteria || (
-                  <span className="text-muted-foreground">No acceptance criteria.</span>
-                )}
-              </pre>
+              {issue.acceptance_criteria ? (
+                <pre className="whitespace-pre-wrap text-sm font-sans leading-relaxed">
+                  {issue.acceptance_criteria}
+                </pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">No acceptance criteria.</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

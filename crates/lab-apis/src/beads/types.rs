@@ -1,7 +1,27 @@
 //! Beads request/response types.
 
 use chrono::NaiveDateTime;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
+
+/// Serialize a `NaiveDateTime` as RFC 3339 with an explicit `Z` suffix.
+///
+/// Dolt/MySQL stores `created_at`/`updated_at` as naive timestamps but the
+/// values are conceptually UTC. Without the `Z` suffix, JS `new Date(...)`
+/// interprets the string in the local timezone, which silently shifts the
+/// rendered values for any non-UTC client.
+fn serialize_as_utc<S: Serializer>(dt: &NaiveDateTime, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(&format!("{}Z", dt.format("%Y-%m-%dT%H:%M:%S")))
+}
+
+fn serialize_as_utc_opt<S: Serializer>(
+    dt: &Option<NaiveDateTime>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match dt {
+        Some(d) => s.serialize_str(&format!("{}Z", d.format("%Y-%m-%dT%H:%M:%S"))),
+        None => s.serialize_none(),
+    }
+}
 
 /// Full issue with all body fields and labels.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,10 +49,13 @@ pub struct Issue {
     /// Created-by author.
     pub created_by: Option<String>,
     /// Creation timestamp.
+    #[serde(serialize_with = "serialize_as_utc")]
     pub created_at: NaiveDateTime,
     /// Last-update timestamp.
+    #[serde(serialize_with = "serialize_as_utc")]
     pub updated_at: NaiveDateTime,
     /// Closed-at timestamp, if closed.
+    #[serde(serialize_with = "serialize_as_utc_opt")]
     pub closed_at: Option<NaiveDateTime>,
     /// Linked spec id.
     pub spec_id: Option<String>,
@@ -56,26 +79,14 @@ pub struct IssueSummary {
     /// Owner.
     pub owner: Option<String>,
     /// Created-at timestamp.
+    #[serde(serialize_with = "serialize_as_utc")]
     pub created_at: NaiveDateTime,
     /// Updated-at timestamp.
+    #[serde(serialize_with = "serialize_as_utc")]
     pub updated_at: NaiveDateTime,
-    /// Labels — empty in list responses (populated only on `get`).
+    /// Labels — **always empty** in list responses. The list query does not
+    /// join the labels table; call `get_issue` for full label data.
     pub labels: Vec<String>,
-}
-
-/// One comment on an issue.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Comment {
-    /// Comment id.
-    pub id: String,
-    /// Parent issue id.
-    pub issue_id: String,
-    /// Comment author.
-    pub author: String,
-    /// Body text.
-    pub text: String,
-    /// Creation timestamp.
-    pub created_at: NaiveDateTime,
 }
 
 /// List filters.

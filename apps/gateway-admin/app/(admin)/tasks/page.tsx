@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { isErrorLike } from '@/lib/utils'
+import { BeadsError } from '@/lib/api/beads-client'
 import type { IssueListParams, IssueStatus, IssueType } from '@/lib/types/beads'
 
 const STATUS_OPTIONS: { value: IssueStatus | 'all'; label: string }[] = [
@@ -36,30 +37,9 @@ const TYPE_OPTIONS: { value: IssueType | 'all'; label: string }[] = [
   { value: 'chore', label: 'Chore' },
 ]
 
-function TaskDetailSkeleton() {
-  return (
-    <Card className="animate-pulse">
-      <CardHeader className="space-y-3">
-        <div className="h-3 w-1/4 rounded bg-muted" />
-        <div className="h-6 w-3/4 rounded bg-muted" />
-        <div className="flex gap-2">
-          <div className="h-5 w-16 rounded bg-muted" />
-          <div className="h-5 w-24 rounded bg-muted" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2">
-          <div className="h-3 w-full rounded bg-muted" />
-          <div className="h-3 w-5/6 rounded bg-muted" />
-          <div className="h-3 w-2/3 rounded bg-muted" />
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 function TaskDetailView({ id }: { id: string }) {
   const { data: issue, isLoading, error } = useBead(id)
+  const notFound = error instanceof BeadsError && error.status === 404
 
   return (
     <div className="flex flex-col gap-4 p-6">
@@ -72,25 +52,43 @@ function TaskDetailView({ id }: { id: string }) {
         </Button>
       </div>
 
-      {isLoading && !issue && <TaskDetailSkeleton />}
-
-      {error !== undefined && (
-        <Card>
-          <CardContent className="p-6 text-sm">
-            <p className="font-medium text-foreground">Could not load task</p>
-            <p className="mt-1 text-muted-foreground">
-              {isErrorLike(error) ? error.message : `Task ${id} could not be loaded.`}
-            </p>
+      {isLoading && !issue && (
+        <Card className="animate-pulse">
+          <CardHeader className="space-y-3">
+            <div className="h-3 w-1/4 rounded bg-muted" />
+            <div className="h-6 w-3/4 rounded bg-muted" />
+            <div className="flex gap-2">
+              <div className="h-5 w-16 rounded bg-muted" />
+              <div className="h-5 w-24 rounded bg-muted" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="h-3 w-full rounded bg-muted" />
+              <div className="h-3 w-5/6 rounded bg-muted" />
+              <div className="h-3 w-2/3 rounded bg-muted" />
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {!isLoading && !error && !issue && (
+      {notFound && (
         <Card>
           <CardContent className="p-6 text-sm">
             <p className="font-medium text-foreground">Task not found</p>
             <p className="mt-1 text-muted-foreground">
               No task with id <code>{id}</code>.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {error !== undefined && !notFound && (
+        <Card>
+          <CardContent className="p-6 text-sm">
+            <p className="font-medium text-foreground">Could not load task</p>
+            <p className="mt-1 text-muted-foreground">
+              {isErrorLike(error) ? error.message : `Task ${id} could not be loaded.`}
             </p>
           </CardContent>
         </Card>
@@ -111,8 +109,7 @@ function TaskListView() {
 
   const { data: issues, isLoading, error } = useBeads(params)
 
-  const unavailable =
-    error !== undefined && isErrorLike(error) && error.code === 'beads_unavailable'
+  const unavailable = error instanceof BeadsError && error.code === 'beads_unavailable'
 
   return (
     <div className="flex flex-col gap-6 p-6">

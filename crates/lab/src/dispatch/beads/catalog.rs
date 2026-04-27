@@ -10,9 +10,10 @@ use lab_apis::core::action::{ActionSpec, ParamSpec};
 pub const ACTIONS: &[ActionSpec] = &[
     ActionSpec {
         name: "issue.list",
-        description: "List issues with optional filters",
+        description: "List issues with optional filters. The labels field is always [] in list \
+                      results; call issue.get for label data.",
         destructive: false,
-        returns: "IssueSummary[]",
+        returns: "{ issues: IssueSummary[] }",
         params: &[
             ParamSpec {
                 name: "status",

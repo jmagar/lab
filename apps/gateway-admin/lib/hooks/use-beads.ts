@@ -15,10 +15,7 @@ function stableParams(params: Record<string, unknown>): string {
   const entries = Object.entries(params)
     .filter(([, v]) => v !== undefined)
     .sort(([a], [b]) => a.localeCompare(b))
-  if (entries.length === 0) return ''
-  const obj: Record<string, unknown> = {}
-  for (const [k, v] of entries) obj[k] = v
-  return JSON.stringify(obj)
+  return entries.length === 0 ? '' : JSON.stringify(Object.fromEntries(entries))
 }
 
 const MOCK_ISSUES: IssueSummary[] = [
@@ -29,8 +26,8 @@ const MOCK_ISSUES: IssueSummary[] = [
     priority: 2,
     issue_type: 'epic' as IssueType,
     owner: 'jmagar@gmail.com',
-    created_at: '2026-04-26T22:00:00',
-    updated_at: '2026-04-26T22:00:00',
+    created_at: '2026-04-26T22:00:00Z',
+    updated_at: '2026-04-26T22:00:00Z',
     labels: [],
   },
   {
@@ -40,8 +37,8 @@ const MOCK_ISSUES: IssueSummary[] = [
     priority: 2,
     issue_type: 'task' as IssueType,
     owner: 'jmagar@gmail.com',
-    created_at: '2026-04-26T22:30:00',
-    updated_at: '2026-04-26T22:30:00',
+    created_at: '2026-04-26T22:30:00Z',
+    updated_at: '2026-04-26T22:30:00Z',
     labels: [],
   },
   {
@@ -51,8 +48,8 @@ const MOCK_ISSUES: IssueSummary[] = [
     priority: 2,
     issue_type: 'task' as IssueType,
     owner: 'jmagar@gmail.com',
-    created_at: '2026-04-26T22:45:00',
-    updated_at: '2026-04-26T22:45:00',
+    created_at: '2026-04-26T22:45:00Z',
+    updated_at: '2026-04-26T22:45:00Z',
     labels: [],
   },
 ]
@@ -72,9 +69,9 @@ export function useBeads(params: IssueListParams = {}) {
   const key = `beads:list:${stableParams(params as Record<string, unknown>)}`
   return useSWR<IssueSummary[]>(
     key,
-    async () => {
-      if (MOCK_DATA_ENABLED) return MOCK_ISSUES
-      return beadsApi.listIssues(params)
+    (_key: string, { signal }: { signal: AbortSignal }) => {
+      if (MOCK_DATA_ENABLED) return Promise.resolve(MOCK_ISSUES)
+      return beadsApi.listIssues(params, signal)
     },
     {
       refreshInterval: 30_000,
@@ -85,16 +82,20 @@ export function useBeads(params: IssueListParams = {}) {
 
 export function useBead(id: string | null) {
   const key = id ? `beads:detail:${id}` : null
-  return useSWR<Issue | null>(
+  return useSWR<Issue | undefined>(
     key,
-    async () => {
-      if (!id) return null
+    (_key: string, { signal }: { signal: AbortSignal }) => {
+      // SWR never invokes the fetcher when key is null, so `id` is non-null
+      // here. The closure still captures the latest `id` because the cache
+      // key changes whenever it does.
       if (MOCK_DATA_ENABLED) {
-        return MOCK_DETAIL.id === id ? MOCK_DETAIL : null
+        return Promise.resolve(MOCK_DETAIL.id === id ? MOCK_DETAIL : undefined)
       }
-      return beadsApi.getIssue(id)
+      return beadsApi.getIssue(id as string, signal)
     },
     {
+      refreshInterval: 30_000,
+      revalidateOnMount: true,
       revalidateOnFocus: false,
     },
   )

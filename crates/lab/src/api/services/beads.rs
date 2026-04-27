@@ -26,18 +26,12 @@ async fn handle(
         req,
         ACTIONS,
         move |action, params| async move {
-            // help/schema bypass the client; dispatch_with_client also handles them
-            // but dispatch() avoids needing a configured client.
-            if matches!(action.as_str(), "help" | "schema") {
-                return crate::dispatch::beads::dispatch(&action, params).await;
-            }
-            let Some(client) = client.as_ref() else {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "beads_unavailable".into(),
-                    message: "beads database is not reachable".into(),
-                });
-            };
-            crate::dispatch::beads::dispatch_with_client(client, &action, params).await
+            crate::dispatch::beads::dispatch_with_optional_client(
+                client.as_deref(),
+                &action,
+                params,
+            )
+            .await
         },
     )
     .await

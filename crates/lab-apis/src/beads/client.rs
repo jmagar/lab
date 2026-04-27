@@ -175,10 +175,16 @@ impl BeadsClient {
     /// Returns `BeadsError::NotFound` when the id does not match a row,
     /// `BeadsError::Database` on connection or query failure.
     pub async fn get_issue(&self, id: &str) -> Result<Issue, BeadsError> {
+        // Pin both the SET SESSION and the SELECT to the same pool connection.
+        // sqlx pools may otherwise hand out a different connection for the
+        // SELECT, in which case the per-session group_concat_max_len bump has
+        // no effect and labels silently truncate at 1024 bytes.
+        let mut conn = self.pool.acquire().await?;
+
         // group_concat truncates by default at 1024 bytes — extend the per-
         // session limit so issues with many labels do not silently truncate.
         sqlx_core::query::query("SET SESSION group_concat_max_len = 65536")
-            .execute(&self.pool)
+            .execute(&mut *conn)
             .await?;
 
         let row = sqlx_core::query::query(
@@ -190,7 +196,7 @@ impl BeadsClient {
              WHERE i.id = ? GROUP BY i.id LIMIT 1",
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *conn)
         .await?;
 
         let row = row.ok_or_else(|| BeadsError::NotFound { id: id.to_string() })?;
@@ -220,48 +226,4 @@ impl BeadsClient {
         })
     }
 
-    /// Search issues by title or description substring.
-    ///
-    /// `%` and `_` in `term` are escaped so they cannot act as wildcards.
-    ///
-    /// # Errors
-    ///
-    /// Returns `BeadsError::Database` on connection or query failure.
-    pub async fn search_issues(
-        &self,
-        term: &str,
-        limit: i64,
-    ) -> Result<Vec<IssueSummary>, BeadsError> {
-        let safe = term.replace('\\', r"\\").replace('%', r"\%").replace('_', r"\_");
-        let pattern = format!("%{safe}%");
-        let limit = limit.clamp(1, MAX_LIST_LIMIT);
-
-        let rows = sqlx_core::query::query(
-            "SELECT i.id, i.title, i.status, i.priority, i.issue_type, i.owner, \
-             i.created_at, i.updated_at FROM issues i \
-             WHERE i.title LIKE ? ESCAPE '\\\\' OR i.description LIKE ? ESCAPE '\\\\' \
-             ORDER BY i.updated_at DESC LIMIT ?",
-        )
-        .bind(&pattern)
-        .bind(&pattern)
-        .bind(limit)
-        .fetch_all(&self.pool)
-        .await?;
-
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            out.push(IssueSummary {
-                id: row.try_get("id")?,
-                title: row.try_get("title")?,
-                status: row.try_get("status")?,
-                priority: row.try_get("priority")?,
-                issue_type: row.try_get("issue_type")?,
-                owner: row.try_get::<Option<String>, _>("owner")?,
-                created_at: row.try_get("created_at")?,
-                updated_at: row.try_get("updated_at")?,
-                labels: Vec::new(),
-            });
-        }
-        Ok(out)
-    }
 }
