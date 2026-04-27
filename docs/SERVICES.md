@@ -55,6 +55,17 @@ Default feature posture:
 - `lab` defaults to all service integrations
 - `all` enables every service integration
 - `extract` remains always available
+- `stash` remains always available (local versioning service, no feature gate)
+
+## Always-On Services
+
+The following services are always compiled in and require no feature flag or upstream service:
+
+| Service | Description | Docs |
+|---------|-------------|------|
+| `extract` | Scan local and SSH hosts for service credentials | [EXTRACT.md](./EXTRACT.md) |
+| `device_runtime` | Local device runtime introspection | [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md) |
+| `stash` | Local versioned component snapshots with provider sync | [STASH.md](./STASH.md) |
 
 ## Service Sources
 
