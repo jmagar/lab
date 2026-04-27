@@ -440,12 +440,13 @@ impl StashStore {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms);
         loop {
             match rw_lock.try_write() {
-                Ok(_guard) => {
-                    // Guard is held for the duration of f().
-                    // We must re-acquire after the loop, so we break here
-                    // and call f() with the guard in scope.
-                    // Re-structure: keep guard alive through f().
-                    return f();
+                Ok(guard) => {
+                    // Keep `guard` alive across the entire duration of `f()`.
+                    // Binding to a named variable (not `_guard`) ensures the
+                    // fd-lock write guard is not dropped before `f()` returns.
+                    let result = f();
+                    drop(guard);
+                    return result;
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     if Instant::now() >= deadline {
@@ -866,6 +867,54 @@ mod tests {
         // Release the background lock.
         release_tx.send(()).expect("send release");
         handle.join().expect("join thread");
+    }
+
+    /// Verifies that mutual exclusion is actually held for the **entire** duration
+    /// of `f()`, not just until the guard binding goes out of scope.
+    ///
+    /// The test: a background thread acquires the lock and, from inside `f()`,
+    /// signals readiness.  The main thread then verifies it cannot acquire the
+    /// lock (conflict) while `f()` is still running.  After `f()` returns the
+    /// main thread re-tries and must succeed — proving the guard was live across
+    /// `f()` but released once `f()` returned.
+    #[test]
+    fn with_deploy_lock_holds_guard_across_f() {
+        let (store, _dir) = make_store();
+        let store2 = store.clone();
+        let store3 = store.clone();
+
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel::<()>();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+
+        // Thread 1: hold the lock for the duration of f().
+        let handle = std::thread::spawn(move || {
+            store2
+                .with_deploy_lock("lock-guard-test", 5_000, || {
+                    ready_tx.send(()).expect("send ready");
+                    // Stay inside f() until told to release.
+                    release_rx.recv().expect("wait for release");
+                    Ok::<(), ToolError>(())
+                })
+                .expect("background lock");
+        });
+
+        // Wait until f() is executing in thread 1 (guard must be live).
+        ready_rx.recv().expect("wait for background lock held");
+
+        // While f() is still running in thread 1, we must NOT be able to acquire.
+        let conflict = store
+            .with_deploy_lock("lock-guard-test", 100, || Ok(()))
+            .expect_err("must conflict while f() is running");
+        assert_eq!(conflict.kind(), "conflict", "guard must be held during f()");
+
+        // Release the closure in thread 1 so the guard is dropped.
+        release_tx.send(()).expect("send release");
+        handle.join().expect("join background thread");
+
+        // Now that f() has returned and the guard is dropped, we must succeed.
+        store3
+            .with_deploy_lock("lock-guard-test", 500, || Ok(()))
+            .expect("must succeed once guard is released after f()");
     }
 
     // ── path helpers ─────────────────────────────────────────────────────────
