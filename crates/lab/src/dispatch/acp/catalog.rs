@@ -180,9 +180,13 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "session.events",
-        description: "Get stored events for a session",
+        description: "Get stored events for a session. ProviderInfo events of type \
+                     'tool_call_metadata' carry an optional '_meta' object relayed transparently \
+                     from the originating agent; the key is absent (not null) when the agent did \
+                     not inject it. ToolCallUpdate events carry merged '_meta' (outer wrapper \
+                     wins over any '_meta' already present in raw_output).",
         destructive: false,
-        returns: "Value",
+        returns: r#"{ "events": AcpEvent[], "count": number }"#,
         params: &[
             ParamSpec {
                 name: "session_id",

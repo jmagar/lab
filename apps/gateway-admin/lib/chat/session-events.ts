@@ -1,5 +1,25 @@
 import type { AcpEvent, BridgeEvent, BridgeSessionStatus, BridgeSessionSummary } from '@/lib/acp/types'
-import type { ACPMessage, ActivityItem, TranscriptToolCall } from '@/components/chat/types'
+import type { ACPMessage, ActivityItem, TranscriptTerminal, TranscriptToolCall } from '@/components/chat/types'
+
+// ---------------------------------------------------------------------------
+// ACP Terminal chunk eviction constants (C1/R3/O5)
+//
+// All size limits are in UTF-16 code units (String.prototype.length), not
+// actual bytes. For ASCII/BMP terminal output (the common case) these are
+// equivalent. Non-BMP characters (emoji, etc.) count as two code units.
+// ---------------------------------------------------------------------------
+
+/** Per-chunk pre-push cap (in UTF-16 code units). Chunks larger than this are sliced to the tail. */
+const MAX_CHUNK_BYTES = 64 * 1024 // 64 KiB
+
+/** Per-terminal cap (in UTF-16 code units). Oldest chunks are evicted when totalBytes exceeds this. */
+const MAX_TOTAL_BYTES = 1 * 1024 * 1024 // 1 MiB
+
+/** On terminal_exit, compact chunks to this tail size (in UTF-16 code units). */
+const TERMINAL_RENDER_TAIL_BYTES = 256 * 1024 // 256 KiB
+
+/** Max terminal_id length. Events with longer IDs are dropped. */
+const MAX_TERMINAL_ID_LENGTH = 128
 
 export const MAX_SESSION_EVENTS = 500
 
@@ -16,6 +36,145 @@ type ToolCallPatch = {
   output?: unknown
   content?: unknown[] | null
   locations?: string[]
+  permissionOptions?: Array<{ optionId: string; name: string; kind: string }>
+  permissionSelection?: string | null
+  /** Terminal patch: describes the kind of terminal update to apply. */
+  terminalPatch?: TerminalPatch | null
+}
+
+// ---------------------------------------------------------------------------
+// Terminal patch types
+// ---------------------------------------------------------------------------
+
+type TerminalPatch =
+  | { kind: 'info'; terminalId: string }
+  | { kind: 'output'; terminalId: string; data: string }
+  | { kind: 'exit'; terminalId: string; exitCode: number | null }
+
+/**
+ * Parse ACP terminal metadata from a tool_call_update output payload.
+ *
+ * ACP terminal ordering invariant: terminal_info MUST arrive before
+ * terminal_output for the same terminal_id. Orphan output (output before info)
+ * is logged at warn and dropped.
+ *
+ * R4: terminal_id is capped at MAX_TERMINAL_ID_LENGTH chars; longer IDs are
+ * treated as malformed and the event is dropped.
+ *
+ * Signal is NOT stored (F3 resolution: drop signal in Phase 1, re-add in
+ * lab-lffl when server-derived signal is available).
+ */
+function readTerminalPatch(rawOutput: unknown): TerminalPatch | null {
+  if (!isRecord(rawOutput)) return null
+  const meta = rawOutput['_meta']
+  if (!isRecord(meta)) return null
+
+  // terminal_info
+  if (isRecord(meta['terminal_info'])) {
+    const info = meta['terminal_info']
+    const terminalId = typeof info['terminal_id'] === 'string' ? info['terminal_id'] : null
+    if (!terminalId) return null
+    if (terminalId.length > MAX_TERMINAL_ID_LENGTH) {
+      console.warn('[acp] terminal_info terminal_id exceeds max length, dropping event')
+      return null
+    }
+    return { kind: 'info', terminalId }
+  }
+
+  // terminal_output
+  if (isRecord(meta['terminal_output'])) {
+    const out = meta['terminal_output']
+    const terminalId = typeof out['terminal_id'] === 'string' ? out['terminal_id'] : null
+    const data = typeof out['data'] === 'string' ? out['data'] : ''
+    if (!terminalId) return null
+    if (terminalId.length > MAX_TERMINAL_ID_LENGTH) {
+      console.warn('[acp] terminal_output terminal_id exceeds max length, dropping event')
+      return null
+    }
+    return { kind: 'output', terminalId, data }
+  }
+
+  // terminal_exit
+  if (isRecord(meta['terminal_exit'])) {
+    const exit = meta['terminal_exit']
+    const terminalId = typeof exit['terminal_id'] === 'string' ? exit['terminal_id'] : null
+    if (!terminalId) return null
+    if (terminalId.length > MAX_TERMINAL_ID_LENGTH) {
+      console.warn('[acp] terminal_exit terminal_id exceeds max length, dropping event')
+      return null
+    }
+    const exitCode = typeof exit['exit_code'] === 'number' ? exit['exit_code'] : null
+    return { kind: 'exit', terminalId, exitCode }
+  }
+
+  return null
+}
+
+/**
+ * Apply a terminal patch to an existing TranscriptTerminal (or create one).
+ *
+ * Chunk eviction rules (C1/R3/O5):
+ * - MAX_CHUNK_BYTES: slice chunk to tail before push (R2 security cap)
+ * - MAX_TOTAL_BYTES: FIFO evict oldest chunks when exceeded (C1/R3)
+ * - terminal_exit: compact-and-freeze to TERMINAL_RENDER_TAIL_BYTES (O5)
+ *
+ * Returns a new TranscriptTerminal object (immutable reducer pattern).
+ */
+function applyTerminalPatch(
+  existing: TranscriptTerminal | null | undefined,
+  patch: TerminalPatch,
+): TranscriptTerminal {
+  const base: TranscriptTerminal = existing ?? {
+    rawChunks: [],
+    totalBytes: 0,
+    truncated: false,
+    exitCode: null,
+  }
+
+  if (patch.kind === 'info') {
+    // terminal_info creates the terminal entry; no chunk data yet.
+    return base
+  }
+
+  if (patch.kind === 'output') {
+    let data = patch.data
+    // R2: per-chunk size cap — slice to tail if oversized.
+    if (data.length > MAX_CHUNK_BYTES) {
+      data = data.slice(data.length - MAX_CHUNK_BYTES)
+    }
+
+    const rawChunks = [...base.rawChunks, data]
+    let totalBytes = base.totalBytes + data.length
+    let { truncated } = base
+
+    // C1/R3: FIFO eviction when total exceeds MAX_TOTAL_BYTES.
+    while (totalBytes > MAX_TOTAL_BYTES && rawChunks.length > 0) {
+      const evicted = rawChunks.shift()!
+      totalBytes -= evicted.length
+      truncated = true
+    }
+
+    return { rawChunks, totalBytes, truncated, exitCode: base.exitCode }
+  }
+
+  if (patch.kind === 'exit') {
+    // O5: compact-and-freeze on exit — keep only TERMINAL_RENDER_TAIL_BYTES.
+    const joined = base.rawChunks.join('')
+    let finalText = joined
+    let truncated = base.truncated
+    if (joined.length > TERMINAL_RENDER_TAIL_BYTES) {
+      finalText = joined.slice(joined.length - TERMINAL_RENDER_TAIL_BYTES)
+      truncated = true
+    }
+    return {
+      rawChunks: finalText ? [finalText] : [],
+      totalBytes: finalText.length,
+      truncated,
+      exitCode: patch.exitCode,
+    }
+  }
+
+  return base
 }
 
 const INTERNAL_EVENT_KINDS = new Set(['tool_call_metadata'])
@@ -277,6 +436,7 @@ function toolPatchFromEvent(event: BridgeEvent): ToolCallPatch | null {
     }
 
     const outputMetadata = readToolMetadata(event.rawOutput)
+    const terminalPatch = readTerminalPatch(event.rawOutput)
     return {
       id: event.toolCallId,
       title: outputMetadata?.title,
@@ -285,6 +445,7 @@ function toolPatchFromEvent(event: BridgeEvent): ToolCallPatch | null {
       output: event.rawOutput,
       content: outputMetadata?.content,
       locations: outputMetadata?.locations,
+      terminalPatch,
     }
   }
 
@@ -346,10 +507,43 @@ export function resolveSessionStatusFromEvents(
   return status
 }
 
-function upsertToolCall(toolCalls: TranscriptToolCall[], patch: ToolCallPatch): TranscriptToolCall[] {
+/**
+ * Upsert a tool call patch into the tool calls array.
+ *
+ * Returns [updatedToolCalls, changed] where changed=true when any field
+ * was actually mutated (used to decide whether to bump message version).
+ *
+ * Terminal patch handling:
+ * - terminal_info: creates terminal entry on this tool call
+ * - terminal_output: orphan output (no prior terminal entry on this toolCall)
+ *   is logged at warn and dropped per R8 ordering invariant
+ * - terminal_exit: triggers compact-and-freeze
+ * - second terminal_info for same toolCallId: overwrites (C5)
+ */
+function upsertToolCall(
+  toolCalls: TranscriptToolCall[],
+  patch: ToolCallPatch,
+): [TranscriptToolCall[], boolean] {
   const next = [...toolCalls]
   const index = next.findIndex((toolCall) => toolCall.id === patch.id)
   const previous = index >= 0 ? next[index] : null
+
+  // Resolve terminal state.
+  let terminal = previous?.terminal ?? null
+  if (patch.terminalPatch) {
+    if (patch.terminalPatch.kind === 'output' && terminal == null) {
+      // R8: terminal_output before terminal_info — drop with warn.
+      console.warn(
+        '[acp] terminal_output received before terminal_info for toolCallId',
+        patch.id,
+        '— dropping orphan chunk',
+      )
+      // Still apply rest of patch; just skip terminal update.
+    } else {
+      terminal = applyTerminalPatch(terminal, patch.terminalPatch)
+    }
+  }
+
   const value: TranscriptToolCall = {
     id: patch.id,
     title: patch.title ?? previous?.title ?? patch.id,
@@ -359,7 +553,20 @@ function upsertToolCall(toolCalls: TranscriptToolCall[], patch: ToolCallPatch): 
     output: patch.output ?? previous?.output,
     content: patch.content ?? previous?.content ?? null,
     locations: patch.locations ?? previous?.locations ?? [],
+    permissionOptions: patch.permissionOptions ?? previous?.permissionOptions,
+    permissionSelection: patch.permissionSelection !== undefined ? patch.permissionSelection : previous?.permissionSelection,
+    terminal,
   }
+
+  // Changed detection: O(1) field-level check, no JSON.stringify (perf).
+  const changed =
+    !previous ||
+    previous.title !== value.title ||
+    previous.status !== value.status ||
+    previous.kind !== value.kind ||
+    previous.output !== value.output ||
+    previous.content !== value.content ||
+    previous.terminal !== value.terminal
 
   if (index >= 0) {
     next[index] = value
@@ -367,7 +574,7 @@ function upsertToolCall(toolCalls: TranscriptToolCall[], patch: ToolCallPatch): 
     next.push(value)
   }
 
-  return next
+  return [next, changed]
 }
 
 function ensureAssistantMessage(
@@ -390,6 +597,7 @@ function ensureAssistantMessage(
       isStreaming: true,
       thoughts: [],
       toolCalls: [],
+      version: 0,
     }
     messages.set(key, message)
     orderedMessageIds.push(key)
@@ -447,6 +655,7 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
           isStreaming: role === 'assistant',
           thoughts: [],
           toolCalls: [],
+          version: 0,
         }
         messages.set(key, message)
         orderedMessageIds.push(key)
@@ -480,7 +689,12 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
         orderedMessageIds,
         activeAssistantMessageId ?? lastAssistantMessageId,
       )
-      message.toolCalls = upsertToolCall(message.toolCalls, toolPatch)
+      const [updatedToolCalls, changed] = upsertToolCall(message.toolCalls, toolPatch)
+      message.toolCalls = updatedToolCalls
+      // C3: bump version on any tool call change for per-message memoization.
+      if (changed) {
+        message.version = (message.version ?? 0) + 1
+      }
       activeAssistantMessageId = key
       lastAssistantMessageId = key
       if (
