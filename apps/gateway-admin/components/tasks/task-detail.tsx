@@ -1,29 +1,14 @@
-import { Bug, BookOpen, CheckSquare, Settings, Zap } from 'lucide-react'
-
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { TaskStatusBadge } from './task-status-badge'
 import { TaskPriorityBadge } from './task-priority-badge'
-import type { Issue, IssueType } from '@/lib/types/beads'
-
-const TYPE_ICON: Record<IssueType, typeof Bug> = {
-  task: CheckSquare,
-  epic: BookOpen,
-  bug: Bug,
-  feature: Zap,
-  chore: Settings,
-}
-
-function formatTime(iso: string | null | undefined): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return iso
-  return d.toLocaleString()
-}
+import { TYPE_ICON } from './task-icons'
+import { formatUiDateTime } from '@/lib/format-ui-time'
+import type { Issue } from '@/lib/types/beads'
 
 export function TaskDetail({ issue }: { issue: Issue }) {
-  const TypeIcon = TYPE_ICON[issue.issue_type] ?? CheckSquare
+  const TypeIcon = TYPE_ICON[issue.issue_type]
   return (
     <div className="flex flex-col gap-6">
       <Card>
@@ -55,16 +40,16 @@ export function TaskDetail({ issue }: { issue: Issue }) {
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Created</div>
-            <div>{formatTime(issue.created_at)}</div>
+            <div>{formatUiDateTime(issue.created_at)}</div>
           </div>
           <div>
             <div className="text-xs text-muted-foreground">Updated</div>
-            <div>{formatTime(issue.updated_at)}</div>
+            <div>{formatUiDateTime(issue.updated_at)}</div>
           </div>
           {issue.closed_at && (
             <div>
               <div className="text-xs text-muted-foreground">Closed</div>
-              <div>{formatTime(issue.closed_at)}</div>
+              <div>{formatUiDateTime(issue.closed_at)}</div>
             </div>
           )}
           {issue.spec_id && (

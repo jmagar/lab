@@ -1,16 +1,12 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { TaskCard } from './task-card'
+import { isErrorLike } from '@/lib/utils'
 import type { IssueSummary } from '@/lib/types/beads'
 
 interface TaskListProps {
   issues: IssueSummary[] | undefined
   isLoading: boolean
   error: unknown
-}
-
-function isErrorLike(e: unknown): e is { message: string } {
-  return typeof e === 'object' && e !== null && 'message' in e &&
-    typeof (e as { message: unknown }).message === 'string'
 }
 
 function TaskCardSkeleton() {

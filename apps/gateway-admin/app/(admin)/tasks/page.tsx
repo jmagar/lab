@@ -17,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { isErrorLike } from '@/lib/utils'
 import type { IssueListParams, IssueStatus, IssueType } from '@/lib/types/beads'
 
 const STATUS_OPTIONS: { value: IssueStatus | 'all'; label: string }[] = [
@@ -34,15 +35,6 @@ const TYPE_OPTIONS: { value: IssueType | 'all'; label: string }[] = [
   { value: 'feature', label: 'Feature' },
   { value: 'chore', label: 'Chore' },
 ]
-
-function isErrorLike(e: unknown): e is { message: string; code?: string } {
-  return (
-    typeof e === 'object' &&
-    e !== null &&
-    'message' in e &&
-    typeof (e as { message: unknown }).message === 'string'
-  )
-}
 
 function TaskDetailSkeleton() {
   return (
