@@ -32,6 +32,8 @@ type ToolCallPatch = {
   output?: unknown
   content?: unknown[] | null
   locations?: string[]
+  permissionOptions?: Array<{ optionId: string; name: string; kind: string }>
+  permissionSelection?: string | null
   /** Terminal patch: describes the kind of terminal update to apply. */
   terminalPatch?: TerminalPatch | null
 }
@@ -137,7 +139,7 @@ function applyTerminalPatch(
       data = data.slice(data.length - MAX_CHUNK_BYTES)
     }
 
-    let rawChunks = [...base.rawChunks, data]
+    const rawChunks = [...base.rawChunks, data]
     let totalBytes = base.totalBytes + data.length
     let { truncated } = base
 
@@ -547,8 +549,8 @@ function upsertToolCall(
     output: patch.output ?? previous?.output,
     content: patch.content ?? previous?.content ?? null,
     locations: patch.locations ?? previous?.locations ?? [],
-    permissionOptions: previous?.permissionOptions,
-    permissionSelection: previous?.permissionSelection,
+    permissionOptions: patch.permissionOptions ?? previous?.permissionOptions,
+    permissionSelection: patch.permissionSelection !== undefined ? patch.permissionSelection : previous?.permissionSelection,
     terminal,
   }
 
