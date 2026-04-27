@@ -48,22 +48,31 @@ const ANSI_PATTERN = new RegExp('\\[[0-9;]*[A-Za-z]', 'g')
  * a sanitization boundary violation (C1 ownership contract in types.ts).
  */
 export function getDisplayText(rawChunks: string[]): string {
-  // O3: walk from end accumulating bytes up to TERMINAL_RENDER_TAIL_BYTES.
+  // O3: walk from end accumulating code units up to TERMINAL_RENDER_TAIL_BYTES.
+  // Note: String.length measures UTF-16 code units, which equals byte count for
+  // ASCII/BMP content (the common case for terminal output).
   let budget = TERMINAL_RENDER_TAIL_BYTES
   let start = rawChunks.length
+  let hasPartialChunk = false
   while (start > 0 && budget > 0) {
     const chunk = rawChunks[start - 1]!
     if (chunk.length <= budget) {
       budget -= chunk.length
       start--
     } else {
-      // Partial: trim the beginning of this chunk.
+      // Partial chunk: rawChunks[start - 1] is larger than remaining budget.
+      // Take its tail `budget` code units. Mark that a partial exists.
+      hasPartialChunk = true
       break
     }
   }
+  // `start` indexes the first fully-included chunk.
+  // When hasPartialChunk, rawChunks[start - 1] contributes its last `budget`
+  // code units. This correctly handles single-large-chunk inputs (where start
+  // never decrements and budget stays at TERMINAL_RENDER_TAIL_BYTES).
   const sliced = rawChunks.slice(start).join('')
-  const partial = budget < TERMINAL_RENDER_TAIL_BYTES && start > 0
-    ? rawChunks[start - 1]!.slice(rawChunks[start - 1]!.length - (TERMINAL_RENDER_TAIL_BYTES - (sliced.length > budget ? 0 : budget)))
+  const partial = hasPartialChunk && budget > 0
+    ? rawChunks[start - 1]!.slice(-budget)
     : ''
   const joined = partial + sliced
 
