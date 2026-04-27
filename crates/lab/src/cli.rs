@@ -26,6 +26,8 @@ pub mod serve;
 pub mod apprise;
 #[cfg(feature = "arcane")]
 pub mod arcane;
+#[cfg(feature = "beads")]
+pub mod beads;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
 #[cfg(feature = "deploy")]
@@ -202,6 +204,9 @@ pub enum Command {
     /// Apprise notification dispatcher.
     #[cfg(feature = "apprise")]
     Apprise(apprise::AppriseArgs),
+    /// Beads task tracker.
+    #[cfg(feature = "beads")]
+    Beads(beads::BeadsArgs),
     /// Deploy the local lab release binary to SSH targets.
     #[cfg(feature = "deploy")]
     Deploy(deploy::DeployArgs),
@@ -272,6 +277,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Tei(args) => tei::run(args, format).await,
         #[cfg(feature = "apprise")]
         Command::Apprise(args) => apprise::run(args, format).await,
+        #[cfg(feature = "beads")]
+        Command::Beads(args) => beads::run(args, format).await,
         #[cfg(feature = "deploy")]
         Command::Deploy(args) => dispatch_deploy(args, format, config.deploy.clone()).await,
         // [lab-scaffold: cli-dispatch]

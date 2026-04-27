@@ -82,5 +82,8 @@ pub mod tei;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 
+#[cfg(feature = "beads")]
+pub mod beads;
+
 #[cfg(feature = "fs")]
 pub mod fs;

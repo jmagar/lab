@@ -409,6 +409,7 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "qdrant", qdrant);
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
+    register_service!(reg, "beads", beads);
     register_service!(
         reg,
         "deploy",
@@ -509,6 +510,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "tei" => Some(&lab_apis::tei::META),
         #[cfg(feature = "apprise")]
         "apprise" => Some(&lab_apis::apprise::META),
+        #[cfg(feature = "beads")]
+        "beads" => Some(&lab_apis::beads::META),
         #[cfg(feature = "deploy")]
         "deploy" => Some(&lab_apis::deploy::META),
         _ => None,
@@ -613,6 +616,8 @@ mod tests {
         assert!(names.contains(&"tei"), "tei missing");
         #[cfg(feature = "apprise")]
         assert!(names.contains(&"apprise"), "apprise missing");
+        #[cfg(feature = "beads")]
+        assert!(names.contains(&"beads"), "beads missing");
     }
 
     #[test]
@@ -694,6 +699,8 @@ mod tests {
             s.insert(lab_apis::tei::META.name);
             #[cfg(feature = "apprise")]
             s.insert(lab_apis::apprise::META.name);
+            #[cfg(feature = "beads")]
+            s.insert(lab_apis::beads::META.name);
             #[cfg(feature = "fs")]
             s.insert("fs");
             s
