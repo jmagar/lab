@@ -15,6 +15,10 @@ export function marketplaceActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/marketplace`
 }
 
+export function beadsActionUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/beads`
+}
+
 export function nodesUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/nodes`
 }
