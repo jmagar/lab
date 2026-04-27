@@ -10,11 +10,10 @@ const PAGE_CONTEXT_MAX_CHARS: usize = PAGE_CONTEXT_MAX_TOKENS * 4;
 
 /// Characters allowed in pageContext field values.
 const PAGE_CONTEXT_ALLOWED: &[char] = &[
-    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
-    'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-    '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '/', '_', '-',
+    'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's',
+    't', 'u', 'v', 'w', 'x', 'y', 'z', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L',
+    'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '0', '1', '2', '3', '4',
+    '5', '6', '7', '8', '9', '/', '_', '-',
 ];
 
 /// Tokens that indicate prompt-injection attempts — reject the entire pageContext
@@ -23,9 +22,7 @@ const PAGE_CONTEXT_ALLOWED: &[char] = &[
 /// Only keeps truly dangerous injection terms. Legitimate admin/app route names
 /// (`admin`, `prompt`, `system`) are allowed — the character allowlist is the
 /// primary safety layer.
-const PAGE_CONTEXT_DENY_LIST: &[&str] = &[
-    "ignore", "override", "instruction", "assistant",
-];
+const PAGE_CONTEXT_DENY_LIST: &[&str] = &["ignore", "override", "instruction", "assistant"];
 
 /// Optional structured page context sent by the frontend.
 /// All fields are strings; validation is applied by `assemble_page_context_prefix`.
@@ -72,7 +69,10 @@ pub fn sanitize_page_context_field(value: &str) -> Option<String> {
 /// Assemble a compact context prefix from validated page context input.
 /// Returns `None` if route validation fails.
 /// Format: `[context: page={route}]` or `[context: page={route} entity={type}/{id}]`
-pub fn assemble_page_context_prefix(session_id: &str, ctx: &PageContextInput<'_>) -> Option<String> {
+pub fn assemble_page_context_prefix(
+    session_id: &str,
+    ctx: &PageContextInput<'_>,
+) -> Option<String> {
     let route = sanitize_page_context_field(ctx.route)?;
 
     let prefix = match (ctx.entity_type, ctx.entity_id) {
