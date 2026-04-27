@@ -262,7 +262,10 @@ export function ChatSessionProvider({
     }
     const nextRuns = payload.sessions.map(toRun)
     setRuns(nextRuns)
-    setSelectedRunId((current) => current ?? nextRuns[0]?.id ?? null)
+    setSelectedRunId((current) => {
+      if (current && nextRuns.some((run) => run.id === current)) return current
+      return nextRuns[0]?.id ?? null
+    })
     setSessionsLoaded(true)
   }, [fetchAcp])
 
@@ -296,7 +299,7 @@ export function ChatSessionProvider({
   const createSession = React.useCallback<CreateSessionFn>(
     async (createOptions?: CreateSessionOptions) => {
       if (isCreatingRef.current) {
-        // Return a dummy promise resolved when creating is done — use existing run if available
+        // Mutex guard: prevent duplicate concurrent session creation — throw immediately to signal the caller
         throw new Error('Session creation already in progress')
       }
       isCreatingRef.current = true
