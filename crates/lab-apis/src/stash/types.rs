@@ -226,8 +226,8 @@ pub struct StashRevision {
     pub file_count: usize,
     /// Unix permission bits for `BinFile` components only.
     ///
-    /// Only the lower 9 permission bits are stored (`mode & 0o0777`);
-    /// setuid, setgid, and sticky bits are always stripped before storage.
+    /// Stored as `mode & 0o0755` (execute bits only; setuid/setgid/sticky
+    /// always stripped). `None` for non-`BinFile` revisions.
     pub unix_mode: Option<u32>,
 }
 
@@ -236,7 +236,10 @@ pub struct StashRevision {
 /// `config` is intentionally typed as `serde_json::Value` — provider-specific
 /// fields vary and should never include secret values; secrets live in the
 /// provider's credential store, not here.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `Debug` is implemented manually to redact `config`, preventing accidental
+/// credential exposure if a caller ever stores sensitive values there.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StashProviderRecord {
     /// Stable opaque identifier for this provider record.
     pub id: String,
@@ -248,6 +251,18 @@ pub struct StashProviderRecord {
     pub label: String,
     /// Provider-specific non-secret configuration.
     pub config: serde_json::Value,
+}
+
+impl std::fmt::Debug for StashProviderRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StashProviderRecord")
+            .field("id", &self.id)
+            .field("component_id", &self.component_id)
+            .field("kind", &self.kind)
+            .field("label", &self.label)
+            .field("config", &"<redacted>")
+            .finish()
+    }
 }
 
 /// Lightweight summary of a storage provider, used in list responses.
