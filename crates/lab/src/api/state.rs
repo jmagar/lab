@@ -240,12 +240,8 @@ impl AppState {
         !matches!(self.node_role, Some(NodeRole::NonMaster))
     }
 
-    /// Attach a pre-built ACP session registry.
-    ///
-    /// Use this when the registry has already been created and installed globally
-    /// (e.g. in `cli/serve.rs` before the HTTP/stdio split) so that `AppState`
-    /// shares the same `Arc` as the process-global dispatch slot rather than
-    /// constructing a separate registry instance.
+    /// Attach a pre-built ACP session registry so `AppState` shares the same `Arc`
+    /// as the process-global dispatch slot installed in `cli/serve.rs`.
     #[must_use]
     pub fn with_acp_registry(mut self, registry: Arc<AcpSessionRegistry>) -> Self {
         self.acp_registry = registry;
