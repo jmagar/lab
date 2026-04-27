@@ -5,10 +5,12 @@ import { MessageSquare } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageBubble } from './message-bubble'
 import type { ACPMessage, ACPRun } from './types'
+import type { SessionEventConnectionState } from '@/lib/chat/use-session-events'
 
 interface MessageThreadProps {
   run: ACPRun | null
   messages: ACPMessage[]
+  connectionState?: SessionEventConnectionState
 }
 
 function EmptyState() {
@@ -32,8 +34,13 @@ function EmptyState() {
   )
 }
 
-function SessionStatusNotice({ run }: { run: ACPRun }) {
+function SessionStatusNotice({ run, connectionState }: { run: ACPRun; connectionState?: SessionEventConnectionState }) {
   if (run.status !== 'running' && run.status !== 'waiting_for_permission') {
+    return null
+  }
+  // Wait until SSE is open — avoids a false "still running" notice during the
+  // initial load window before events have been replayed from the server.
+  if (connectionState !== 'open') {
     return null
   }
 
@@ -56,7 +63,7 @@ function SessionStatusNotice({ run }: { run: ACPRun }) {
   )
 }
 
-export function MessageThread({ run, messages }: MessageThreadProps) {
+export function MessageThread({ run, messages, connectionState }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
@@ -70,7 +77,7 @@ export function MessageThread({ run, messages }: MessageThreadProps) {
   return (
     <ScrollArea className="min-h-0 flex-1 overflow-hidden">
       <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
-        <SessionStatusNotice run={run} />
+        <SessionStatusNotice run={run} connectionState={connectionState} />
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}

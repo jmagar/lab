@@ -202,7 +202,7 @@ export function FloatingChatShell({
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Message thread — React.memo'd, only re-renders when messages changes */}
-          <MessageThread run={selectedRun} messages={messages} />
+          <MessageThread run={selectedRun} messages={messages} connectionState={connectionState} />
 
           {/* Chat input */}
           <ChatInput
