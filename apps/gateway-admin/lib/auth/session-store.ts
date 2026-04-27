@@ -8,6 +8,7 @@ export type BrowserSessionState =
       }
       expiresAt: number
       csrfToken: string
+      isAdmin?: boolean
     }
   | { status: 'unauthenticated' }
   | {
@@ -26,6 +27,7 @@ type SessionPayload =
       }
       expires_at: number
       csrf_token: string
+      is_admin: boolean
     }
   | {
       authenticated: false
@@ -59,6 +61,7 @@ function normalizePayload(payload: SessionPayload): BrowserSessionState {
     user: payload.user,
     expiresAt: payload.expires_at,
     csrfToken: payload.csrf_token,
+    isAdmin: payload.is_admin ?? false,
   }
 }
 

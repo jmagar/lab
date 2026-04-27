@@ -22,9 +22,13 @@ import {
   useGatewayMutations,
   useGatewayToolSearchConfig,
 } from '@/lib/hooks/use-gateways'
+import { useBrowserSession } from '@/lib/auth/session'
 import { cn, getErrorMessage } from '@/lib/utils'
+import { AllowedUsersPanel } from '@/components/allowed-users-panel'
 
 export default function SettingsPage() {
+  const session = useBrowserSession()
+  const isAdmin = session.status === 'authenticated' && session.isAdmin === true
   const { data: gateways, isLoading, error } = useGateways()
   const {
     data: toolSearchConfig,
@@ -250,6 +254,9 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Allowed users (admin only) */}
+        {isAdmin ? <AllowedUsersPanel /> : null}
       </div>
     </div>
   )
