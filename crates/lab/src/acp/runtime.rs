@@ -882,19 +882,19 @@ fn push_session_update(
                     seq: 0,
                     tool_call_id: tool_call.tool_call_id.to_string(),
                     name: tool_call.title.clone(),
-                    input: tool_call.raw_input.clone().unwrap_or(Value::Null),
+                    input: tool_call.raw_input.unwrap_or(Value::Null),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
             if let Some(status) = enum_value(&tool_call.status) {
-                // Build the provider_info payload using a Map so that _meta is omitted
-                // entirely when absent (P4: skip null _meta — never emit the key as null).
+                // Build payload via Map so the _meta key is omitted entirely when absent
+                // (json!({}) always emits null for missing keys; Map lets us skip it).
                 let mut payload = serde_json::Map::new();
                 payload.insert("type".into(), Value::String("tool_call_metadata".into()));
                 payload.insert(
                     "tool_call_id".into(),
                     Value::String(tool_call.tool_call_id.to_string()),
                 );
-                payload.insert("title".into(), Value::String(tool_call.title.clone()));
+                payload.insert("title".into(), Value::String(tool_call.title));
                 payload.insert(
                     "tool_kind".into(),
                     enum_value(&tool_call.kind)
@@ -920,14 +920,12 @@ fn push_session_update(
                 );
                 payload.insert(
                     "raw_output".into(),
-                    tool_call.raw_output.clone().unwrap_or(Value::Null),
+                    tool_call.raw_output.unwrap_or(Value::Null),
                 );
-                // Preserve _meta from the ToolCall when present; omit the key entirely
-                // when absent (P4). _meta is a transparent relay — Lab does not validate
-                // or transform its contents. Never log _meta fields: they may contain
-                // terminal_info.cwd, terminal_id, signal, or terminal_output.data (R5).
-                if let Some(meta) = tool_call.meta.as_ref() {
-                    payload.insert("_meta".into(), Value::Object(meta.clone()));
+                // _meta is a transparent relay — Lab does not validate or transform it.
+                // Never log _meta field values (cwd, terminal_id, signal, data).
+                if let Some(meta) = tool_call.meta {
+                    payload.insert("_meta".into(), Value::Object(meta));
                 }
                 event_tx
                     .send(provider_info_event(
@@ -1182,29 +1180,22 @@ fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEve
 
 fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdate) -> Value {
     let fields = &update.fields;
-    // A9 — outer-wins merge semantics:
-    // - If raw_output is Some(Object), inject the wrapper-level _meta into it; the outer
-    //   `_meta` key takes precedence over any `_meta` already present inside raw_output.
-    // - If raw_output is Some(non-Object), leave it unchanged — _meta has no object to
-    //   merge into; the non-object form is rare and not worth wrapping.
-    // - If raw_output is None, build a synthetic fields object and conditionally insert _meta.
-    //
-    // _meta is a transparent relay (F1). Never log _meta field values: they may contain
-    // terminal_info.cwd, terminal_id, signal, or terminal_output.data (R5).
+    // When raw_output is present and is an Object, inject the wrapper-level _meta into it
+    // (outer wins — the wrapper _meta takes precedence over any _meta already in raw_output).
+    // Non-object raw_output passes through unchanged.
+    // Never log _meta field values (cwd, terminal_id, signal, data).
     if let Some(raw_output) = fields.raw_output.clone() {
         match raw_output {
             Value::Object(mut map) => {
-                // Outer wins: insert wrapper _meta (overwriting any inner _meta).
                 if let Some(meta) = update.meta.as_ref() {
                     map.insert("_meta".into(), Value::Object(meta.clone()));
                 }
                 return Value::Object(map);
             }
-            other => return other, // Non-object raw_output: pass through unchanged.
+            other => return other,
         }
     }
 
-    // No raw_output: build synthetic output from fields.
     let mut payload = serde_json::Map::new();
     payload.insert(
         "title".into(),
@@ -1251,7 +1242,6 @@ fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdat
         "raw_input".into(),
         fields.raw_input.clone().unwrap_or(Value::Null),
     );
-    // P4: omit _meta key entirely when absent; never emit as null.
     if let Some(meta) = update.meta.as_ref() {
         payload.insert("_meta".into(), Value::Object(meta.clone()));
     }

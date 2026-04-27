@@ -268,10 +268,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     )
     .await?;
 
-    // Create the ACP session registry once, before the HTTP/stdio split, so
-    // that both transports share the same process-global dispatch slot.
-    // The HTTP path passes this Arc into AppState via `with_acp_registry`.
-    // The stdio path uses the installed slot directly (no AppState involved).
+    // Create the ACP session registry before the HTTP/stdio split so both transports
+    // share the same process-global dispatch slot.
     let acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
     crate::dispatch::acp::install_registry(Arc::clone(&acp_registry));
 
