@@ -206,6 +206,7 @@ Use the smallest correct doc:
 - dispatch-layer ownership and adapter rules: [DISPATCH.md](./DISPATCH.md)
 - service-layer migration execution plan: [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md)
 - extract/bootstrap flows: [EXTRACT.md](./EXTRACT.md)
+- stash versioning service and provider sync model: [STASH.md](./STASH.md)
 - marketplace service and plugin workspace flows: [MARKETPLACE.md](./MARKETPLACE.md)
 - deploy-service actions: [DEPLOY_SERVICE.md](./DEPLOY_SERVICE.md)
 - node CLI/API behavior: [NODES.md](./NODES.md)
