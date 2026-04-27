@@ -118,28 +118,16 @@ function PopoverDemo({ state }: { state: PopoverDemoState }) {
       {/* Gear config panel */}
       {isGearOpen && (
         <div className="border-b border-aurora-border-strong bg-aurora-panel-medium px-4 py-3">
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-aurora-text-muted">
-            Persistence
-          </p>
           <div className="flex flex-col gap-2">
-            {(
-              [
-                { key: 'persistOpen', label: 'Restore open state', defaultChecked: true },
-                { key: 'persistPosition', label: 'Restore position', defaultChecked: true },
-                { key: 'persistSize', label: 'Restore size', defaultChecked: true },
-                { key: 'sendPageContext', label: 'Send page context', defaultChecked: false },
-              ] as const
-            ).map(({ key, label, defaultChecked }) => (
-              <label key={key} className="flex items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  defaultChecked={defaultChecked}
-                  className="size-3.5 accent-aurora-accent-primary"
-                  readOnly
-                />
-                <span className="text-[12px] text-aurora-text-primary">{label}</span>
-              </label>
-            ))}
+            <label className="flex items-center gap-2.5">
+              <input
+                type="checkbox"
+                defaultChecked={false}
+                className="size-3.5 accent-aurora-accent-primary"
+                readOnly
+              />
+              <span className="text-[12px] text-aurora-text-primary">Send page context</span>
+            </label>
           </div>
         </div>
       )}
@@ -167,9 +155,6 @@ const PERSISTENCE_SCHEMA = `Key: "${PERSIST_KEY}"
   position: { x: number, y: number },
   size: { w: number, h: number },
   config: {
-    persistOpen: boolean,    // default: ${DEFAULT_CONFIG.persistOpen}
-    persistPosition: boolean, // default: ${DEFAULT_CONFIG.persistPosition}
-    persistSize: boolean,    // default: ${DEFAULT_CONFIG.persistSize}
     sendPageContext: boolean  // default: ${DEFAULT_CONFIG.sendPageContext}
   }
 }`

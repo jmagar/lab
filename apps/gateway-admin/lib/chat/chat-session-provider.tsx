@@ -15,8 +15,8 @@
  *
  * Non-chat pages consume NONE of these contexts — zero re-render cost.
  *
- * Stream lifecycle — truly lazy:
- * Stream starts only on first FAB click. Users who never open chat pay zero SSE cost.
+ * Stream lifecycle:
+ * SSE stream opens whenever selectedRunId is non-null.
  */
 
 import * as React from 'react'
@@ -141,8 +141,6 @@ export function useChatSessionStream(): ChatSessionStreamContextValue {
 
 export type ChatSessionProviderProps = {
   children: React.ReactNode
-  /** Called from FAB on first click — provider enables SSE stream */
-  onFirstOpenRef?: React.MutableRefObject<(() => void) | null>
   isMobileViewport?: boolean
   onSessionPanelClose?: () => void
 }
@@ -151,7 +149,6 @@ export type ChatSessionProviderProps = {
 
 export function ChatSessionProvider({
   children,
-  onFirstOpenRef,
   isMobileViewport = false,
   onSessionPanelClose,
 }: ChatSessionProviderProps) {
@@ -173,10 +170,7 @@ export function ChatSessionProvider({
   const [selectedProviderId, setSelectedProviderId] = React.useState<string | null>(null)
   const [pageContext, setPageContext] = React.useState<PageContext>(null)
 
-  // Stream is lazy — only enabled on first FAB click
-  const [streamEnabled, setStreamEnabled] = React.useState(false)
-
-  // SSE state (only active when streamEnabled)
+  // SSE state
   const [events, setEvents] = React.useState<BridgeEvent[]>([])
   const [connectionState, setConnectionState] = React.useState<SessionEventConnectionState>('idle')
   const lastSeqRef = React.useRef(0)
@@ -191,14 +185,6 @@ export function ChatSessionProvider({
     (path: string, init?: RequestInit) => fetchAcpRef.current(path, init),
     [],
   )
-
-  // ---- Expose first-open callback to FAB ----
-  React.useLayoutEffect(() => {
-    if (!onFirstOpenRef) return
-    onFirstOpenRef.current = () => {
-      setStreamEnabled(true)
-    }
-  }, [onFirstOpenRef])
 
   // ---- Derived values ----
   const selectedRun = React.useMemo(
@@ -398,11 +384,10 @@ export function ChatSessionProvider({
     }
   }, [providers, selectedProviderId])
 
-  // Auto-bootstrap first session — only after first FAB click (streamEnabled) and
-  // after sessions have been loaded so we don't race with refreshSessions.
+  // Auto-bootstrap first session — after sessions have been loaded so we don't race with refreshSessions.
   // NOTE(phase-2): wire AbortController once createSession accepts a signal.
   React.useEffect(() => {
-    if (!streamEnabled || !sessionsLoaded) return
+    if (!sessionsLoaded) return
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) return
 
     void (async () => {
@@ -412,7 +397,7 @@ export function ChatSessionProvider({
         // providerHealth.message carries the failure detail
       }
     })()
-  }, [createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded, streamEnabled])
+  }, [createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded])
 
   // Update run status from session events (bail-out setter for re-render efficiency)
   React.useEffect(() => {
@@ -427,15 +412,13 @@ export function ChatSessionProvider({
     )
   }, [selectedRunId, sessionStatus, events.length])
 
-  // ---- SSE stream management (lazy — only when streamEnabled) ----
+  // ---- SSE stream management (active whenever selectedRunId is non-null) ----
 
   React.useEffect(() => {
-    if (!streamEnabled || !selectedRunId) {
-      if (!streamEnabled) {
-        setEvents([])
-        setConnectionState('idle')
-        lastSeqRef.current = 0
-      }
+    if (!selectedRunId) {
+      setEvents([])
+      setConnectionState('idle')
+      lastSeqRef.current = 0
       return
     }
 
@@ -458,11 +441,10 @@ export function ChatSessionProvider({
     lastSeqRef.current = cachedLastSeq
 
     const abortController = new AbortController()
-    const fetchAcpNow = createAcpFetcher()
 
     void (async () => {
       try {
-        const response = await fetchAcpNow(`/sessions/${selectedRunId}/events?since=${lastSeqRef.current}`, {
+        const response = await fetchAcpRef.current(`/sessions/${selectedRunId}/events?since=${lastSeqRef.current}`, {
           signal: abortController.signal,
         })
 
@@ -515,7 +497,7 @@ export function ChatSessionProvider({
     return () => {
       abortController.abort()
     }
-  }, [streamEnabled, selectedRunId])
+  }, [selectedRunId])
 
   // ---- Context values ----
 

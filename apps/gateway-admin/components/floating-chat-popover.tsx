@@ -26,10 +26,7 @@ const PERSIST_KEY = 'labby:floating-chat:state'
 
 type Position = { x: number; y: number }
 type Size = { w: number; h: number }
-type PersistConfig = {
-  persistOpen: boolean
-  persistPosition: boolean
-  persistSize: boolean
+type ChatConfig = {
   sendPageContext: boolean
 }
 
@@ -37,16 +34,13 @@ type PersistedState = {
   open?: boolean
   position?: Position
   size?: Size
-  config?: PersistConfig
+  config?: ChatConfig
 }
 
 const DEFAULT_SIZE: Size = { w: 420, h: 600 }
 const MIN_SIZE: Size = { w: 320, h: 420 }
 const MAX_SIZE: Size = { w: 800, h: 900 }
-const DEFAULT_CONFIG: PersistConfig = {
-  persistOpen: true,
-  persistPosition: true,
-  persistSize: true,
+const DEFAULT_CONFIG: ChatConfig = {
   sendPageContext: false,
 }
 
@@ -112,8 +106,8 @@ export type FloatingChatPopoverProps = {
   /** The content to render inside the popover (chat shell) */
   children?: React.ReactNode
   /** Config getter/setter for page context toggle */
-  config?: PersistConfig
-  onConfigChange?: (config: PersistConfig) => void
+  config?: ChatConfig
+  onConfigChange?: (config: ChatConfig) => void
 }
 
 export function FloatingChatPopover({
@@ -130,8 +124,7 @@ export function FloatingChatPopover({
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
   const [size, setSize] = React.useState<Size>(() => {
     const persisted = readPersistedState()
-    const cfg = persisted.config ?? DEFAULT_CONFIG
-    if (cfg.persistSize && persisted.size) {
+    if (persisted.size) {
       return clampSize(persisted.size.w, persisted.size.h)
     }
     return DEFAULT_SIZE
@@ -139,7 +132,7 @@ export function FloatingChatPopover({
   const [position, setPosition] = React.useState<Position>({ x: 0, y: 0 })
   const [positionInitialized, setPositionInitialized] = React.useState(false)
   const [gearOpen, setGearOpen] = React.useState(false)
-  const [config, setConfig] = React.useState<PersistConfig>(() => {
+  const [config, setConfig] = React.useState<ChatConfig>(() => {
     const persisted = readPersistedState()
     return persisted.config ?? DEFAULT_CONFIG
   })
@@ -167,6 +160,9 @@ export function FloatingChatPopover({
     startY: number
     startW: number
     startH: number
+    rafId?: number
+    pendingW: number
+    pendingH: number
   } | null>(null)
 
   // ---- Mobile viewport detection ----
@@ -182,8 +178,7 @@ export function FloatingChatPopover({
   React.useEffect(() => {
     if (positionInitialized) return
     const persisted = readPersistedState()
-    const cfg = persisted.config ?? DEFAULT_CONFIG
-    if (cfg.persistPosition && persisted.position) {
+    if (persisted.position) {
       setPosition(clampPosition(
         persisted.position.x,
         persisted.position.y,
@@ -326,11 +321,7 @@ export function FloatingChatPopover({
     }
 
     setPosition(clamped)
-
-    // Persist if configured
-    if ((readPersistedState().config ?? DEFAULT_CONFIG).persistPosition) {
-      patchPersistedState({ position: clamped })
-    }
+    patchPersistedState({ position: clamped })
 
     dragRef.current = null
     ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
@@ -347,6 +338,8 @@ export function FloatingChatPopover({
       startY: event.clientY,
       startW: size.w,
       startH: size.h,
+      pendingW: size.w,
+      pendingH: size.h,
     }
   }, [size.w, size.h])
 
@@ -354,25 +347,45 @@ export function FloatingChatPopover({
     if (!resizeRef.current?.active) return
     const dx = event.clientX - resizeRef.current.startX
     const dy = event.clientY - resizeRef.current.startY
-    const newSize = clampSize(resizeRef.current.startW + dx, resizeRef.current.startH + dy)
-    setSize(newSize)
+    const clamped = clampSize(resizeRef.current.startW + dx, resizeRef.current.startH + dy)
+
+    resizeRef.current.pendingW = clamped.w
+    resizeRef.current.pendingH = clamped.h
+
+    if (resizeRef.current.rafId != null) return
+    resizeRef.current.rafId = requestAnimationFrame(() => {
+      if (!resizeRef.current || !panelRef.current) return
+      resizeRef.current.rafId = undefined
+      panelRef.current.style.width = `${resizeRef.current.pendingW}px`
+      panelRef.current.style.height = `${resizeRef.current.pendingH}px`
+    })
   }, [])
 
   const onResizePointerUp = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!resizeRef.current?.active) return
     resizeRef.current.active = false
-
-    // Persist size
-    if ((readPersistedState().config ?? DEFAULT_CONFIG).persistSize) {
-      patchPersistedState({ size })
+    if (resizeRef.current.rafId != null) {
+      cancelAnimationFrame(resizeRef.current.rafId)
+      resizeRef.current.rafId = undefined
     }
+
+    const committed = clampSize(resizeRef.current.pendingW, resizeRef.current.pendingH)
+
+    // Clear direct style overrides so React's inline style prop takes over
+    if (panelRef.current) {
+      panelRef.current.style.width = ''
+      panelRef.current.style.height = ''
+    }
+
+    setSize(committed)
+    patchPersistedState({ size: committed })
 
     resizeRef.current = null
     ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
-  }, [size])
+  }, [])
 
   // ---- Config change handler ----
-  const handleConfigChange = React.useCallback((key: keyof PersistConfig, value: boolean) => {
+  const handleConfigChange = React.useCallback((key: keyof ChatConfig, value: boolean) => {
     const newConfig = { ...effectiveConfig, [key]: value }
     setConfig(newConfig)
     onConfigChange?.(newConfig)
@@ -476,28 +489,16 @@ export function FloatingChatPopover({
       {/* ---- Gear config panel ---- */}
       {gearOpen && (
         <div className="shrink-0 border-b border-aurora-border-strong bg-aurora-panel-medium px-4 py-3">
-          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-aurora-text-muted">
-            Persistence
-          </p>
           <div className="flex flex-col gap-2">
-            {(
-              [
-                { key: 'persistOpen', label: 'Restore open state' },
-                { key: 'persistPosition', label: 'Restore position' },
-                { key: 'persistSize', label: 'Restore size' },
-                { key: 'sendPageContext', label: 'Send page context' },
-              ] as { key: keyof PersistConfig; label: string }[]
-            ).map(({ key, label }) => (
-              <label key={key} className="flex cursor-pointer items-center gap-2.5">
-                <input
-                  type="checkbox"
-                  checked={effectiveConfig[key]}
-                  onChange={(e) => handleConfigChange(key, e.target.checked)}
-                  className="size-3.5 accent-aurora-accent-primary"
-                />
-                <span className="text-[12px] text-aurora-text-primary">{label}</span>
-              </label>
-            ))}
+            <label className="flex cursor-pointer items-center gap-2.5">
+              <input
+                type="checkbox"
+                checked={effectiveConfig.sendPageContext}
+                onChange={(e) => handleConfigChange('sendPageContext', e.target.checked)}
+                className="size-3.5 accent-aurora-accent-primary"
+              />
+              <span className="text-[12px] text-aurora-text-primary">Send page context</span>
+            </label>
           </div>
         </div>
       )}
@@ -535,6 +536,6 @@ export function FloatingChatPopover({
   )
 }
 
-// Export persistence types for use in design system
-export type { PersistConfig, Position, Size }
+// Export types for use in design system
+export type { ChatConfig, Position, Size }
 export { PERSIST_KEY, DEFAULT_CONFIG, DEFAULT_SIZE, MIN_SIZE, MAX_SIZE }

@@ -34,12 +34,12 @@ import {
   useChatSessionConnection,
   useChatSessionStream,
 } from '@/lib/chat/chat-session-provider'
-import type { PersistConfig } from '@/components/floating-chat-popover'
+import type { ChatConfig } from '@/components/floating-chat-popover'
 import type { ChatInputPayload } from '@/components/chat/chat-input'
 import type { AttachmentRef } from '@/lib/fs/types'
 
 export type FloatingChatShellProps = {
-  config?: PersistConfig
+  config?: ChatConfig
 }
 
 export function FloatingChatShell({

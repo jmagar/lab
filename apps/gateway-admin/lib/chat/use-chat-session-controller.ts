@@ -1,9 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
-import { gatewayHeaders } from '@/lib/api/gateway-request'
-import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
+import { createAcpFetcher } from '@/lib/acp/fetch'
 import { toProjects } from './session-events'
 import { useSessionEvents } from './use-session-events'
 import {
@@ -85,11 +83,10 @@ export function useChatSessionController(options: {
   onSessionPanelClose?: () => void
 }) {
   const { isMobileViewport, onSessionPanelClose } = options
-  const acpBase = React.useMemo(() => `${normalizeGatewayApiBase()}/acp`, [])
-  const standaloneBearerAuth = React.useMemo(() => isStandaloneBearerAuthMode(), [])
-  const requestCredentials = React.useMemo<RequestCredentials>(
-    () => (standaloneBearerAuth ? 'omit' : 'include'),
-    [standaloneBearerAuth],
+  const fetchAcpRef = React.useRef(createAcpFetcher())
+  const fetchAcp = React.useCallback(
+    (path: string, init?: RequestInit) => fetchAcpRef.current(path, init),
+    [],
   )
   const [runs, setRuns] = React.useState<ACPRun[]>([])
   const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null)
@@ -136,24 +133,6 @@ export function useChatSessionController(options: {
         name: selectedRun.provider,
       })
     : (agents.find((agent) => agent.id === selectedProviderId) ?? agents[0] ?? ACP_AGENT)
-
-  const fetchAcp = React.useCallback(
-    async (path: string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers ?? {})
-      const authHeaders = gatewayHeaders()
-      for (const [key, value] of Object.entries(authHeaders)) {
-        headers.set(key, value)
-      }
-
-      return fetch(`${acpBase}${path}`, {
-        ...init,
-        headers,
-        credentials: requestCredentials,
-        cache: 'no-store',
-      })
-    },
-    [acpBase, requestCredentials],
-  )
 
   const refreshSessions = React.useCallback(async () => {
     const response = await fetchAcp('/sessions')
