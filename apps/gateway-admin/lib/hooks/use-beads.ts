@@ -69,9 +69,9 @@ export function useBeads(params: IssueListParams = {}) {
   const key = `beads:list:${stableParams(params as Record<string, unknown>)}`
   return useSWR<IssueSummary[]>(
     key,
-    (_key: string, { signal }: { signal: AbortSignal }) => {
+    (_key: string) => {
       if (MOCK_DATA_ENABLED) return Promise.resolve(MOCK_ISSUES)
-      return beadsApi.listIssues(params, signal)
+      return beadsApi.listIssues(params)
     },
     {
       refreshInterval: 30_000,
@@ -84,14 +84,14 @@ export function useBead(id: string | null) {
   const key = id ? `beads:detail:${id}` : null
   return useSWR<Issue | undefined>(
     key,
-    (_key: string, { signal }: { signal: AbortSignal }) => {
+    (_key: string) => {
       // SWR never invokes the fetcher when key is null, so `id` is non-null
       // here. The closure still captures the latest `id` because the cache
       // key changes whenever it does.
       if (MOCK_DATA_ENABLED) {
         return Promise.resolve(MOCK_DETAIL.id === id ? MOCK_DETAIL : undefined)
       }
-      return beadsApi.getIssue(id as string, signal)
+      return beadsApi.getIssue(id as string)
     },
     {
       refreshInterval: 30_000,
