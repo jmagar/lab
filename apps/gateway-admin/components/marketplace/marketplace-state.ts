@@ -445,19 +445,32 @@ export function buildMarketplaceCatalogItems({
 }
 
 export function marketplaceCatalogSummary(items: MarketplaceCatalogItem[]): MarketplaceCatalogSummary {
-  return {
+  const acc: MarketplaceCatalogSummary = {
     all: items.length,
-    installed: items.filter((item) => item.installed).length,
-    plugins: items.filter((item) => item.kind === 'plugin').length,
-    agents: items.filter((item) => item.kind === 'agent').length,
-    skills: items.filter((item) => item.kind === 'skill').length,
-    commands: items.filter((item) => item.kind === 'command').length,
-    mcpServers: items.filter((item) => item.kind === 'mcp_server').length,
-    lspServers: items.filter((item) => item.kind === 'lsp_server').length,
-    acpAgents: items.filter((item) => item.kind === 'acp_agent').length,
-    sources: items.filter((item) => item.kind === 'source').length,
-    updates: items.filter((item) => item.hasUpdate).length,
+    installed: 0,
+    plugins: 0,
+    agents: 0,
+    skills: 0,
+    commands: 0,
+    mcpServers: 0,
+    lspServers: 0,
+    acpAgents: 0,
+    sources: 0,
+    updates: 0,
   }
+  for (const item of items) {
+    if (item.installed) acc.installed++
+    if (item.hasUpdate) acc.updates++
+    if (item.kind === 'plugin') acc.plugins++
+    else if (item.kind === 'agent') acc.agents++
+    else if (item.kind === 'skill') acc.skills++
+    else if (item.kind === 'command') acc.commands++
+    else if (item.kind === 'mcp_server') acc.mcpServers++
+    else if (item.kind === 'lsp_server') acc.lspServers++
+    else if (item.kind === 'acp_agent') acc.acpAgents++
+    else if (item.kind === 'source') acc.sources++
+  }
+  return acc
 }
 
 function matchesLens(item: MarketplaceCatalogItem, lens: MarketplaceCatalogLens): boolean {
