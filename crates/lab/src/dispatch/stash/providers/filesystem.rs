@@ -16,6 +16,7 @@ use lab_apis::stash::types::{StashProviderRecord, StashRevision};
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::stash::provider::StashProvider;
+use crate::dispatch::stash::revision::{compute_digest, walk_files_sorted};
 use crate::dispatch::stash::store::StashStore;
 
 /// Filesystem-backed storage provider.
@@ -52,6 +53,12 @@ impl FilesystemProvider {
                 param: "config.root".into(),
                 message: "filesystem provider requires config.root (non-empty string path)".into(),
             })?;
+        if !root.is_absolute() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "invalid_param".into(),
+                message: "filesystem provider root must be an absolute path".into(),
+            });
+        }
         Ok(Self { root })
     }
 
@@ -123,15 +130,17 @@ impl StashProvider for FilesystemProvider {
 
         copy_dir_recursive(&remote_rev_dir, &dst)?;
 
-        // Count files and compute digest for the new revision.
-        let file_count = count_files(&dst)?;
+        // Walk and compute digest over the pulled files.
+        let file_entries = walk_files_sorted(&dst)?;
+        let file_count = file_entries.len();
+        let content_digest = compute_digest(&file_entries)?;
         let now = jiff::Timestamp::now().to_string();
 
         let rev = StashRevision {
             id: new_rev_id.clone(),
             component_id: component_id.to_string(),
             label: Some(format!("pulled from {latest_id}")),
-            content_digest: String::new(), // No re-hash on pull; remote is authoritative.
+            content_digest,
             created_at: now,
             file_count,
             unix_mode: None,
@@ -153,8 +162,15 @@ impl StashProvider for FilesystemProvider {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Recursively copy `src/` into `dst/`.
+///
+/// Symlinks are silently skipped to prevent traversal outside the revision
+/// directory boundary (lab-qz6a.22).
 fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
-    if !src.is_dir() {
+    let src_meta = src.symlink_metadata().map_err(|e| ToolError::Sdk {
+        sdk_kind: "sync_failed".into(),
+        message: format!("symlink_metadata `{}`: {e}", src.display()),
+    })?;
+    if !src_meta.file_type().is_dir() {
         return Ok(());
     }
     for entry in std::fs::read_dir(src).map_err(|e| ToolError::Sdk {
@@ -169,7 +185,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
         let rel = entry.file_name();
         let dst_path = dst.join(&rel);
 
-        if src_path.is_dir() {
+        let meta = src_path.symlink_metadata().map_err(|e| ToolError::Sdk {
+            sdk_kind: "sync_failed".into(),
+            message: format!("symlink_metadata `{}`: {e}", src_path.display()),
+        })?;
+
+        if meta.file_type().is_symlink() {
+            // Skip symlinks — prevents traversal outside the revision store.
+            continue;
+        }
+
+        if meta.file_type().is_dir() {
             std::fs::create_dir_all(&dst_path).map_err(|e| ToolError::Sdk {
                 sdk_kind: "sync_failed".into(),
                 message: format!("create dir `{}`: {e}", dst_path.display()),
@@ -207,28 +233,4 @@ fn list_subdirectory_names(dir: &Path) -> Result<Vec<String>, ToolError> {
         }
     }
     Ok(names)
-}
-
-/// Recursively count regular files under `dir`.
-fn count_files(dir: &Path) -> Result<usize, ToolError> {
-    if !dir.is_dir() {
-        return Ok(0);
-    }
-    let mut count = 0;
-    for entry in std::fs::read_dir(dir).map_err(|e| ToolError::Sdk {
-        sdk_kind: "sync_failed".into(),
-        message: format!("read_dir `{}`: {e}", dir.display()),
-    })? {
-        let entry = entry.map_err(|e| ToolError::Sdk {
-            sdk_kind: "sync_failed".into(),
-            message: format!("read_dir entry: {e}"),
-        })?;
-        let path = entry.path();
-        if path.is_dir() {
-            count += count_files(&path)?;
-        } else {
-            count += 1;
-        }
-    }
-    Ok(count)
 }
