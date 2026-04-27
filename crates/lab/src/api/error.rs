@@ -17,9 +17,11 @@ impl IntoResponse for ToolError {
     fn into_response(self) -> Response {
         let status = match self.kind() {
             "auth_failed" => StatusCode::UNAUTHORIZED,
-            "not_found" => StatusCode::NOT_FOUND,
+            "not_found" | "issue_not_found" => StatusCode::NOT_FOUND,
             "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
-            "sync_in_progress" | "service_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
+            "sync_in_progress" | "service_unavailable" | "beads_unavailable" => {
+                StatusCode::SERVICE_UNAVAILABLE
+            }
             "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
             }

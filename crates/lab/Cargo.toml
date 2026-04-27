@@ -130,6 +130,9 @@ paperless   = ["lab-apis/paperless"]
 gotify      = ["lab-apis/gotify"]
 apprise     = ["lab-apis/apprise"]
 
+# beads — local task tracker
+beads       = ["lab-apis/beads"]
+
 # bootstrap / registry
 mcpregistry = ["lab-apis/mcpregistry"]
 acp_registry = ["lab-apis/acp_registry"]
@@ -177,6 +180,7 @@ all         = [
   "openai",
   "qdrant",
   "tei",
+  "beads",
   "lab-admin",
   "fs",
   "deploy",

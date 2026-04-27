@@ -14,8 +14,16 @@ if (process.env.LAB_ALLOWED_DEV_ORIGINS) {
   }
 }
 
+const LAB_BACKEND = process.env.LAB_BACKEND_URL ?? 'http://localhost:8765'
+
 const nextConfig = {
   output: 'export',
+  async rewrites() {
+    return [
+      { source: '/v1/:path*', destination: `${LAB_BACKEND}/v1/:path*` },
+      { source: '/auth/:path*', destination: `${LAB_BACKEND}/auth/:path*` },
+    ]
+  },
   turbopack: {
     root: dirname,
   },
