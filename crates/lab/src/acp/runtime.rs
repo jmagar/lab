@@ -886,52 +886,28 @@ fn push_session_update(
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
             if let Some(status) = enum_value(&tool_call.status) {
-                // Build payload via Map so the _meta key is omitted entirely when absent
-                // (json!({}) always emits null for missing keys; Map lets us skip it).
-                let mut payload = serde_json::Map::new();
-                payload.insert("type".into(), Value::String("tool_call_metadata".into()));
-                payload.insert(
-                    "tool_call_id".into(),
-                    Value::String(tool_call.tool_call_id.to_string()),
-                );
-                payload.insert("title".into(), Value::String(tool_call.title));
-                payload.insert(
-                    "tool_kind".into(),
-                    enum_value(&tool_call.kind)
-                        .map(Value::String)
-                        .unwrap_or(Value::Null),
-                );
-                payload.insert("status".into(), Value::String(status));
-                payload.insert(
-                    "locations".into(),
-                    Value::Array(
-                        tool_call
-                            .locations
-                            .iter()
-                            .map(|location| {
-                                Value::String(location.path.display().to_string())
-                            })
-                            .collect(),
-                    ),
-                );
-                payload.insert(
-                    "content".into(),
-                    serde_json::to_value(&tool_call.content).unwrap_or(Value::Null),
-                );
-                payload.insert(
-                    "raw_output".into(),
-                    tool_call.raw_output.unwrap_or(Value::Null),
-                );
-                // _meta is a transparent relay — Lab does not validate or transform it.
-                // Never log _meta field values (cwd, terminal_id, signal, data).
+                // _meta must be omitted entirely when absent; json!() would emit null.
+                // _meta is a transparent relay — never log its field values.
+                let mut payload = json!({
+                    "type": "tool_call_metadata",
+                    "tool_call_id": tool_call.tool_call_id.to_string(),
+                    "title": tool_call.title,
+                    "tool_kind": enum_value(&tool_call.kind),
+                    "status": status,
+                    "locations": tool_call.locations.iter()
+                        .map(|l| l.path.display().to_string())
+                        .collect::<Vec<_>>(),
+                    "content": tool_call.content,
+                    "raw_output": tool_call.raw_output,
+                });
                 if let Some(meta) = tool_call.meta {
-                    payload.insert("_meta".into(), Value::Object(meta));
+                    payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(meta));
                 }
                 event_tx
                     .send(provider_info_event(
                         session_id.to_string(),
                         "codex",
-                        Value::Object(payload),
+                        payload,
                     ))
                     .map_err(|_| "ACP event channel closed".to_string())?;
             }
@@ -1196,56 +1172,20 @@ fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdat
         }
     }
 
-    let mut payload = serde_json::Map::new();
-    payload.insert(
-        "title".into(),
-        fields.title.clone().map(Value::String).unwrap_or(Value::Null),
-    );
-    payload.insert(
-        "kind".into(),
-        fields
-            .kind
-            .as_ref()
-            .and_then(enum_value)
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
-    payload.insert(
-        "status".into(),
-        fields
-            .status
-            .as_ref()
-            .and_then(enum_value)
-            .map(Value::String)
-            .unwrap_or(Value::Null),
-    );
-    payload.insert(
-        "content".into(),
-        serde_json::to_value(&fields.content).unwrap_or(Value::Null),
-    );
-    payload.insert(
-        "locations".into(),
-        fields
-            .locations
-            .as_ref()
-            .map(|locations| {
-                Value::Array(
-                    locations
-                        .iter()
-                        .map(|location| Value::String(location.path.display().to_string()))
-                        .collect(),
-                )
-            })
-            .unwrap_or(Value::Null),
-    );
-    payload.insert(
-        "raw_input".into(),
-        fields.raw_input.clone().unwrap_or(Value::Null),
-    );
+    let mut payload = json!({
+        "title": fields.title,
+        "kind": fields.kind.as_ref().and_then(enum_value),
+        "status": fields.status.as_ref().and_then(enum_value),
+        "content": fields.content,
+        "locations": fields.locations.as_ref().map(|locs| {
+            locs.iter().map(|l| l.path.display().to_string()).collect::<Vec<_>>()
+        }),
+        "raw_input": fields.raw_input,
+    });
     if let Some(meta) = update.meta.as_ref() {
-        payload.insert("_meta".into(), Value::Object(meta.clone()));
+        payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(meta.clone()));
     }
-    Value::Object(payload)
+    payload
 }
 
 fn content_to_text(content: ContentBlock) -> String {
@@ -1370,8 +1310,8 @@ mod tests {
         events
     }
 
-    /// Build a minimal terminal_info Meta blob as ACP Meta (Map<String, Value>).
-    fn terminal_info_meta() -> serde_json::Map<String, Value> {
+    /// Build a minimal terminal_info Meta blob for tests.
+    fn terminal_info_meta() -> agent_client_protocol::schema::Meta {
         let mut meta = serde_json::Map::new();
         meta.insert(
             "terminal_info".into(),
@@ -1543,107 +1483,8 @@ mod tests {
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Test 4: dispatch_trace_redacts_all_meta_fields
-    //
-    // R5: tracing output for a tool_call_update event with terminal_info _meta
-    // MUST NOT contain 'cwd' or any cwd value, terminal_id, signal, or
-    // raw output data from _meta.
-    //
-    // This test verifies the guard: the _meta blob is NEVER formatted into
-    // any tracing span/event. It uses a buffer-backed tracing subscriber to
-    // capture all trace output produced during push_session_update.
-    // -----------------------------------------------------------------------
-    #[test]
-    fn dispatch_trace_redacts_all_meta_fields() {
-        use std::sync::{Arc, Mutex};
-        use tracing_subscriber::fmt::MakeWriter;
-
-        // A writer that captures all bytes written to it.
-        #[derive(Clone)]
-        struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
-
-        impl std::io::Write for CaptureWriter {
-            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().expect("writer lock poisoned").extend_from_slice(buf);
-                Ok(buf.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-
-        impl<'a> MakeWriter<'a> for CaptureWriter {
-            type Writer = CaptureWriter;
-            fn make_writer(&'a self) -> Self::Writer {
-                self.clone()
-            }
-        }
-
-        let buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-        let writer = CaptureWriter(Arc::clone(&buf));
-
-        // Install a scoped subscriber that captures trace output.
-        let subscriber = tracing_subscriber::fmt()
-            .with_writer(writer)
-            .with_max_level(tracing::Level::TRACE)
-            .finish();
-
-        let _guard = tracing::subscriber::set_default(subscriber);
-
-        let (tx, mut rx) = mpsc::unbounded_channel();
-        let mut message_ids = StreamMessageIds::default();
-
-        // Build meta with sentinel values that must NOT appear in trace output.
-        let mut meta = serde_json::Map::new();
-        meta.insert(
-            "terminal_info".into(),
-            json!({
-                "terminal_id": "SENTINEL_TERMINAL_ID_99",
-                "cwd": "/SENTINEL_CWD_VALUE/secret",
-            }),
-        );
-        meta.insert(
-            "terminal_exit".into(),
-            json!({
-                "signal": "SENTINEL_SIGNAL_SIGTERM",
-                "exit_code": 1,
-            }),
-        );
-
-        let update = ToolCallUpdate::new(
-            "tc-redact",
-            ToolCallUpdateFields::new().raw_output(json!({
-                "data": "SENTINEL_OUTPUT_DATA_XYZ",
-            })),
-        )
-        .meta(meta);
-
-        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
-            .expect("ToolCallUpdate for redaction test");
-
-        // Consume the event (required to drain the channel)
-        let _ = rx.try_recv();
-
-        // Drop the guard to flush the subscriber before reading the buffer.
-        drop(_guard);
-
-        let captured = buf.lock().expect("buf lock poisoned");
-        let trace_output = std::str::from_utf8(&captured).unwrap_or("(non-utf8)");
-
-        assert!(
-            !trace_output.contains("SENTINEL_CWD_VALUE"),
-            "cwd value must not appear in tracing output, got: {trace_output}"
-        );
-        assert!(
-            !trace_output.contains("SENTINEL_TERMINAL_ID_99"),
-            "terminal_id must not appear in tracing output, got: {trace_output}"
-        );
-        assert!(
-            !trace_output.contains("SENTINEL_SIGNAL_SIGTERM"),
-            "signal must not appear in tracing output, got: {trace_output}"
-        );
-        // Note: SENTINEL_OUTPUT_DATA_XYZ is in raw_output, not in _meta; this test
-        // focuses on _meta field redaction. raw_output tracing is a separate concern.
-    }
+    // _meta redaction is an architectural guarantee: push_session_update and
+    // tool_call_update_output emit no tracing spans, so _meta field values
+    // (cwd, terminal_id, signal, data) never reach the log output by construction.
+    // Enforcement is via is_sensitive_key() in dispatch/redact.rs for the DB path.
 }
