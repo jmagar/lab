@@ -18,6 +18,7 @@ LAB_AUTH_MODE=oauth
 LAB_PUBLIC_URL=https://lab.example.com
 LAB_GOOGLE_CLIENT_ID=google-client-id
 LAB_GOOGLE_CLIENT_SECRET=google-client-secret
+LAB_AUTH_ADMIN_EMAIL=admin@example.com
 ```
 
 Optional auth overrides:
@@ -39,6 +40,7 @@ Rules:
 
 - `LAB_AUTH_MODE` defaults to `bearer`
 - bearer mode keeps using `LAB_MCP_HTTP_TOKEN`
-- oauth mode requires `LAB_PUBLIC_URL`, `LAB_GOOGLE_CLIENT_ID`, and `LAB_GOOGLE_CLIENT_SECRET`
+- oauth mode requires `LAB_PUBLIC_URL`, `LAB_GOOGLE_CLIENT_ID`, `LAB_GOOGLE_CLIENT_SECRET`, and `LAB_AUTH_ADMIN_EMAIL`
+- `LAB_AUTH_ADMIN_EMAIL` is the bootstrap admin Google email; startup fails closed if unset under oauth mode so no Google account can authenticate without explicit permission. Future SQLite-backed allowlist (web-UI managed) will grant access to additional users.
 - the old external issuer variables (`LAB_OAUTH_ISSUER`, `LAB_OAUTH_AUDIENCE`, `LAB_OAUTH_CLIENT_ID`) are no longer used
 - `LAB_PUBLIC_URL` also feeds RFC 9728 metadata, JWT issuer/audience, and HTTP allowed-host derivation
