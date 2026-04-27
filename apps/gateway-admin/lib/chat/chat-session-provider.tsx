@@ -397,23 +397,18 @@ export function ChatSessionProvider({
 
   // Auto-bootstrap first session — only after first FAB click (streamEnabled) and
   // after sessions have been loaded so we don't race with refreshSessions.
+  // NOTE(phase-2): wire AbortController once createSession accepts a signal.
   React.useEffect(() => {
     if (!streamEnabled || !sessionsLoaded) return
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) return
 
-    const abortController = new AbortController()
     void (async () => {
       try {
-        if (!abortController.signal.aborted) {
-          await createSession()
-        }
+        await createSession()
       } catch {
         // providerHealth.message carries the failure detail
       }
     })()
-    return () => {
-      abortController.abort()
-    }
   }, [createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded, streamEnabled])
 
   // Update run status from session events (bail-out setter for re-render efficiency)

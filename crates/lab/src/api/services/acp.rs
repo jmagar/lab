@@ -39,6 +39,9 @@ async fn provider_health(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
+    // TODO(phase-2): extract bearer principal from request extensions and pass it here
+    // so each caller only sees their own sessions. Until bearer auth is wired in the
+    // middleware layer this returns all sessions (anonymous == empty principal).
     match dispatch_with_registry(&state.acp_registry, "session.list", json!({})).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
