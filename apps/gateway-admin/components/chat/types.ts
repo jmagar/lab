@@ -43,7 +43,14 @@ export interface ACPRun {
 export interface TranscriptTerminal {
   /** Raw output chunks — use getDisplayText() before rendering. */
   rawChunks: string[]
-  /** Running byte count maintained in O(1) on push and eviction. */
+  /**
+   * Running count maintained in O(1) on push and eviction.
+   *
+   * Measured in UTF-16 code units (String.prototype.length), not actual bytes.
+   * For ASCII/BMP terminal output (the common case) this equals the byte count.
+   * The caps MAX_TOTAL_BYTES, MAX_CHUNK_BYTES, and TERMINAL_RENDER_TAIL_BYTES
+   * are defined in the same units so budget comparisons remain correct.
+   */
   totalBytes: number
   /** True when chunks have been evicted due to MAX_TOTAL_BYTES cap. */
   truncated: boolean
