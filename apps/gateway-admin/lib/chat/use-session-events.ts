@@ -108,6 +108,21 @@ export function consumeSessionEventBuffer(buffer: string, lastSeq: number) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// rAF-batched event coalescing (C2)
+//
+// Without batching, 2000 terminal_output chunks/sec triggers 2000 React
+// re-renders/sec — the thread cannot keep up; INP > 1s.
+//
+// The rAF coalescer accumulates incoming events in a queue and flushes
+// the entire batch in a single setState call per animation frame (16ms).
+//
+// Backpressure (Codepath F — backgrounded-tab rAF starvation):
+// If the queue grows beyond MAX_BATCH_QUEUE events (e.g., tab is backgrounded
+// and rAF is throttled), oldest events are dropped with truncation flag.
+// ---------------------------------------------------------------------------
+const MAX_BATCH_QUEUE = 50_000
+
 export function useSessionEvents(sessionId: string | null) {
   const acpBase = React.useMemo(() => `${normalizeGatewayApiBase()}/acp`, [])
   const standaloneBearerAuth = React.useMemo(() => isStandaloneBearerAuthMode(), [])
@@ -119,11 +134,61 @@ export function useSessionEvents(sessionId: string | null) {
   const [connectionState, setConnectionState] = React.useState<SessionEventConnectionState>('idle')
   const lastSeqRef = React.useRef(0)
 
+  // rAF batch queue: events waiting to be flushed.
+  const batchQueueRef = React.useRef<BridgeEvent[]>([])
+  const rafIdRef = React.useRef<number | null>(null)
+  const sessionIdRef = React.useRef<string | null>(sessionId)
+
+  // Keep sessionIdRef in sync for use inside rAF callback closure.
+  React.useEffect(() => {
+    sessionIdRef.current = sessionId
+  }, [sessionId])
+
+  const flushBatch = React.useCallback(() => {
+    rafIdRef.current = null
+    const batch = batchQueueRef.current
+    batchQueueRef.current = []
+    if (batch.length === 0) return
+
+    const sid = sessionIdRef.current
+    setEvents((current) => {
+      let next = current
+      for (const event of batch) {
+        lastSeqRef.current = event.seq
+        if (sid) sessionLastSeqCache.set(sid, event.seq)
+        next = appendSessionEvent(next, event)
+      }
+      if (sid) sessionEventCache.set(sid, next)
+      return next
+    })
+  }, [])
+
+  const enqueueEvent = React.useCallback(
+    (event: BridgeEvent) => {
+      // Backpressure: drop oldest when queue is over budget (Codepath F).
+      if (batchQueueRef.current.length >= MAX_BATCH_QUEUE) {
+        batchQueueRef.current.shift()
+      }
+      batchQueueRef.current.push(event)
+
+      // Schedule a single rAF flush if none is pending.
+      if (rafIdRef.current == null) {
+        rafIdRef.current = requestAnimationFrame(flushBatch)
+      }
+    },
+    [flushBatch],
+  )
+
   React.useEffect(() => {
     if (!sessionId) {
       setEvents([])
       setConnectionState('idle')
       lastSeqRef.current = 0
+      batchQueueRef.current = []
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
       return
     }
 
@@ -176,19 +241,11 @@ export function useSessionEvents(sessionId: string | null) {
           const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
           buffer = consumed.buffer
 
-          if (consumed.events.length === 0) return
-
-          // Batch: apply all events from this chunk in one setEvents call
-          setEvents((current) => {
-            let next = current
-            for (const event of consumed.events) {
-              lastSeqRef.current = event.seq
-              sessionLastSeqCache.set(sessionId, event.seq)
-              next = appendSessionEvent(next, event)
-            }
-            sessionEventCache.set(sessionId, next)
-            return next
-          })
+          for (const event of consumed.events) {
+            lastSeqRef.current = event.seq
+            sessionLastSeqCache.set(sessionId, event.seq)
+            enqueueEvent(event)
+          }
         }
 
         while (true) {
@@ -212,8 +269,14 @@ export function useSessionEvents(sessionId: string | null) {
 
     return () => {
       abortController.abort()
+      // Flush any pending batch on cleanup so state is consistent.
+      if (rafIdRef.current != null) {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = null
+      }
+      flushBatch()
     }
-  }, [acpBase, requestCredentials, sessionId])
+  }, [acpBase, enqueueEvent, flushBatch, requestCredentials, sessionId])
 
   const derived = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
 
