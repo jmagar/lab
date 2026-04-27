@@ -250,6 +250,10 @@ impl AppState {
 
     /// Attach a pre-built ACP session registry so `AppState` shares the same `Arc`
     /// as the process-global dispatch slot installed in `cli/serve.rs`.
+    ///
+    /// **Must be called** after `dispatch::acp::install_registry()` with the same `Arc`
+    /// whenever ACP dispatch actions are in scope. See the invariant note on
+    /// `from_registry()`.
     #[must_use]
     pub fn with_acp_registry(mut self, registry: Arc<AcpSessionRegistry>) -> Self {
         self.acp_registry = registry;
