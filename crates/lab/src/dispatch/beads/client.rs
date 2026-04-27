@@ -84,10 +84,9 @@ fn resolve_dsn() -> Option<String> {
 #[must_use]
 pub fn client_from_env() -> Option<BeadsClient> {
     let dsn = resolve_dsn()?;
-    // The pool is constructed lazily on first query in sqlx 0.8 — calling
-    // `MySqlPoolOptions::connect_lazy` returns immediately and avoids
-    // blocking startup on a Dolt round-trip. `BeadsClient::connect` performs
-    // a real connect; we use `connect_lazy_with` here via a small helper.
+    // `BeadsClient::lazy` calls `connect_lazy` (sqlx 0.8) and returns
+    // immediately without opening a TCP connection. The first actual query
+    // triggers the real connect — no async runtime blocking at startup.
     match BeadsClient::lazy(&dsn) {
         Ok(client) => Some(client),
         Err(e) => {
