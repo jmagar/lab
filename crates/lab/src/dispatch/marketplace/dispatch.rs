@@ -52,7 +52,7 @@ pub async fn dispatch_with_port<P: client::NodeRpcPort>(
             let runtime = crate::dispatch::marketplace::service::runtime_from_params(&params)?;
             let filter = optional_str(&params, "marketplace")?.map(ToString::to_string);
             let kind = optional_str(&params, "kind")?.map(ToString::to_string);
-            let installed = params.get("installed").and_then(serde_json::Value::as_bool);
+            let installed = params.get("installed").and_then(Value::as_bool);
             let query = optional_str(&params, "query")?.map(|s| s.to_lowercase());
             let mut plugins =
                 crate::dispatch::marketplace::service::plugins_list(runtime, filter).await?;
