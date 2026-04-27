@@ -4,6 +4,11 @@ pre-commit:
       run: cargo fmt --all --check
     clippy:
       run: cargo clippy --workspace --all-features -- -D warnings
+    cargo-deny-bans:
+      # Convention enforcement: bans clap/rmcp/ratatui/anyhow/tabled in
+      # lab-apis/lab-auth (per crates/lab-apis/CLAUDE.md). Just `bans` —
+      # CI runs the full check (advisories/licenses/sources).
+      run: cargo deny check bans
     aurora-radius:
       glob: "{apps/gateway-admin/*.{ts,tsx,css},apps/gateway-admin/**/*.{ts,tsx,css}}"
       run: |
