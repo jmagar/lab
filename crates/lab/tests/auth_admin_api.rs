@@ -14,7 +14,10 @@
 //! - No oauth_state (bearer-only mode) → 404
 //! - CSRF missing on mutations → 422 (enforced by /v1 middleware)
 
-use axum::{body::Body, http::{Request, StatusCode, header}};
+use axum::{
+    body::Body,
+    http::{Request, StatusCode, header},
+};
 use lab::api::{router::build_router, state::AppState};
 use lab_auth::{
     config::{AuthConfig, AuthMode, GoogleConfig},
@@ -105,7 +108,8 @@ impl Harness {
 
     /// Seed an admin session (email == admin_email).
     async fn seed_admin_session(&self) -> BrowserSessionRow {
-        self.seed_session(Some(&self.admin_email), "csrf-admin").await
+        self.seed_session(Some(&self.admin_email), "csrf-admin")
+            .await
     }
 
     /// Issue a JWT access token for the test issuer.
@@ -160,7 +164,10 @@ impl Harness {
                     session.session_id
                 ),
             )
-            .header(lab_auth::session::BROWSER_CSRF_HEADER_NAME, &session.csrf_token)
+            .header(
+                lab_auth::session::BROWSER_CSRF_HEADER_NAME,
+                &session.csrf_token,
+            )
             .body(Body::from(body.to_string()))
             .unwrap()
     }
@@ -178,7 +185,10 @@ impl Harness {
                     session.session_id
                 ),
             )
-            .header(lab_auth::session::BROWSER_CSRF_HEADER_NAME, &session.csrf_token)
+            .header(
+                lab_auth::session::BROWSER_CSRF_HEADER_NAME,
+                &session.csrf_token,
+            )
             .body(Body::empty())
             .unwrap()
     }
@@ -289,10 +299,15 @@ async fn post_jwt_bearer_returns_403() {
 #[tokio::test]
 async fn get_non_admin_session_returns_403() {
     let h = Harness::new().await;
-    let session = h.seed_session(Some("notadmin@example.com"), "csrf-na").await;
+    let session = h
+        .seed_session(Some("notadmin@example.com"), "csrf-na")
+        .await;
     let app = h.router();
     let response = app
-        .oneshot(Harness::get_with_session("/v1/auth/allowed-emails", &session))
+        .oneshot(Harness::get_with_session(
+            "/v1/auth/allowed-emails",
+            &session,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
@@ -308,7 +323,10 @@ async fn get_admin_session_returns_200_with_entries() {
     let session = h.seed_admin_session().await;
     let app = h.router();
     let response = app
-        .oneshot(Harness::get_with_session("/v1/auth/allowed-emails", &session))
+        .oneshot(Harness::get_with_session(
+            "/v1/auth/allowed-emails",
+            &session,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
@@ -593,7 +611,10 @@ async fn list_shows_added_emails() {
     let session = h.seed_admin_session().await;
     let app = h.router();
     let response = app
-        .oneshot(Harness::get_with_session("/v1/auth/allowed-emails", &session))
+        .oneshot(Harness::get_with_session(
+            "/v1/auth/allowed-emails",
+            &session,
+        ))
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
