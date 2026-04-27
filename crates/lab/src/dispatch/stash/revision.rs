@@ -22,7 +22,7 @@ use crate::dispatch::stash::store::StashStore;
 /// file, sorted by relative path for deterministic digest computation.
 ///
 /// Rejects symlinks. Returns `symlink_rejected` error on encounter.
-fn walk_files_sorted(dir: &Path) -> Result<Vec<(PathBuf, PathBuf)>, ToolError> {
+pub(crate) fn walk_files_sorted(dir: &Path) -> Result<Vec<(PathBuf, PathBuf)>, ToolError> {
     let mut entries: Vec<(PathBuf, PathBuf)> = Vec::new();
     collect_files(dir, dir, &mut entries)?;
     // Sort by relative path for deterministic digest.
@@ -96,7 +96,7 @@ fn read_file_bytes(path: &Path) -> Result<Vec<u8>, ToolError> {
 ///
 /// Files must be sorted by relative path before calling this function.
 /// Returns lowercase hex string.
-fn compute_digest(files: &[(PathBuf, PathBuf)]) -> Result<String, ToolError> {
+pub(crate) fn compute_digest(files: &[(PathBuf, PathBuf)]) -> Result<String, ToolError> {
     let mut hasher = Sha256::new();
     for (rel, abs) in files {
         let path_bytes = rel.as_os_str().as_encoded_bytes();
