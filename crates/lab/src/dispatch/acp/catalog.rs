@@ -188,7 +188,10 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "session.events",
         description: "Get stored events for a session",
         destructive: false,
-        returns: "Value",
+        returns: "Vec<AcpEvent> — ProviderInfo events of type 'tool_call_metadata' carry \
+                 an optional '_meta' object relayed transparently from the originating agent; \
+                 key is absent (not null) when the agent did not inject it. \
+                 ToolCallUpdate events carry merged '_meta' (outer wrapper wins over raw_output).",
         params: &[
             ParamSpec {
                 name: "session_id",

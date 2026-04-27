@@ -269,7 +269,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     .await?;
 
     // Create the ACP session registry before the HTTP/stdio split so both transports
-    // share the same process-global dispatch slot.
+    // share the same process-global dispatch slot (intra-process only — stdio and
+    // HTTP modes are mutually exclusive within one process).
     let acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
     crate::dispatch::acp::install_registry(Arc::clone(&acp_registry));
 

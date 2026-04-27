@@ -22,6 +22,10 @@ pub fn is_sensitive_key(key: &str) -> bool {
             | "session_id"
             | "cookie"
             | "code"
+            | "cwd"
+            | "terminal_id"
+            | "signal"
+            | "data"
     ) || normalized.ends_with("_token")
         || normalized.ends_with("_secret")
         || normalized.ends_with("_password")

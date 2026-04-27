@@ -175,3 +175,18 @@ If a subscriber cannot drain the channel fast enough and the buffer fills, the s
 
 A client that is evicted will stop receiving events silently. Clients should treat a
 dropped SSE connection as a signal to reconnect with their last-seen `seq`.
+
+### `_meta` field relay
+
+Tool-call events may carry an optional `_meta` object injected by the originating agent.
+Lab relays this field transparently — it does not validate, transform, or construct `_meta`
+content.
+
+- **Live delivery:** `_meta` is forwarded as-is to SSE subscribers.
+- **Replay:** `_meta` survives the SQLite round-trip and is present in replayed events.
+- **Redaction on replay:** The standard field-name redaction policy applies to `_meta`
+  subfields on replay. Fields named `token`, `api_key`, `password`, `secret`,
+  `authorization`, `cwd`, `terminal_id`, `signal`, or `data` are stripped from the
+  persisted payload. Agents must not use these names as correlation keys inside `_meta`.
+- **Absent vs null:** When the originating agent did not inject `_meta`, the key is
+  absent from the event entirely (not emitted as `null`).
