@@ -36,7 +36,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 
 When OAuth mode is configured, `lab serve --transport http` performs these steps at startup:
 
-1. Validate that `LAB_PUBLIC_URL` and Google credentials are present.
+1. Validate that `LAB_PUBLIC_URL`, Google credentials, and `LAB_AUTH_ADMIN_EMAIL` are present.
 2. Open the SQLite auth store in WAL mode with a non-zero busy timeout.
 3. Load or generate the persisted RSA signing key.
 4. Build the concrete Google provider callback URL from `LAB_PUBLIC_URL` and `LAB_GOOGLE_CALLBACK_PATH`.
@@ -47,6 +47,7 @@ Startup also fails if:
 
 - `LAB_AUTH_MODE=oauth` is set without `LAB_PUBLIC_URL`
 - Google client credentials are missing
+- `LAB_AUTH_ADMIN_EMAIL` is missing — fail-closed default so no Google account can authenticate without explicit permission
 - the auth database or signing key has insecure file permissions
 
 ## Registration and Authorize Flow
@@ -72,8 +73,9 @@ Flow summary:
 2. The client sends the user to `/authorize` with `response_type=code`.
 3. `lab` stores the request state, generates PKCE data, and redirects to Google.
 4. Google redirects back to `/auth/google/callback`.
-5. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its registered redirect URI with the local code.
-6. The client exchanges that local code at `/token` for a `lab` access token and, when Google granted offline access, a `lab` refresh token.
+5. `lab` enforces the email allowlist (currently `LAB_AUTH_ADMIN_EMAIL`; expanding to a SQLite-backed user list managed via the web UI). The id_token's `email_verified` claim is required — unverified accounts are rejected even when the address matches. Browser-login callers receive a 401; OAuth-client callers receive an RFC 6749 §4.1.2.1 redirect with `error=access_denied`.
+6. `lab` exchanges the Google code server-side, stores a local authorization code, and redirects the client back to its registered redirect URI with the local code.
+7. The client exchanges that local code at `/token` for a `lab` access token and, when Google granted offline access, a `lab` refresh token.
 
 Google access and refresh tokens remain server-side only.
 
