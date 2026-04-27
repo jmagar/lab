@@ -43,6 +43,15 @@ impl QueuedEnvelope {
             payload,
         }
     }
+
+    #[must_use]
+    #[allow(dead_code)]
+    pub fn application_log_batch(payload: serde_json::Value) -> Self {
+        Self {
+            kind: "application_log_batch".to_string(),
+            payload,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
