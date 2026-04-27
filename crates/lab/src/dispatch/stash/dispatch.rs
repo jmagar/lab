@@ -2,6 +2,16 @@
 //!
 //! `dispatch()` handles the two built-in meta-actions (`help`, `schema`) and
 //! delegates all service-specific actions to `dispatch_with_store()`.
+//!
+//! # Observability
+//!
+//! `dispatch()` emits one structured event per call at the `INFO` level on
+//! success, `WARN` for caller errors, and `ERROR` for internal failures.
+//! Fields follow the standard dispatch schema from `docs/OBSERVABILITY.md`:
+//! `surface`, `service`, `action`, `elapsed_ms`, and `kind` (errors only).
+//!
+//! Note: `surface` is hardcoded to `"mcp"` here — the shared dispatch layer
+//! does not yet thread surface context through from the calling surface.
 
 use serde_json::Value;
 
@@ -18,7 +28,51 @@ use super::params::{
 use super::service;
 use super::store::StashStore;
 
+/// Top-level MCP/CLI entry point.
+///
+/// Handles `help` and `schema` directly, then constructs the store and
+/// delegates to [`dispatch_with_store`].
+///
+/// Emits structured dispatch events — see module docs for field details.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    let start = std::time::Instant::now();
+    let result = dispatch_inner(action, params).await;
+    let elapsed_ms = start.elapsed().as_millis();
+
+    match &result {
+        Ok(_) => tracing::info!(
+            surface = "mcp",
+            service = "stash",
+            action,
+            elapsed_ms,
+            "dispatch ok"
+        ),
+        Err(err) => {
+            if err.is_internal() {
+                tracing::error!(
+                    surface = "mcp",
+                    service = "stash",
+                    action,
+                    elapsed_ms,
+                    kind = err.kind(),
+                    "dispatch error"
+                );
+            } else {
+                tracing::warn!(
+                    surface = "mcp",
+                    service = "stash",
+                    action,
+                    elapsed_ms,
+                    kind = err.kind(),
+                    "dispatch error"
+                );
+            }
+        }
+    }
+    result
+}
+
+async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
         "help" => Ok(help_payload("stash", ACTIONS)),
         "schema" => {
@@ -44,6 +98,10 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     }
 }
 
+/// Dispatch an action against a pre-constructed store.
+///
+/// Called by `dispatch()` after store setup, and may be called directly by
+/// API handlers that hold the store in `AppState`.
 pub async fn dispatch_with_store(
     store: &StashStore,
     action: &str,
