@@ -184,9 +184,13 @@ content.
 
 - **Live delivery:** `_meta` is forwarded as-is to SSE subscribers.
 - **Replay:** `_meta` survives the SQLite round-trip and is present in replayed events.
-- **Redaction on replay:** The standard field-name redaction policy applies to `_meta`
-  subfields on replay. Fields named `token`, `api_key`, `password`, `secret`,
-  `authorization`, `cwd`, `terminal_id`, `signal`, or `data` are stripped from the
-  persisted payload. Agents must not use these names as correlation keys inside `_meta`.
+- **Redaction on replay:** The standard field-name redaction policy applies recursively
+  to the entire persisted event payload — not only to `_meta` subfields. Any JSON key
+  matching a sensitive name is replaced with `"[REDACTED]"` before storage. Sensitive
+  key names include: `token`, `access_token`, `id_token`, `refresh_token`, `apikey`,
+  `api_key`, `password`, `passwd`, `secret`, `client_secret`, `authorization`,
+  `bearer`, `session`, `session_id`, `cookie`, `code`, `cwd`, `terminal_id`, and any
+  key ending with `_token`, `_secret`, `_password`, or `_key`. Agents must not use
+  these names as correlation keys anywhere in the event payload.
 - **Absent vs null:** When the originating agent did not inject `_meta`, the key is
   absent from the event entirely (not emitted as `null`).

@@ -1560,29 +1560,26 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 5: phase_1_does_not_wire_terminal_create_handler
+    // Test 5: phase_1_terminal_requests_return_method_not_found
     //
     // C6 — NEGATIVE integration test: even with _meta.terminal_output=true
-    // advertised, the runtime must NOT wire a terminal/create handler.
+    // advertised, the runtime must NOT execute terminal creation. All terminal/*
+    // request handlers exist but unconditionally return method_not_found (-32601).
     // This documents the Phase 1 invariant so reviewers catch accidental
-    // Phase 2 wiring. A full live method_not_found test requires a running
-    // ACP session and belongs in integration tests; this unit test anchors
-    // the invariant structurally.
+    // Phase 2 wiring. A full live RPC test requires a running ACP session
+    // and belongs in integration tests; this unit test anchors the invariant
+    // structurally.
     //
-    // Invariant: the on_receive_request! macro in the Dispatch impl does NOT
-    // include a CreateTerminalRequest arm. Any terminal/* request therefore
-    // falls through to the ACP runtime's default error path (method not found,
-    // code -32601). lab-lffl is the gate that activates terminal execution.
+    // Invariant: all terminal/* on_receive_request handlers in the Dispatch
+    // impl respond with `Error::method_not_found()`. No handler executes
+    // terminal operations or delegates to a jail. lab-lffl is the gate that
+    // activates terminal execution in Phase 2.
     // -----------------------------------------------------------------------
     #[test]
-    fn phase_1_does_not_wire_terminal_create_handler() {
-        // CreateTerminalRequest is imported (used in the runtime dispatch to
-        // forward the type to the agent in Phase 2). Verify the import compiles
-        // but that the runtime's DISPATCH MATCH does not include a handler arm.
-        //
-        // Search for "CreateTerminalRequest" in the Dispatch impl: if a match
-        // arm were added, it would appear alongside on_receive_request! calls.
-        // At Phase 1, zero such arms exist — grep confirms this invariant.
+    fn phase_1_terminal_requests_return_method_not_found() {
+        // CreateTerminalRequest is imported and has a handler arm that returns
+        // method_not_found. Verify the import compiles. The handler arm exists
+        // to satisfy the ACP protocol type system while blocking execution.
         //
         // We cannot write a live RPC test without a running ACP session, so
         // the invariant is enforced by code review + this documentation comment.

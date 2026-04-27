@@ -192,7 +192,7 @@ pub const ACTIONS: &[ActionSpec] = &[
                      not inject it. ToolCallUpdate events carry merged '_meta' (outer wrapper \
                      wins over any '_meta' already present in raw_output).",
         destructive: false,
-        returns: "Vec<AcpEvent>",
+        returns: r#"{ "events": AcpEvent[], "count": number }"#,
         params: &[
             ParamSpec {
                 name: "session_id",
