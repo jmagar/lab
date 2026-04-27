@@ -85,16 +85,16 @@ pub async fn dispatch_with_store(
         }
         "providers.list" => service::providers_list(store, &params),
         "provider.link" => {
-            let _p = parse_link_params(&params)?;
-            service::provider_link(store)
+            let p = parse_link_params(&params)?;
+            service::provider_link(store, p)
         }
         "provider.push" => {
-            let _p = parse_provider_sync_params(&params)?;
-            service::provider_push(store)
+            let p = parse_provider_sync_params(&params)?;
+            service::provider_push(store, p)
         }
         "provider.pull" => {
-            let _p = parse_provider_sync_params(&params)?;
-            service::provider_pull(store)
+            let p = parse_provider_sync_params(&params)?;
+            service::provider_pull(store, p)
         }
         "targets.list" => service::targets_list(store),
         "target.add" => {

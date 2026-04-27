@@ -12,6 +12,8 @@ pub mod dispatch;
 pub mod export;
 pub mod import;
 pub mod params;
+pub mod provider;
+pub mod providers;
 pub mod revision;
 pub mod service;
 pub mod store;
