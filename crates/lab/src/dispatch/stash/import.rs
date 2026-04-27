@@ -586,4 +586,54 @@ mod tests {
             .unwrap_err();
         assert_eq!(err.kind(), "invalid_param");
     }
+
+    /// lab-qz6a.18 — integration test: import a settings.json file via the
+    /// production import path, then call save_revision and verify the snapshot
+    /// contains the file with the correct name.
+    ///
+    /// This exercises the full production path and catches the workspace_root
+    /// bug (import_blocking sets workspace_root = dst.parent(), not the file
+    /// path itself) combined with the revision.rs filename-derivation fix.
+    #[test]
+    fn import_file_then_save_revision_has_correct_filename() {
+        let (store, _dir) = make_store();
+        let src_dir = tempdir().unwrap();
+        let src = src_dir.path().join("settings.json");
+        std::fs::write(&src, br#"{"theme": "dark"}"#).unwrap();
+
+        // Import via the production path.
+        let comp = import_blocking(&store, &src, None, "my-settings", None).unwrap();
+        assert_eq!(comp.workspace_shape, StashWorkspaceShape::File);
+
+        // workspace_root should be the parent directory (as import_blocking sets it).
+        assert!(
+            comp.workspace_root.is_dir(),
+            "workspace_root must be a directory after import, got: {}",
+            comp.workspace_root.display()
+        );
+
+        // Save a revision via the production blocking path.
+        let rev = super::super::revision::save_revision_blocking(&store, &comp.id, Some("v1"))
+            .unwrap();
+
+        assert_eq!(rev.file_count, 1, "file-shaped revision must have exactly 1 file");
+        assert!(!rev.content_digest.is_empty());
+
+        // The snapshot file must be named settings.json, not the ULID component ID.
+        let files_dir = store.revision_files_path(&rev.id);
+        assert!(
+            files_dir.join("settings.json").exists(),
+            "revision snapshot must contain settings.json; found: {:?}",
+            std::fs::read_dir(&files_dir)
+                .map(|it| it.filter_map(|e| e.ok().map(|e| e.file_name())).collect::<Vec<_>>())
+                .unwrap_or_default()
+        );
+
+        // head_revision_id on the component should be updated.
+        let updated_comp = store.read_component(&comp.id).unwrap().unwrap();
+        assert_eq!(
+            updated_comp.head_revision_id.as_deref(),
+            Some(rev.id.as_str())
+        );
+    }
 }
