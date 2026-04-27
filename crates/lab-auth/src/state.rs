@@ -136,6 +136,25 @@ impl AuthState {
         }
     }
 
+    /// Returns the merged email allowlist: admin first, then all `allowed_users` rows,
+    /// deduplicating case-insensitively so admin is never counted twice.
+    ///
+    /// This is the single source of truth used in both OAuth callback branches. A DB
+    /// error is surfaced as [`AuthError::Storage`] (fail-closed — server fault, not
+    /// user fault).
+    ///
+    /// Never log the returned emails directly — pass them only to
+    /// `check_email_allowlist`, which uses `fingerprint()` for safe diagnostics.
+    pub async fn resolve_allowed_emails(&self) -> Result<Vec<String>, AuthError> {
+        let mut emails = vec![self.config.admin_email.clone()];
+        for row in self.store.list_allowed_users().await? {
+            if !row.email.eq_ignore_ascii_case(&self.config.admin_email) {
+                emails.push(row.email);
+            }
+        }
+        Ok(emails)
+    }
+
     /// Rejects new OAuth state rows when the pending count exceeds `max_pending_oauth_states`.
     pub async fn ensure_pending_oauth_state_capacity(&self) -> Result<(), AuthError> {
         let count = self.store.count_pending_oauth_states().await?;
@@ -192,6 +211,93 @@ mod tests {
 
     use super::*;
     use crate::config::GoogleConfig;
+    use crate::util::now_unix;
+
+    /// Builds a minimal `AuthState` for unit-testing `resolve_allowed_emails`.
+    async fn resolve_state(admin_email: &str) -> AuthState {
+        let dir = tempdir().expect("tempdir");
+        AuthState::new(AuthConfig {
+            mode: AuthMode::OAuth,
+            public_url: Some(Url::parse("https://lab.example.com").expect("url")),
+            sqlite_path: dir.path().join("auth.db"),
+            key_path: dir.path().join("auth.pem"),
+            bootstrap_secret: None,
+            allowed_client_redirect_uris: Vec::new(),
+            admin_email: admin_email.to_string(),
+            google: GoogleConfig {
+                client_id: "client-id".to_string(),
+                client_secret: "client-secret".to_string(),
+                callback_path: "/auth/google/callback".to_string(),
+                scopes: vec![
+                    "openid".to_string(),
+                    "email".to_string(),
+                    "profile".to_string(),
+                ],
+            },
+            access_token_ttl: Duration::from_secs(3600),
+            refresh_token_ttl: Duration::from_secs(3600),
+            auth_code_ttl: Duration::from_secs(300),
+            register_requests_per_minute: 10,
+            authorize_requests_per_minute: 20,
+            max_pending_oauth_states: 1024,
+        })
+        .await
+        .expect("auth state")
+    }
+
+    #[tokio::test]
+    async fn resolve_allowed_emails_returns_admin_when_table_is_empty() {
+        let state = resolve_state("admin@example.com").await;
+        let emails = state.resolve_allowed_emails().await.unwrap();
+        assert_eq!(emails, vec!["admin@example.com"]);
+    }
+
+    #[tokio::test]
+    async fn resolve_allowed_emails_includes_db_rows_after_admin() {
+        let state = resolve_state("admin@example.com").await;
+        state
+            .store
+            .add_allowed_user("alice@example.com", "admin", now_unix())
+            .await
+            .unwrap();
+        state
+            .store
+            .add_allowed_user("bob@example.com", "admin", now_unix() + 1)
+            .await
+            .unwrap();
+        let emails = state.resolve_allowed_emails().await.unwrap();
+        // Admin is always first; DB rows follow in created_at ASC order.
+        assert_eq!(
+            emails,
+            vec![
+                "admin@example.com",
+                "alice@example.com",
+                "bob@example.com"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_allowed_emails_deduplicates_admin_present_in_db() {
+        let state = resolve_state("admin@example.com").await;
+        // add_allowed_user lowercases; admin_email may differ in case → still deduped.
+        state
+            .store
+            .add_allowed_user("Admin@Example.COM", "self", now_unix())
+            .await
+            .unwrap();
+        state
+            .store
+            .add_allowed_user("other@example.com", "admin", now_unix() + 1)
+            .await
+            .unwrap();
+        let emails = state.resolve_allowed_emails().await.unwrap();
+        // "admin@example.com" from DB is deduped; "other@example.com" remains.
+        assert_eq!(
+            emails,
+            vec!["admin@example.com", "other@example.com"]
+        );
+    }
 
     #[tokio::test]
     async fn auth_state_preserves_public_url_path_prefix_in_google_redirect_uri() {
