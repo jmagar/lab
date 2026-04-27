@@ -54,6 +54,10 @@ use super::types::{
 /// Capacity for each subscriber's mpsc channel.
 const SUBSCRIBER_CAPACITY: usize = 64;
 
+/// Maximum number of concurrent SSE subscribers per session.
+/// Excess subscribe calls return `too_many_subscribers`.
+const MAX_SUBSCRIBERS_PER_SESSION: usize = 32;
+
 /// Maximum backlog events returned from SQLite on subscribe.
 const BACKFILL_CAP: u64 = 10_000;
 
@@ -504,6 +508,15 @@ impl AcpSessionRegistry {
         let (tx, rx) = mpsc::channel::<Arc<AcpEvent>>(SUBSCRIBER_CAPACITY);
         {
             let mut subs = session.subscribers.lock().await;
+            if subs.len() >= MAX_SUBSCRIBERS_PER_SESSION {
+                return Err(ToolError::Sdk {
+                    sdk_kind: "too_many_subscribers".to_string(),
+                    message: format!(
+                        "session has reached the maximum of {} concurrent subscribers",
+                        MAX_SUBSCRIBERS_PER_SESSION
+                    ),
+                });
+            }
             subs.push(tx);
         }
 

@@ -12,13 +12,11 @@ import {
   resolveLastSessionEventSeq,
   resolveSessionStatusFromEvents,
 } from './session-events'
+import { sessionEventCache, sessionLastSeqCache } from './session-event-cache'
 
 export type SessionEventConnectionState = 'idle' | 'connecting' | 'open' | 'error'
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
-
-const sessionEventCache = new Map<string, BridgeEvent[]>()
-const sessionLastSeqCache = new Map<string, number>()
 
 function hasSequence(value: unknown): value is { seq: number } {
   return (
@@ -178,15 +176,19 @@ export function useSessionEvents(sessionId: string | null) {
           const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
           buffer = consumed.buffer
 
-          for (const event of consumed.events) {
-            lastSeqRef.current = event.seq
-            sessionLastSeqCache.set(sessionId, event.seq)
-            setEvents((current) => {
-              const next = appendSessionEvent(current, event)
-              sessionEventCache.set(sessionId, next)
-              return next
-            })
-          }
+          if (consumed.events.length === 0) return
+
+          // Batch: apply all events from this chunk in one setEvents call
+          setEvents((current) => {
+            let next = current
+            for (const event of consumed.events) {
+              lastSeqRef.current = event.seq
+              sessionLastSeqCache.set(sessionId, event.seq)
+              next = appendSessionEvent(next, event)
+            }
+            sessionEventCache.set(sessionId, next)
+            return next
+          })
         }
 
         while (true) {
