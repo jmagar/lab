@@ -203,7 +203,7 @@ mod tests {
             key_path: temp.path().join("auth.pem"),
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
-            allowed_emails: Vec::new(),
+            admin_email: "admin@example.com".to_string(),
             google: GoogleConfig {
                 client_id: "client-id".to_string(),
                 client_secret: "client-secret".to_string(),

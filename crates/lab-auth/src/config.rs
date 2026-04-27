@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use tracing::warn;
 use url::Url;
 
 use crate::error::AuthError;
@@ -79,7 +78,11 @@ pub struct AuthConfig {
     pub key_path: PathBuf,
     pub bootstrap_secret: Option<String>,
     pub allowed_client_redirect_uris: Vec<String>,
-    pub allowed_emails: Vec<String>,
+    /// Single bootstrap admin email permitted to log in via Google OAuth.
+    /// Required when `mode == AuthMode::OAuth`. Additional users will be
+    /// granted access through a future SQLite-backed allowlist managed via
+    /// the web UI.
+    pub admin_email: String,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -99,7 +102,7 @@ impl Default for AuthConfig {
             key_path: base_dir.join(DEFAULT_KEY_NAME),
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
-            allowed_emails: Vec::new(),
+            admin_email: String::new(),
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -117,19 +120,9 @@ impl AuthConfig {
     ) -> Result<Self, AuthError> {
         let vars = normalize(vars);
         let mode = AuthMode::parse(vars.get("LAB_AUTH_MODE").map(String::as_str))?;
-        let raw_allowed_emails = vars.get("LAB_AUTH_ALLOWED_EMAILS").cloned();
-        let allowed_emails: Vec<String> = read_csv(&vars, "LAB_AUTH_ALLOWED_EMAILS")
-            .unwrap_or_default()
-            .into_iter()
-            .map(|e| e.to_ascii_lowercase())
-            .collect();
-        if raw_allowed_emails.is_some() && allowed_emails.is_empty() {
-            warn!(
-                env_var = "LAB_AUTH_ALLOWED_EMAILS",
-                "allowed_emails env var is set but resolved to an empty list — \
-                 all Google accounts are permitted. Check for typos or whitespace-only values."
-            );
-        }
+        let admin_email = read_string(&vars, "LAB_AUTH_ADMIN_EMAIL")
+            .map(|raw| raw.trim().to_ascii_lowercase())
+            .unwrap_or_default();
         let config = Self {
             mode,
             public_url: read_url(&vars, "LAB_PUBLIC_URL")?,
@@ -140,7 +133,7 @@ impl AuthConfig {
             bootstrap_secret: read_string(&vars, "LAB_AUTH_BOOTSTRAP_SECRET"),
             allowed_client_redirect_uris: read_csv(&vars, "LAB_AUTH_ALLOWED_REDIRECT_URIS")
                 .unwrap_or_default(),
-            allowed_emails,
+            admin_email,
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
@@ -196,6 +189,14 @@ impl AuthConfig {
             if self.google.client_secret.is_empty() {
                 return Err(AuthError::Config(
                     "LAB_GOOGLE_CLIENT_SECRET is required when LAB_AUTH_MODE=oauth".to_string(),
+                ));
+            }
+            if self.admin_email.is_empty() {
+                return Err(AuthError::Config(
+                    "LAB_AUTH_ADMIN_EMAIL is required when LAB_AUTH_MODE=oauth — \
+                     set the Google email of the bootstrap admin so no account \
+                     can log in unless explicitly permitted"
+                        .to_string(),
                 ));
             }
         }
@@ -331,6 +332,7 @@ mod tests {
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
         ]))
         .unwrap();
         assert_eq!(cfg.sqlite_path.file_name().unwrap(), "auth.db");
@@ -339,37 +341,28 @@ mod tests {
     }
 
     #[test]
-    fn allowed_emails_defaults_to_empty_vec() {
-        let cfg = AuthConfig::from_sources(fake_env_with_many([
+    fn oauth_mode_requires_admin_email() {
+        let err = AuthConfig::from_sources(fake_env_with_many([
             ("LAB_AUTH_MODE", "oauth"),
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
         ]))
-        .unwrap();
-        assert!(cfg.allowed_emails.is_empty());
+        .unwrap_err();
+        assert!(err.to_string().contains("LAB_AUTH_ADMIN_EMAIL"));
     }
 
     #[test]
-    fn allowed_emails_normalizes_case_and_trims_whitespace() {
+    fn admin_email_normalizes_case_and_trims_whitespace() {
         let cfg = AuthConfig::from_sources(fake_env_with_many([
             ("LAB_AUTH_MODE", "oauth"),
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
-            (
-                "LAB_AUTH_ALLOWED_EMAILS",
-                "Alice@Example.com , BOB@EXAMPLE.COM ",
-            ),
+            ("LAB_AUTH_ADMIN_EMAIL", "  Admin@Example.COM  "),
         ]))
         .unwrap();
-        assert_eq!(
-            cfg.allowed_emails,
-            vec![
-                "alice@example.com".to_string(),
-                "bob@example.com".to_string()
-            ]
-        );
+        assert_eq!(cfg.admin_email, "admin@example.com");
     }
 
     #[test]
@@ -379,6 +372,7 @@ mod tests {
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
             (
                 "LAB_AUTH_ALLOWED_REDIRECT_URIS",
                 "https://callback.tootie.tv/callback/*,https://claude.ai/api/mcp/auth_callback",

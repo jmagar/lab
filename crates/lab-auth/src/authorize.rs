@@ -272,7 +272,7 @@ pub async fn callback(
         check_email_allowlist(
             google.email.as_deref(),
             google.email_verified,
-            &state.config.allowed_emails,
+            std::slice::from_ref(&state.config.admin_email),
         )?;
         let session = create_browser_session(&state, google.subject, google.email).await?;
         let mut response = Redirect::to(&login.return_to).into_response();
@@ -318,7 +318,7 @@ pub async fn callback(
     if let Err(denial) = check_email_allowlist(
         google.email.as_deref(),
         google.email_verified,
-        &state.config.allowed_emails,
+        std::slice::from_ref(&state.config.admin_email),
     ) {
         let mut redirect_target = url::Url::parse(&request.redirect_uri).map_err(|error| {
             // Unreachable in practice: redirect_uri was validated against the
@@ -955,7 +955,7 @@ pub mod tests {
     #[tokio::test]
     async fn oauth_client_callback_redirects_with_access_denied_when_email_not_in_allowlist() {
         let mut config = test_auth_config();
-        config.allowed_emails = vec!["allowed@example.com".to_string()];
+        config.admin_email = "allowed@example.com".to_string();
         let base_state = test_auth_state_with_config(config).await;
         base_state
             .store
@@ -1053,7 +1053,7 @@ pub mod tests {
         let mut config = test_auth_config();
         // "allowed@example.com" is permitted; the mock id_token returns
         // "user@example.com" → callback must be denied with 401.
-        config.allowed_emails = vec!["allowed@example.com".to_string()];
+        config.admin_email = "allowed@example.com".to_string();
         let base_state = test_auth_state_with_config(config).await;
         base_state
             .store
@@ -1236,6 +1236,9 @@ pub mod tests {
             key_path: dir.path().join("auth-jwt.pem"),
             bootstrap_secret: Some("bootstrap-secret".to_string()),
             allowed_client_redirect_uris: Vec::new(),
+            // Matches the mock id_token email returned by signed_test_id_token,
+            // so happy-path callback tests pass the allowlist check.
+            admin_email: "user@example.com".to_string(),
             google: GoogleConfig {
                 client_id: "client-id".to_string(),
                 client_secret: "client-secret".to_string(),
