@@ -1,0 +1,15 @@
+# Workspace-level clippy config.
+#
+# Convention enforcement that complements deny.toml:
+# `async-trait` is pulled in transitively by `rmcp`, so we can't ban
+# the crate at the dep-graph level. Instead we ban *writing*
+# `#[async_trait]` in our own code. The repo rule is "we use native
+# `async fn in trait` (Rust 1.75+)," not "no crate in the universe
+# uses async-trait."
+#
+# Activated via `disallowed_macros = "deny"` in [workspace.lints.clippy]
+# in /Cargo.toml.
+
+disallowed-macros = [
+    { path = "async_trait::async_trait", reason = "Use native `async fn in trait` (Rust 1.75+). See crates/lab-apis/CLAUDE.md." },
+]
