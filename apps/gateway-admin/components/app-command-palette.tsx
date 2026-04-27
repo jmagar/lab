@@ -75,26 +75,39 @@ function isMacOS(): boolean {
 
 export function AppCommandPaletteTrigger() {
   const modKey = isMacOS() ? '⌘' : 'Ctrl'
+  const handleOpen = () => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))
   return (
-    <button
-      type="button"
-      onClick={() => window.dispatchEvent(new Event(OPEN_COMMAND_PALETTE_EVENT))}
-      className="hidden min-w-[220px] items-center justify-between gap-3 rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface px-3 py-1.5 text-left text-xs text-aurora-text-muted transition hover:border-aurora-border-strong hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:flex"
-      aria-label="Open command palette"
-    >
-      <span className="inline-flex items-center gap-2">
-        <Search className="size-3.5" />
-        Search or jump...
-      </span>
-      <KbdGroup>
-        <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
-          {modKey}
-        </Kbd>
-        <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
-          K
-        </Kbd>
-      </KbdGroup>
-    </button>
+    <>
+      {/* Mobile: icon-only entry point */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        className="flex items-center rounded-aurora-1 p-1.5 text-aurora-text-muted transition hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:hidden"
+        aria-label="Open command palette"
+      >
+        <Search className="size-4" />
+      </button>
+      {/* Desktop: full search bar */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        className="hidden min-w-[220px] items-center justify-between gap-3 rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface px-3 py-1.5 text-left text-xs text-aurora-text-muted transition hover:border-aurora-border-strong hover:bg-aurora-hover-bg hover:text-aurora-text-primary md:flex"
+        aria-label="Open command palette"
+      >
+        <span className="inline-flex items-center gap-2">
+          <Search className="size-3.5" />
+          Search or jump...
+        </span>
+        <KbdGroup>
+          <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
+            {modKey}
+          </Kbd>
+          <Kbd className="border border-aurora-border-default bg-aurora-panel-medium text-[10px] text-aurora-text-muted">
+            K
+          </Kbd>
+        </KbdGroup>
+      </button>
+    </>
   )
 }
 
@@ -244,7 +257,6 @@ function AppCommandPaletteRow({
   return (
     <CommandItem
       value={item.id}
-      keywords={item.keywords}
       onSelect={() => onSelect(item.id)}
       className={cn(
         'rounded-aurora-2 border border-aurora-border-strong/80 bg-aurora-control-surface px-3 py-3 text-aurora-text-primary transition-[border-color,background-color,box-shadow] hover:bg-aurora-hover-bg',

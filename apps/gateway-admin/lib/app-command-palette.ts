@@ -266,7 +266,7 @@ function filterItems(query: string, items: AppCommandItem[]): AppCommandItem[] {
 
   return [...items]
     .map((item) => ({ item, ...scoreItem(item, normalizedQuery) }))
-    .filter(({ baseScore }) => baseScore > 40)
+    .filter(({ baseScore }) => baseScore > 0)
     .sort((a, b) => b.totalScore - a.totalScore)
     .map(({ item }) => item)
 }
