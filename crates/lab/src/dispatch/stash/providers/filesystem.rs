@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use lab_apis::stash::types::{StashProviderRecord, StashRevision};
 
 use crate::dispatch::error::ToolError;
-use crate::dispatch::stash::store::StashStore;
 use crate::dispatch::stash::provider::StashProvider;
+use crate::dispatch::stash::store::StashStore;
 
 /// Filesystem-backed storage provider.
 ///
@@ -67,7 +67,7 @@ impl FilesystemProvider {
 }
 
 impl StashProvider for FilesystemProvider {
-    fn kind(&self) -> &str {
+    fn kind(&self) -> &'static str {
         "filesystem"
     }
 

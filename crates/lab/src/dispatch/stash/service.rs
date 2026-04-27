@@ -502,11 +502,10 @@ pub fn provider_pull(store: &StashStore, p: ProviderSyncParams) -> Result<Value,
             let rev_id = rev.id.clone();
             // Update head_revision_id under advisory lock.
             store.with_component_lock(&p.id, || {
-                let mut component =
-                    store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
-                        sdk_kind: "not_found".into(),
-                        message: format!("component `{}` not found", p.id),
-                    })?;
+                let mut component = store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".into(),
+                    message: format!("component `{}` not found", p.id),
+                })?;
                 component.head_revision_id = Some(rev_id.clone());
                 store.write_component(&component)
             })?;
