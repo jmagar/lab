@@ -15,6 +15,7 @@ import * as React from 'react'
 import { ChatSessionProvider } from '@/lib/chat/chat-session-provider'
 import { FloatingChatFab } from '@/components/floating-chat-fab'
 import { FloatingChatPopover } from '@/components/floating-chat-popover'
+import { FloatingChatShell } from '@/components/floating-chat-shell'
 import type { PersistConfig } from '@/components/floating-chat-popover'
 
 export function AdminLayoutClient({
@@ -48,6 +49,8 @@ export function AdminLayoutClient({
   // First-open ref — ChatSessionProvider registers its callback here
   const onFirstOpenRef = React.useRef<(() => void) | null>(null)
   const hasOpenedOnce = React.useRef(false)
+  // State-based lazy mount for FloatingChatShell
+  const [shellMounted, setShellMounted] = React.useState(false)
 
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
 
@@ -62,10 +65,11 @@ export function AdminLayoutClient({
   const handleToggle = React.useCallback(() => {
     setOpen((prev) => {
       const next = !prev
-      // First open: trigger stream start
+      // First open: trigger stream start and mount shell
       if (next && !hasOpenedOnce.current) {
         hasOpenedOnce.current = true
         onFirstOpenRef.current?.()
+        setShellMounted(true)
       }
       // Persist open state
       try {
@@ -112,7 +116,10 @@ export function AdminLayoutClient({
         onClose={handleClose}
         config={config}
         onConfigChange={setConfig}
-      />
+      >
+        {/* FloatingChatShell mounts lazily on first FAB click, stays mounted permanently */}
+        {shellMounted && <FloatingChatShell config={config} />}
+      </FloatingChatPopover>
     </ChatSessionProvider>
   )
 }
