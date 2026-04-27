@@ -10,10 +10,12 @@
 //!                 <id>.json, <id>.lock, <id>.deploy.lock
 //! revisions/    — immutable revision snapshots
 //!                 <rev_id>/meta.json, <rev_id>/files/
+//!                 by-component/<component_id>.json  (revision ID index)
 //! workspaces/   — live working copies per component
 //!                 <id>/              (directory-shaped)
 //!                 <id>/<filename>    (file-shaped)
 //! providers/    — provider link records  (<id>.json)
+//!                 by-component/<component_id>.json  (provider ID index)
 //! targets/      — deploy target records  (<id>.json)
 //! ```
 //!
@@ -44,8 +46,11 @@ const DIR_PROVIDERS: &str = "providers";
 const DIR_TARGETS: &str = "targets";
 
 /// Secondary index sub-directory under `revisions/` for per-component revision lists.
+/// lab-qz6a.24: enables O(1) `list_revisions_for` instead of O(R) full scan.
 const DIR_REVISIONS_BY_COMPONENT: &str = "revisions/by-component";
+
 /// Secondary index sub-directory under `providers/` for per-component provider lists.
+/// lab-qz6a.25: enables O(1) `list_providers_for` instead of O(P) full scan.
 const DIR_PROVIDERS_BY_COMPONENT: &str = "providers/by-component";
 
 const EXT_RECORD: &str = ".json";
@@ -152,15 +157,6 @@ impl StashStore {
         self.revision_dir(rev_id).join(FILE_META)
     }
 
-    // ── Path helpers: providers ──────────────────────────────────────────────
-
-    /// Path to `providers/<id>.json`.
-    pub fn provider_record_path(&self, id: &str) -> PathBuf {
-        self.root
-            .join(DIR_PROVIDERS)
-            .join(format!("{id}{EXT_RECORD}"))
-    }
-
     // ── Path helpers: secondary indexes ─────────────────────────────────────
 
     /// Path to `revisions/by-component/<component_id>.json`.
@@ -183,6 +179,15 @@ impl StashStore {
             .join(format!("{component_id}{EXT_RECORD}"))
     }
 
+    // ── Path helpers: providers ──────────────────────────────────────────────
+
+    /// Path to `providers/<id>.json`.
+    pub fn provider_record_path(&self, id: &str) -> PathBuf {
+        self.root
+            .join(DIR_PROVIDERS)
+            .join(format!("{id}{EXT_RECORD}"))
+    }
+
     // ── Path helpers: targets ────────────────────────────────────────────────
 
     /// Path to `targets/<id>.json`.
@@ -194,7 +199,7 @@ impl StashStore {
 
     // ── Initialization ───────────────────────────────────────────────────────
 
-    /// Create the five top-level sub-directories and secondary index directories
+    /// Create the top-level sub-directories and secondary index directories
     /// if they do not yet exist.
     ///
     /// This is idempotent and should be called once at startup.
@@ -290,11 +295,11 @@ impl StashStore {
     ///
     /// Write order: meta first, then index.  A crash between the two leaves
     /// meta-without-index, which `list_revisions_for` recovers via fallback scan.
-    /// The reverse order (index before meta) would leave a dangling index entry
-    /// that the fallback scan would miss entirely.
+    /// Reverse order (index before meta) would leave a dangling index entry
+    /// that points to non-existent meta.
     ///
     /// Callers are expected to hold the component advisory lock before calling
-    /// this method; do NOT take the lock here (would deadlock via fd_lock reentrancy).
+    /// this method; do NOT take the lock here (would deadlock via fd_lock re-entrancy).
     ///
     /// lab-qz6a.24: index append makes `list_revisions_for` O(1) instead of O(R).
     pub fn write_revision_meta(&self, rev: &StashRevision) -> Result<(), ToolError> {
@@ -308,7 +313,7 @@ impl StashStore {
     ///
     /// Reads the existing index (or starts with an empty vec), appends `rev_id`,
     /// and writes atomically.  Duplicate IDs are not checked — the caller
-    /// (always `write_revision_meta`) guarantees uniqueness.
+    /// (`write_revision_meta`) guarantees uniqueness.
     pub fn append_revision_to_index(
         &self,
         component_id: &str,
@@ -348,7 +353,8 @@ impl StashStore {
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                     Err(e) => return Err(io_internal(e)),
                 };
-                let rev: StashRevision = serde_json::from_slice(&rev_bytes).map_err(decode_error)?;
+                let rev: StashRevision =
+                    serde_json::from_slice(&rev_bytes).map_err(decode_error)?;
                 out.push(rev);
             }
             return Ok(out);
@@ -413,8 +419,8 @@ impl StashStore {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
-        for entry in std::fs::read_dir(&dir).map_err(|e| io_internal(e))? {
-            let entry = entry.map_err(|e| io_internal(e))?;
+        for entry in std::fs::read_dir(&dir).map_err(io_internal)? {
+            let entry = entry.map_err(io_internal)?;
             let path = entry.path();
             let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
@@ -431,7 +437,8 @@ impl StashStore {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(io_internal(e)),
             };
-            let target: StashDeployTarget = serde_json::from_slice(&bytes).map_err(decode_error)?;
+            let target: StashDeployTarget =
+                serde_json::from_slice(&bytes).map_err(decode_error)?;
             out.push((id.to_string(), target));
         }
         Ok(out)
@@ -471,8 +478,8 @@ impl StashStore {
 
     /// Append `provider_id` to the per-component provider index.
     ///
-    /// Reads the existing index (or starts with an empty vec), appends `provider_id`,
-    /// and writes atomically.
+    /// Reads the existing index (or starts with an empty vec), appends
+    /// `provider_id`, and writes atomically.
     pub fn append_provider_to_index(
         &self,
         component_id: &str,
@@ -532,7 +539,8 @@ impl StashStore {
 
     /// List all provider records in the store (no component filter).
     ///
-    /// Used by `service.rs::providers_list` when no `component_id` is given.
+    /// Used by `service.rs::providers_list` when no `component_id` filter is given.
+    /// lab-qz6a.25: replaces the duplicate `list_json_records_from_dir` helper in service.rs.
     pub fn list_all_providers(&self) -> Result<Vec<StashProviderRecord>, ToolError> {
         let dir = self.root.join(DIR_PROVIDERS);
         list_json_records(&dir)
@@ -649,7 +657,9 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), ToolErr
 
 /// Read and deserialize a JSON file, returning `None` if the file does not
 /// exist.
-fn read_json_optional<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, ToolError> {
+fn read_json_optional<T: serde::de::DeserializeOwned>(
+    path: &Path,
+) -> Result<Option<T>, ToolError> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -823,6 +833,15 @@ mod tests {
         ] {
             assert!(store.root.join(sub).is_dir(), "missing {sub}");
         }
+        // lab-qz6a.24/25: secondary index directories must also exist
+        assert!(
+            store.root.join(DIR_REVISIONS_BY_COMPONENT).is_dir(),
+            "missing revisions/by-component"
+        );
+        assert!(
+            store.root.join(DIR_PROVIDERS_BY_COMPONENT).is_dir(),
+            "missing providers/by-component"
+        );
         assert!(
             !store.root.join("objects").exists(),
             "objects/ must not exist"
@@ -907,6 +926,23 @@ mod tests {
         assert_eq!(comp2_revs[0].id, "rev-02");
     }
 
+    /// lab-qz6a.24: fallback scan works for stores that have meta.json but no index.
+    #[test]
+    fn revision_fallback_scan_without_index() {
+        let (store, _dir) = make_store();
+        // Write meta.json directly, bypassing write_revision_meta (no index written).
+        let rev = sample_revision("rev-99", "comp-99");
+        let meta_path = store.revision_meta_path("rev-99");
+        std::fs::create_dir_all(meta_path.parent().unwrap()).expect("create dir");
+        std::fs::write(&meta_path, serde_json::to_vec_pretty(&rev).unwrap())
+            .expect("write meta");
+
+        // The index does not exist for comp-99; fallback scan must find it.
+        let revs = store.list_revisions_for("comp-99").expect("list");
+        assert_eq!(revs.len(), 1);
+        assert_eq!(revs[0].id, "rev-99");
+    }
+
     // ── target I/O ───────────────────────────────────────────────────────────
 
     #[test]
@@ -961,6 +997,23 @@ mod tests {
         let comp1_providers = store.list_providers_for("comp-01").expect("list");
         assert_eq!(comp1_providers.len(), 1);
         assert_eq!(comp1_providers[0].id, "prov-01");
+    }
+
+    /// lab-qz6a.25: fallback scan works for stores that have provider JSON but no index.
+    #[test]
+    fn provider_fallback_scan_without_index() {
+        let (store, _dir) = make_store();
+        // Write provider record directly, bypassing write_provider (no index written).
+        let prov = sample_provider("prov-99", "comp-99");
+        let prov_path = store.provider_record_path("prov-99");
+        std::fs::create_dir_all(prov_path.parent().unwrap()).expect("create dir");
+        std::fs::write(&prov_path, serde_json::to_vec_pretty(&prov).unwrap())
+            .expect("write provider");
+
+        // The index does not exist for comp-99; fallback scan must find it.
+        let providers = store.list_providers_for("comp-99").expect("list");
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].id, "prov-99");
     }
 
     #[test]
