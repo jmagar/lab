@@ -7,6 +7,7 @@ import {
   Cable,
   MessageSquareText,
   LayoutDashboard,
+  ListTodo,
   Package,
   ShoppingBag,
   Settings,
@@ -47,6 +48,11 @@ export const primarySidebarNavigation = [
     title: 'Gateways',
     url: '/gateways',
     icon: Cable,
+  },
+  {
+    title: 'Tasks',
+    url: '/tasks',
+    icon: ListTodo,
   },
   {
     title: 'Registry',
