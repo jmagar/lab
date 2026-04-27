@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { AppCommandPalette } from '@/components/app-command-palette'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
 
@@ -21,6 +22,7 @@ export default function DevLayout({
         <div className="flex-1">
           {children}
         </div>
+        <AppCommandPalette />
         <Toaster />
       </div>
     </SidebarProvider>

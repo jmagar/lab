@@ -3,6 +3,7 @@
 import { Fragment } from 'react'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
+import { AppCommandPaletteTrigger } from '@/components/app-command-palette'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -47,11 +48,10 @@ export function AppHeader({ breadcrumbs = [], actions }: AppHeaderProps) {
         </Breadcrumb>
       )}
 
-      {actions && (
-        <div className="ml-auto flex items-center gap-2">
-          {actions}
-        </div>
-      )}
+      <div className="ml-auto flex items-center gap-2">
+        <AppCommandPaletteTrigger />
+        {actions}
+      </div>
     </header>
   )
 }
