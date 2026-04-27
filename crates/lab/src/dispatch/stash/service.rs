@@ -84,7 +84,9 @@ pub fn component_create(store: &StashStore, p: CreateParams) -> Result<Value, To
                 sdk_kind: "internal_error".into(),
                 message: format!("create empty workspace file `{}`: {e}", file_path.display()),
             })?;
-            dir
+            // workspace_root points to the file itself for file-shaped components
+            // so that revision code can derive the filename from workspace_root.file_name().
+            file_path
         }
     };
 
@@ -130,6 +132,7 @@ pub async fn component_import(store: &StashStore, p: ImportParams) -> Result<Val
 
     let result = import::import_component(
         store,
+        &p.id,
         &p.source_path,
         kind_override,
         &component.name,
@@ -246,10 +249,37 @@ fn component_deploy_blocking(store: &StashStore, p: DeployParams) -> Result<Valu
             let deploy_path = target_path.clone();
 
             // Reject dangerous system paths.
-            let system_paths = ["/etc", "/usr", "/bin", "/sbin", "/boot", "/sys", "/proc"];
-            let deploy_str = deploy_path.to_string_lossy();
+            //
+            // lab-qz6a.20: canonicalize the deploy path before the denylist check
+            // so that paths like `/etc/../home/user/file` cannot bypass the check.
+            // The target directory may not exist yet, so we canonicalize the parent
+            // when available and rejoin the file name component.
+            // For paths that don't exist at all, fall back to lexical normalization
+            // to resolve `.` and `..` components without requiring the path to exist.
+            let canonical = if deploy_path.exists() {
+                std::fs::canonicalize(&deploy_path).unwrap_or_else(|_| normalize_path(&deploy_path))
+            } else if let Some(parent) = deploy_path.parent() {
+                if parent.exists() {
+                    std::fs::canonicalize(parent)
+                        .unwrap_or_else(|_| normalize_path(parent))
+                        .join(deploy_path.file_name().unwrap_or_default())
+                } else {
+                    normalize_path(&deploy_path)
+                }
+            } else {
+                normalize_path(&deploy_path)
+            };
+
+            // Expanded denylist covering common system and sensitive user directories.
+            // lab-qz6a.20: added /var, /tmp, /root, /home, /opt, /srv.
+            let system_paths = [
+                "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot",
+                "/dev", "/proc", "/sys", "/var", "/tmp", "/root", "/home",
+                "/opt", "/srv",
+            ];
+            let canonical_str = canonical.to_string_lossy();
             for system in &system_paths {
-                if deploy_str == *system || deploy_str.starts_with(&format!("{system}/")) {
+                if canonical_str == *system || canonical_str.starts_with(&format!("{system}/")) {
                     return Err(ToolError::Sdk {
                         sdk_kind: "deploy_failed".into(),
                         message: format!(
@@ -282,20 +312,47 @@ fn component_deploy_blocking(store: &StashStore, p: DeployParams) -> Result<Valu
 /// Copy revision files directory to a target path.
 ///
 /// Returns the number of files written.
+///
+/// lab-qz6a.21: canonicalizes `target_path` once here and threads it into
+/// `copy_dir_to` so that every destination path can be checked for containment.
 fn copy_revision_to_path(files_dir: &Path, target_path: &Path) -> Result<usize, ToolError> {
     std::fs::create_dir_all(target_path).map_err(|e| ToolError::Sdk {
         sdk_kind: "deploy_failed".into(),
         message: format!("create deploy target dir `{}`: {e}", target_path.display()),
     })?;
 
+    // Canonicalize target once so containment checks are path-traversal-proof.
+    let canonical_target = std::fs::canonicalize(target_path).map_err(|e| ToolError::Sdk {
+        sdk_kind: "deploy_failed".into(),
+        message: format!("canonicalize deploy target `{}`: {e}", target_path.display()),
+    })?;
+
     let mut count = 0usize;
-    copy_dir_to(files_dir, target_path, &mut count)?;
+    copy_dir_to(files_dir, target_path, &canonical_target, &mut count)?;
     Ok(count)
 }
 
 /// Recursively copy `src` into `dst`, counting files written.
-fn copy_dir_to(src: &Path, dst: &Path, count: &mut usize) -> Result<(), ToolError> {
-    if !src.is_dir() {
+///
+/// `canonical_target` is the canonicalized form of the top-level deploy
+/// target directory, threaded through the recursion for containment checks.
+///
+/// lab-qz6a.21:
+/// - Uses `symlink_metadata()` to detect symlinks without following them;
+///   symlinks in `src` are rejected with `path_traversal`.
+/// - Verifies that every constructed `dst_path` stays within `canonical_target`.
+fn copy_dir_to(
+    src: &Path,
+    dst: &Path,
+    canonical_target: &Path,
+    count: &mut usize,
+) -> Result<(), ToolError> {
+    // Use symlink_metadata so we don't follow symlinks on `src` itself.
+    let src_meta = match std::fs::symlink_metadata(src) {
+        Ok(m) => m,
+        Err(_) => return Ok(()),
+    };
+    if !src_meta.file_type().is_dir() {
         return Ok(());
     }
     for entry in std::fs::read_dir(src).map_err(|e| ToolError::Sdk {
@@ -310,12 +367,45 @@ fn copy_dir_to(src: &Path, dst: &Path, count: &mut usize) -> Result<(), ToolErro
         let rel = entry.file_name();
         let dst_path = dst.join(&rel);
 
-        if src_path.is_dir() {
+        // Reject symlinks in the source tree.
+        let entry_meta = std::fs::symlink_metadata(&src_path).map_err(|e| ToolError::Sdk {
+            sdk_kind: "deploy_failed".into(),
+            message: format!("symlink_metadata `{}`: {e}", src_path.display()),
+        })?;
+        if entry_meta.file_type().is_symlink() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal".into(),
+                message: format!(
+                    "symlink at `{}` rejected during deploy — symlinks not allowed in revision files",
+                    src_path.display()
+                ),
+            });
+        }
+
+        // Verify destination stays within canonical_target (defense-in-depth).
+        // This guards against malformed file names containing path separators.
+        let canonical_dst = if dst_path.exists() {
+            std::fs::canonicalize(&dst_path).unwrap_or_else(|_| dst_path.clone())
+        } else {
+            dst_path.clone()
+        };
+        if !canonical_dst.starts_with(canonical_target) {
+            return Err(ToolError::Sdk {
+                sdk_kind: "path_traversal".into(),
+                message: format!(
+                    "destination path `{}` escapes deploy target `{}`",
+                    dst_path.display(),
+                    canonical_target.display()
+                ),
+            });
+        }
+
+        if entry_meta.file_type().is_dir() {
             std::fs::create_dir_all(&dst_path).map_err(|e| ToolError::Sdk {
                 sdk_kind: "deploy_failed".into(),
                 message: format!("create dir `{}`: {e}", dst_path.display()),
             })?;
-            copy_dir_to(&src_path, &dst_path, count)?;
+            copy_dir_to(&src_path, &dst_path, canonical_target, count)?;
         } else {
             std::fs::copy(&src_path, &dst_path).map_err(|e| ToolError::Sdk {
                 sdk_kind: "deploy_failed".into(),
@@ -334,65 +424,20 @@ fn copy_dir_to(src: &Path, dst: &Path, count: &mut usize) -> Result<(), ToolErro
 // ── Provider sync (stubbed) ───────────────────────────────────────────────────
 
 /// `providers.list` — list registered providers, optionally filtered by component_id.
+///
+/// lab-qz6a.25: uses `store.list_providers_for` (index-backed) for filtered queries,
+/// and `store.list_all_providers` (store method) for unfiltered queries.
+/// The duplicate `list_json_records_from_dir` helper has been removed in favour of
+/// the existing `list_json_records` private helper in `store.rs`.
 pub fn providers_list(store: &StashStore, params: &Value) -> Result<Value, ToolError> {
     if let Some(comp_id) = params.get("component_id").and_then(|v| v.as_str()) {
         let providers = store.list_providers_for(comp_id)?;
         to_json(&providers)
     } else {
-        // No filtering — scan all providers.
-        let dir = store.root().join("providers");
-        if !dir.exists() {
-            return to_json(serde_json::json!([]));
-        }
-        let providers: Vec<lab_apis::stash::StashProviderRecord> =
-            list_json_records_from_dir(&dir)?;
+        // No filtering — return all providers via store method.
+        let providers = store.list_all_providers()?;
         to_json(&providers)
     }
-}
-
-fn list_json_records_from_dir<T: serde::de::DeserializeOwned>(
-    dir: &Path,
-) -> Result<Vec<T>, ToolError> {
-    if !dir.exists() {
-        return Ok(Vec::new());
-    }
-    let mut out = Vec::new();
-    for entry in std::fs::read_dir(dir).map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("read_dir `{}`: {e}", dir.display()),
-    })? {
-        let entry = entry.map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("read_dir entry: {e}"),
-        })?;
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
-            continue;
-        };
-        if !name.ends_with(".json") {
-            continue;
-        }
-        let stem = &name[..name.len() - ".json".len()];
-        if stem.ends_with(".lock") || stem.ends_with(".deploy") {
-            continue;
-        }
-        let bytes = match std::fs::read(&path) {
-            Ok(b) => b,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => {
-                return Err(ToolError::Sdk {
-                    sdk_kind: "internal_error".into(),
-                    message: format!("read `{}`: {e}", path.display()),
-                });
-            }
-        };
-        let record: T = serde_json::from_slice(&bytes).map_err(|e| ToolError::Sdk {
-            sdk_kind: "decode_error".into(),
-            message: format!("decode JSON `{}`: {e}", path.display()),
-        })?;
-        out.push(record);
-    }
-    Ok(out)
 }
 
 /// `provider.link` — register a provider and attach it to a component.
@@ -590,4 +635,35 @@ pub fn target_add(store: &StashStore, p: TargetAddParams) -> Result<Value, ToolE
 pub fn target_remove(store: &StashStore, p: TargetRemoveParams) -> Result<Value, ToolError> {
     store.delete_target(&p.id)?;
     to_json(serde_json::json!({ "removed": true, "id": p.id }))
+}
+
+// ── Path helpers ──────────────────────────────────────────────────────────────
+
+/// Lexically normalize a path by resolving `.` and `..` components without
+/// performing any I/O. This is used as a fallback when `std::fs::canonicalize`
+/// cannot be used (e.g. the target path does not yet exist).
+///
+/// This does not resolve symlinks — it is a component-only transformation.
+/// Use `std::fs::canonicalize` when the path is known to exist.
+fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut components: Vec<Component<'_>> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                // Pop the last normal component if one exists; otherwise keep
+                // the `..` (e.g. for relative paths that go above their start).
+                if matches!(components.last(), Some(Component::Normal(_))) {
+                    components.pop();
+                } else {
+                    components.push(component);
+                }
+            }
+            Component::CurDir => {
+                // Skip `.` components.
+            }
+            c => components.push(c),
+        }
+    }
+    components.iter().collect()
 }

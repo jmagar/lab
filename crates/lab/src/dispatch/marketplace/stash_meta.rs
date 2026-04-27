@@ -534,7 +534,7 @@ mod tests {
 
         let err = write_base_snapshot(dir.path(), "agents/foo.md", "replacement")
             .expect_err("symlink must reject");
-        assert_eq!(err.kind(), "internal_error");
+        assert_eq!(err.kind(), "symlink_rejected");
         assert_eq!(
             std::fs::read_to_string(target).expect("read target"),
             "outside"

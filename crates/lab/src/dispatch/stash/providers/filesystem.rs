@@ -54,9 +54,9 @@ impl FilesystemProvider {
                 message: "filesystem provider requires config.root (non-empty string path)".into(),
             })?;
         if !root.is_absolute() {
-            return Err(ToolError::Sdk {
-                sdk_kind: "invalid_param".into(),
-                message: "filesystem provider root must be an absolute path".into(),
+            return Err(ToolError::InvalidParam {
+                param: "config.root".into(),
+                message: "filesystem provider config.root must be an absolute path".into(),
             });
         }
         Ok(Self { root })
@@ -191,8 +191,14 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), ToolError> {
         })?;
 
         if meta.file_type().is_symlink() {
-            // Skip symlinks — prevents traversal outside the revision store.
-            continue;
+            // Reject symlinks — prevents traversal outside the revision store boundary.
+            return Err(ToolError::Sdk {
+                sdk_kind: "symlink_rejected".into(),
+                message: format!(
+                    "symlink `{}` rejected during recursive copy",
+                    src_path.display()
+                ),
+            });
         }
 
         if meta.file_type().is_dir() {

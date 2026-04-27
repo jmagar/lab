@@ -43,6 +43,11 @@ const DIR_WORKSPACES: &str = "workspaces";
 const DIR_PROVIDERS: &str = "providers";
 const DIR_TARGETS: &str = "targets";
 
+/// Secondary index sub-directory under `revisions/` for per-component revision lists.
+const DIR_REVISIONS_BY_COMPONENT: &str = "revisions/by-component";
+/// Secondary index sub-directory under `providers/` for per-component provider lists.
+const DIR_PROVIDERS_BY_COMPONENT: &str = "providers/by-component";
+
 const EXT_RECORD: &str = ".json";
 const EXT_LOCK: &str = ".lock";
 const EXT_DEPLOY_LOCK: &str = ".deploy.lock";
@@ -156,6 +161,28 @@ impl StashStore {
             .join(format!("{id}{EXT_RECORD}"))
     }
 
+    // ── Path helpers: secondary indexes ─────────────────────────────────────
+
+    /// Path to `revisions/by-component/<component_id>.json`.
+    ///
+    /// This is a JSON array of revision IDs belonging to the component.
+    /// lab-qz6a.24: provides O(1) lookup instead of O(R) full scan.
+    pub fn component_revision_index_path(&self, component_id: &str) -> PathBuf {
+        self.root
+            .join(DIR_REVISIONS_BY_COMPONENT)
+            .join(format!("{component_id}{EXT_RECORD}"))
+    }
+
+    /// Path to `providers/by-component/<component_id>.json`.
+    ///
+    /// This is a JSON array of provider IDs belonging to the component.
+    /// lab-qz6a.25: provides O(1) lookup instead of O(P) full scan.
+    pub fn component_provider_index_path(&self, component_id: &str) -> PathBuf {
+        self.root
+            .join(DIR_PROVIDERS_BY_COMPONENT)
+            .join(format!("{component_id}{EXT_RECORD}"))
+    }
+
     // ── Path helpers: targets ────────────────────────────────────────────────
 
     /// Path to `targets/<id>.json`.
@@ -167,7 +194,8 @@ impl StashStore {
 
     // ── Initialization ───────────────────────────────────────────────────────
 
-    /// Create the five top-level sub-directories if they do not yet exist.
+    /// Create the five top-level sub-directories and secondary index directories
+    /// if they do not yet exist.
     ///
     /// This is idempotent and should be called once at startup.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
@@ -177,6 +205,9 @@ impl StashStore {
             DIR_WORKSPACES,
             DIR_PROVIDERS,
             DIR_TARGETS,
+            // Secondary indexes (lab-qz6a.24, lab-qz6a.25)
+            DIR_REVISIONS_BY_COMPONENT,
+            DIR_PROVIDERS_BY_COMPONENT,
         ] {
             std::fs::create_dir_all(self.root.join(sub))?;
         }
@@ -254,26 +285,87 @@ impl StashStore {
         read_json_optional(&path)
     }
 
-    /// Atomically write a revision's `meta.json`.
+    /// Atomically write a revision's `meta.json` and append the revision ID to
+    /// the per-component index at `revisions/by-component/<component_id>.json`.
+    ///
+    /// Write order: meta first, then index.  A crash between the two leaves
+    /// meta-without-index, which `list_revisions_for` recovers via fallback scan.
+    /// The reverse order (index before meta) would leave a dangling index entry
+    /// that the fallback scan would miss entirely.
+    ///
+    /// Callers are expected to hold the component advisory lock before calling
+    /// this method; do NOT take the lock here (would deadlock via fd_lock reentrancy).
+    ///
+    /// lab-qz6a.24: index append makes `list_revisions_for` O(1) instead of O(R).
     pub fn write_revision_meta(&self, rev: &StashRevision) -> Result<(), ToolError> {
         Self::validate_id(&rev.id)?;
         let path = self.revision_meta_path(&rev.id);
-        write_json_atomic(&path, rev)
+        write_json_atomic(&path, rev)?;
+        self.append_revision_to_index(&rev.component_id, &rev.id)
+    }
+
+    /// Append `rev_id` to the per-component revision index.
+    ///
+    /// Reads the existing index (or starts with an empty vec), appends `rev_id`,
+    /// and writes atomically.  Duplicate IDs are not checked — the caller
+    /// (always `write_revision_meta`) guarantees uniqueness.
+    pub fn append_revision_to_index(
+        &self,
+        component_id: &str,
+        rev_id: &str,
+    ) -> Result<(), ToolError> {
+        Self::validate_id(component_id)?;
+        Self::validate_id(rev_id)?;
+        let index_path = self.component_revision_index_path(component_id);
+        let mut ids: Vec<String> = match std::fs::read(&index_path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(io_internal(e)),
+        };
+        ids.push(rev_id.to_string());
+        write_json_atomic(&index_path, &ids)
     }
 
     /// List all revisions that belong to a given component.
     ///
-    /// Full scan of `revisions/*/meta.json`; filters where
-    /// `meta.component_id == component_id`. No secondary index.
+    /// lab-qz6a.24: uses the per-component index at
+    /// `revisions/by-component/<component_id>.json` when it exists, falling
+    /// back to a full O(R) scan of `revisions/*/meta.json` for backwards
+    /// compatibility with stores written before the index was introduced.
     pub fn list_revisions_for(&self, component_id: &str) -> Result<Vec<StashRevision>, ToolError> {
         Self::validate_id(component_id)?;
+
+        let index_path = self.component_revision_index_path(component_id);
+        if index_path.exists() {
+            // Fast path: index present — load only the revisions listed in it.
+            let bytes = std::fs::read(&index_path).map_err(io_internal)?;
+            let ids: Vec<String> = serde_json::from_slice(&bytes).unwrap_or_default();
+            let mut out = Vec::with_capacity(ids.len());
+            for rev_id in &ids {
+                let meta_path = self.revision_meta_path(rev_id);
+                let rev_bytes = match std::fs::read(&meta_path) {
+                    Ok(b) => b,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(e) => return Err(io_internal(e)),
+                };
+                let rev: StashRevision = serde_json::from_slice(&rev_bytes).map_err(decode_error)?;
+                out.push(rev);
+            }
+            return Ok(out);
+        }
+
+        // Fallback: O(R) full scan — used for stores pre-dating the index.
         let revisions_dir = self.root.join(DIR_REVISIONS);
         if !revisions_dir.exists() {
             return Ok(Vec::new());
         }
         let mut out = Vec::new();
-        for entry in std::fs::read_dir(&revisions_dir).map_err(|e| io_internal(e))? {
-            let entry = entry.map_err(|e| io_internal(e))?;
+        for entry in std::fs::read_dir(&revisions_dir).map_err(io_internal)? {
+            let entry = entry.map_err(io_internal)?;
+            // Skip the by-component sub-directory itself.
+            if entry.file_name() == "by-component" {
+                continue;
+            }
             let meta_path = entry.path().join(FILE_META);
             if !meta_path.is_file() {
                 continue;
@@ -363,27 +455,87 @@ impl StashStore {
         read_json_optional(&path)
     }
 
-    /// Atomically write a provider record.
+    /// Atomically write a provider record and append the provider ID to the
+    /// per-component index at `providers/by-component/<component_id>.json`.
+    ///
+    /// Write order: provider record first, then index (recoverable on crash).
+    /// Callers hold the component advisory lock.
+    ///
+    /// lab-qz6a.25: index append makes `list_providers_for` O(1) instead of O(P).
     pub fn write_provider(&self, provider: &StashProviderRecord) -> Result<(), ToolError> {
         Self::validate_id(&provider.id)?;
         let path = self.provider_record_path(&provider.id);
-        write_json_atomic(&path, provider)
+        write_json_atomic(&path, provider)?;
+        self.append_provider_to_index(&provider.component_id, &provider.id)
+    }
+
+    /// Append `provider_id` to the per-component provider index.
+    ///
+    /// Reads the existing index (or starts with an empty vec), appends `provider_id`,
+    /// and writes atomically.
+    pub fn append_provider_to_index(
+        &self,
+        component_id: &str,
+        provider_id: &str,
+    ) -> Result<(), ToolError> {
+        Self::validate_id(component_id)?;
+        Self::validate_id(provider_id)?;
+        let index_path = self.component_provider_index_path(component_id);
+        let mut ids: Vec<String> = match std::fs::read(&index_path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(io_internal(e)),
+        };
+        ids.push(provider_id.to_string());
+        write_json_atomic(&index_path, &ids)
     }
 
     /// List all provider records that belong to a given component.
     ///
-    /// Full scan of `providers/`; filters where `record.component_id == component_id`.
+    /// lab-qz6a.25: uses the per-component index at
+    /// `providers/by-component/<component_id>.json` when it exists, falling
+    /// back to a full O(P) scan of `providers/` for backwards compatibility.
     pub fn list_providers_for(
         &self,
         component_id: &str,
     ) -> Result<Vec<StashProviderRecord>, ToolError> {
         Self::validate_id(component_id)?;
+
+        let index_path = self.component_provider_index_path(component_id);
+        if index_path.exists() {
+            // Fast path: index present.
+            let bytes = std::fs::read(&index_path).map_err(io_internal)?;
+            let ids: Vec<String> = serde_json::from_slice(&bytes).unwrap_or_default();
+            let mut out = Vec::with_capacity(ids.len());
+            for prov_id in &ids {
+                let prov_path = self.provider_record_path(prov_id);
+                let prov_bytes = match std::fs::read(&prov_path) {
+                    Ok(b) => b,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(e) => return Err(io_internal(e)),
+                };
+                let record: StashProviderRecord =
+                    serde_json::from_slice(&prov_bytes).map_err(decode_error)?;
+                out.push(record);
+            }
+            return Ok(out);
+        }
+
+        // Fallback: O(P) full scan for stores pre-dating the index.
         let dir = self.root.join(DIR_PROVIDERS);
         let all: Vec<StashProviderRecord> = list_json_records(&dir)?;
         Ok(all
             .into_iter()
             .filter(|p| p.component_id == component_id)
             .collect())
+    }
+
+    /// List all provider records in the store (no component filter).
+    ///
+    /// Used by `service.rs::providers_list` when no `component_id` is given.
+    pub fn list_all_providers(&self) -> Result<Vec<StashProviderRecord>, ToolError> {
+        let dir = self.root.join(DIR_PROVIDERS);
+        list_json_records(&dir)
     }
 
     /// Remove the provider record for `id`.
