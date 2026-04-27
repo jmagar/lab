@@ -448,6 +448,7 @@ fn import_blocking(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lab_apis::stash::StashWorkspaceShape;
     use tempfile::tempdir;
 
     fn make_store() -> (StashStore, tempfile::TempDir) {

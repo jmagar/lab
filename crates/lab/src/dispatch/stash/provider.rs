@@ -20,7 +20,7 @@ use crate::dispatch::stash::store::StashStore;
 #[allow(dead_code)]
 pub trait StashProvider: Send + Sync {
     /// Return the driver kind string (e.g. `"filesystem"`).
-    fn kind(&self) -> &str;
+    fn kind(&self) -> &'static str;
 
     /// Push a revision's files to the remote storage location.
     ///
