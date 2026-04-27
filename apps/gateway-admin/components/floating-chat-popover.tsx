@@ -15,7 +15,7 @@
  */
 
 import * as React from 'react'
-import { X, GripHorizontal, Settings2 } from 'lucide-react'
+import { X, GripHorizontal, Settings2, PanelRightClose, PanelRightOpen } from 'lucide-react'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -35,6 +35,7 @@ type PersistedState = {
   position?: Position
   size?: Size
   config?: ChatConfig
+  docked?: boolean
 }
 
 const DEFAULT_SIZE: Size = { w: 420, h: 600 }
@@ -136,6 +137,7 @@ export function FloatingChatPopover({
     const persisted = readPersistedState()
     return persisted.config ?? DEFAULT_CONFIG
   })
+  const [docked, setDocked] = React.useState<boolean>(() => readPersistedState().docked ?? false)
 
   // Sync external config if provided
   const effectiveConfig = externalConfig ?? config
@@ -272,6 +274,8 @@ export function FloatingChatPopover({
 
   // ---- Drag handlers (DOM ref + rAF, not React state) ----
   const onPointerDownHeader = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest('button')) return
+    if (docked) return
     if (event.button !== 0) return
     event.preventDefault()
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
@@ -285,7 +289,7 @@ export function FloatingChatPopover({
       pendingX: position.x,
       pendingY: position.y,
     }
-  }, [position.x, position.y])
+  }, [docked, position.x, position.y])
 
   const onPointerMoveHeader = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (!dragRef.current?.active) return
@@ -410,6 +414,31 @@ export function FloatingChatPopover({
   }
 
   // ---- Desktop Popover ----
+  const isHidden = isOnChatPage || !open
+  const dockedStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: '380px',
+    height: '100dvh',
+    transform: 'none',
+    zIndex: 50,
+    visibility: isHidden ? 'hidden' : 'visible',
+    pointerEvents: isHidden ? 'none' : 'auto',
+  }
+  const floatingStyle: React.CSSProperties = {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: `${size.w}px`,
+    height: `${size.h}px`,
+    transform: positionInitialized ? `translate3d(${position.x}px, ${position.y}px, 0)` : undefined,
+    zIndex: 50,
+    visibility: isHidden ? 'hidden' : 'visible',
+    pointerEvents: isHidden ? 'none' : 'auto',
+  }
+
   return (
     <div
       id="floating-chat-panel"
@@ -418,21 +447,11 @@ export function FloatingChatPopover({
       aria-modal="true"
       aria-labelledby="floating-chat-title"
       tabIndex={-1}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: `${size.w}px`,
-        height: `${size.h}px`,
-        transform: positionInitialized ? `translate3d(${position.x}px, ${position.y}px, 0)` : undefined,
-        zIndex: 50,
-        // CSS-hidden (not unmounted) on /chat page or when closed
-        visibility: isOnChatPage || !open ? 'hidden' : 'visible',
-        pointerEvents: isOnChatPage || !open ? 'none' : 'auto',
-      }}
+      style={docked ? dockedStyle : floatingStyle}
       className={cn(
-        'flex flex-col overflow-hidden rounded-aurora-3',
-        'border border-aurora-border-strong',
+        'flex flex-col overflow-hidden',
+        docked ? 'rounded-none border-l' : 'rounded-aurora-3 border',
+        'border-aurora-border-strong',
         'bg-aurora-panel-strong',
         'shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]',
         'outline-none',
@@ -448,10 +467,15 @@ export function FloatingChatPopover({
         onPointerMove={onPointerMoveHeader}
         onPointerUp={onPointerUpHeader}
         onPointerCancel={onPointerUpHeader}
-        className="flex h-12 shrink-0 cursor-grab items-center gap-2 border-b border-aurora-border-strong bg-aurora-panel-strong px-3 select-none active:cursor-grabbing"
+        className={cn(
+          'flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-strong bg-aurora-panel-strong px-3 select-none',
+          !docked && 'cursor-grab active:cursor-grabbing',
+        )}
         style={{ touchAction: 'none' }}
       >
-        <GripHorizontal className="size-3.5 text-aurora-text-muted/60" aria-hidden="true" />
+        {!docked && (
+          <GripHorizontal className="size-3.5 text-aurora-text-muted/60" aria-hidden="true" />
+        )}
         <span
           id="floating-chat-title"
           className="flex-1 truncate text-[13px] font-semibold text-aurora-text-primary"
@@ -473,6 +497,24 @@ export function FloatingChatPopover({
           )}
         >
           <Settings2 className="size-3.5" />
+        </button>
+
+        {/* Dock toggle button */}
+        <button
+          type="button"
+          onClick={() => {
+            const newDocked = !docked
+            setDocked(newDocked)
+            patchPersistedState({ docked: newDocked })
+          }}
+          aria-label={docked ? 'Undock chat' : 'Dock chat to right side'}
+          className="flex size-6 items-center justify-center rounded text-aurora-text-muted/60 hover:bg-aurora-hover-bg hover:text-aurora-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary"
+        >
+          {docked ? (
+            <PanelRightClose className="size-3.5" />
+          ) : (
+            <PanelRightOpen className="size-3.5" />
+          )}
         </button>
 
         {/* Close button */}
@@ -509,29 +551,31 @@ export function FloatingChatPopover({
       </div>
 
       {/* ---- Resize handle (bottom-right corner) ---- */}
-      <div
-        onPointerDown={onResizePointerDown}
-        onPointerMove={onResizePointerMove}
-        onPointerUp={onResizePointerUp}
-        onPointerCancel={onResizePointerUp}
-        className="absolute bottom-0 right-0 size-4 cursor-se-resize"
-        style={{ touchAction: 'none' }}
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="none"
-          className="size-full text-aurora-text-muted/30"
+      {!docked && (
+        <div
+          onPointerDown={onResizePointerDown}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          onPointerCancel={onResizePointerUp}
+          className="absolute bottom-0 right-0 size-4 cursor-se-resize"
+          style={{ touchAction: 'none' }}
           aria-hidden="true"
         >
-          <path
-            d="M14 2L2 14M14 8L8 14M14 14H14"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-        </svg>
-      </div>
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            className="size-full text-aurora-text-muted/30"
+            aria-hidden="true"
+          >
+            <path
+              d="M14 2L2 14M14 8L8 14M14 14H14"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      )}
     </div>
   )
 }

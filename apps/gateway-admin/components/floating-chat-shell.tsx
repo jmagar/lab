@@ -53,7 +53,7 @@ export function FloatingChatShell({
   const { messages } = useChatSessionStream()
 
   // ---- Local state ----
-  const [sessionPanelOpen, setSessionPanelOpen] = React.useState(true)
+  const [sessionPanelOpen, setSessionPanelOpen] = React.useState(false)
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
 
   const providerReady = Boolean(providerHealth?.ready)
