@@ -913,20 +913,22 @@ fn push_session_update(
             }
         }
         SessionUpdate::ToolCallUpdate(update) => {
+            let tool_call_id = update.tool_call_id.to_string();
+            let status = update
+                .fields
+                .status
+                .as_ref()
+                .and_then(enum_value)
+                .unwrap_or_else(|| "updated".to_string());
             event_tx
                 .send(AcpEvent::ToolCallUpdate {
                     id: uuid::Uuid::new_v4().to_string(),
                     created_at: jiff::Timestamp::now().to_string(),
                     session_id: session_id.to_string(),
                     seq: 0,
-                    tool_call_id: update.tool_call_id.to_string(),
-                    output: tool_call_update_output(&update),
-                    status: update
-                        .fields
-                        .status
-                        .as_ref()
-                        .and_then(enum_value)
-                        .unwrap_or_else(|| "updated".to_string()),
+                    tool_call_id,
+                    output: tool_call_update_output(update),
+                    status,
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
@@ -1154,17 +1156,18 @@ fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEve
     }
 }
 
-fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdate) -> Value {
-    let fields = &update.fields;
+fn tool_call_update_output(update: agent_client_protocol::schema::ToolCallUpdate) -> Value {
+    let meta = update.meta;
+    let fields = update.fields;
     // When raw_output is present and is an Object, inject the wrapper-level _meta into it
     // (outer wins — the wrapper _meta takes precedence over any _meta already in raw_output).
     // Non-object raw_output passes through unchanged.
     // Never log _meta field values (cwd, terminal_id, signal, data).
-    if let Some(raw_output) = fields.raw_output.clone() {
+    if let Some(raw_output) = fields.raw_output {
         match raw_output {
             Value::Object(mut map) => {
-                if let Some(meta) = update.meta.as_ref() {
-                    map.insert("_meta".into(), Value::Object(meta.clone()));
+                if let Some(m) = meta {
+                    map.insert("_meta".into(), Value::Object(m));
                 }
                 return Value::Object(map);
             }
@@ -1182,8 +1185,8 @@ fn tool_call_update_output(update: &agent_client_protocol::schema::ToolCallUpdat
         }),
         "raw_input": fields.raw_input,
     });
-    if let Some(meta) = update.meta.as_ref() {
-        payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(meta.clone()));
+    if let Some(m) = meta {
+        payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(m));
     }
     payload
 }
@@ -1413,7 +1416,7 @@ mod tests {
         let fields = ToolCallUpdateFields::new().raw_output(raw_output_with_inner_meta);
         let update = ToolCallUpdate::new("tc-merge", fields).meta(outer_meta);
 
-        let output = tool_call_update_output(&update);
+        let output = tool_call_update_output(update);
 
         // Outer _meta must win — source should be "outer", not "inner".
         let meta_value = output.get("_meta").expect("_meta key present after merge");
