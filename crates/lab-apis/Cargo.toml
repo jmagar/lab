@@ -29,6 +29,9 @@ russh-config.workspace = true
 quick-xml.workspace    = true
 rusqlite.workspace     = true
 tempfile.workspace     = true
+chrono                 = { version = "0.4", default-features = false, features = ["serde", "clock"], optional = true }
+sqlx-core              = { version = "0.8.6", default-features = false, features = ["_rt-tokio", "_tls-rustls-aws-lc-rs"], optional = true }
+sqlx-mysql             = { version = "0.8.6", default-features = false, features = ["chrono"], optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
@@ -58,6 +61,7 @@ openai      = []
 qdrant      = []
 tei         = []
 apprise     = []
+beads       = ["dep:sqlx-core", "dep:sqlx-mysql", "dep:chrono"]
 deploy      = []
 mcpregistry  = []
 acp_registry = []
@@ -69,6 +73,7 @@ all = [
     "memos", "bytestash", "paperless",
     "arcane", "unraid", "unifi",
     "gotify", "openai", "qdrant", "tei", "apprise",
+    "beads",
     "deploy", "mcpregistry", "acp_registry",
 ]
 

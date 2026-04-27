@@ -130,3 +130,7 @@ pub mod mcpregistry;
 /// ACP Agent Registry client — discover and install ACP-compatible AI coding agents.
 #[cfg(feature = "acp_registry")]
 pub mod acp_registry;
+
+/// Beads — local task and issue tracker backed by Dolt MySQL.
+#[cfg(feature = "beads")]
+pub mod beads;
