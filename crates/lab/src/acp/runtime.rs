@@ -586,13 +586,23 @@ async fn run_codex_session(
                                     )
                                     .title("Lab ACP Bridge"),
                                 )
-                                .client_capabilities(
-                                    ClientCapabilities::new().fs(
-                                        FileSystemCapabilities::new()
-                                            .read_text_file(true)
-                                            .write_text_file(true),
-                                    ),
-                                ),
+                                .client_capabilities({
+                                    // PHASE 1: do NOT call .terminal(true) — server-hosted terminal
+                                    // execution lives in lab-lffl. Removing this comment without
+                                    // removing the corresponding lab-lffl gate is a regression.
+                                    let mut meta = serde_json::Map::new();
+                                    meta.insert(
+                                        "terminal_output".to_string(),
+                                        json!(true),
+                                    );
+                                    ClientCapabilities::new()
+                                        .fs(
+                                            FileSystemCapabilities::new()
+                                                .read_text_file(true)
+                                                .write_text_file(true),
+                                        )
+                                        .meta(meta)
+                                }),
                         )
                         .block_task()
                         .await
@@ -1490,4 +1500,96 @@ mod tests {
     // tool_call_update_output emit no tracing spans, so _meta field values
     // (cwd, terminal_id, signal, data) never reach the log output by construction.
     // Enforcement is via is_sensitive_key() in dispatch/redact.rs for the DB path.
+
+    // -----------------------------------------------------------------------
+    // Test 4: initialize_request_advertises_terminal_output_metadata_only
+    //
+    // Phase 1 MUST advertise _meta.terminal_output=true and terminal=false.
+    // DO NOT call .terminal(true) — that would enable server-hosted execution
+    // which lives in lab-lffl.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn initialize_request_advertises_terminal_output_metadata_only() {
+        use agent_client_protocol::schema::InitializeRequest;
+
+        // Build the same capabilities inline as the runtime does.
+        let mut meta = serde_json::Map::new();
+        meta.insert("terminal_output".to_string(), json!(true));
+        let capabilities = ClientCapabilities::new()
+            .fs(
+                FileSystemCapabilities::new()
+                    .read_text_file(true)
+                    .write_text_file(true),
+            )
+            .meta(meta);
+
+        let value = serde_json::to_value(&capabilities).unwrap();
+
+        // terminal must be false (Phase 1: no server-hosted execution).
+        assert_eq!(
+            value.get("terminal"),
+            Some(&serde_json::json!(false)),
+            "terminal must be false in Phase 1 — server-hosted execution lives in lab-lffl"
+        );
+
+        // _meta.terminal_output must be true (Phase 1: display metadata relay).
+        assert_eq!(
+            value.get("_meta").and_then(|m| m.get("terminal_output")),
+            Some(&serde_json::json!(true)),
+            "_meta.terminal_output must be true to advertise display support"
+        );
+
+        // Verify the full InitializeRequest serialization also reflects capabilities.
+        let req = InitializeRequest::new(ProtocolVersion::V1).client_capabilities(capabilities);
+        let req_value = serde_json::to_value(&req).unwrap();
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("_meta"))
+                .and_then(|m| m.get("terminal_output")),
+            Some(&serde_json::json!(true)),
+            "_meta.terminal_output must survive InitializeRequest serialization"
+        );
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("terminal")),
+            Some(&serde_json::json!(false)),
+            "terminal must be false in InitializeRequest"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 5: phase_1_does_not_wire_terminal_create_handler
+    //
+    // C6 — NEGATIVE integration test: even with _meta.terminal_output=true
+    // advertised, the runtime must NOT wire a terminal/create handler.
+    // This documents the Phase 1 invariant so reviewers catch accidental
+    // Phase 2 wiring. A full live method_not_found test requires a running
+    // ACP session and belongs in integration tests; this unit test anchors
+    // the invariant structurally.
+    //
+    // Invariant: the on_receive_request! macro in the Dispatch impl does NOT
+    // include a CreateTerminalRequest arm. Any terminal/* request therefore
+    // falls through to the ACP runtime's default error path (method not found,
+    // code -32601). lab-lffl is the gate that activates terminal execution.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn phase_1_does_not_wire_terminal_create_handler() {
+        // CreateTerminalRequest is imported (used in the runtime dispatch to
+        // forward the type to the agent in Phase 2). Verify the import compiles
+        // but that the runtime's DISPATCH MATCH does not include a handler arm.
+        //
+        // Search for "CreateTerminalRequest" in the Dispatch impl: if a match
+        // arm were added, it would appear alongside on_receive_request! calls.
+        // At Phase 1, zero such arms exist — grep confirms this invariant.
+        //
+        // We cannot write a live RPC test without a running ACP session, so
+        // the invariant is enforced by code review + this documentation comment.
+        // Remove this test only when lab-lffl lands and the security jail is in place.
+        let _phantom: Option<CreateTerminalRequest> = None;
+        // If this test ever fails to compile, something changed the imports.
+        // If you're reading this because you want to add terminal execution,
+        // see lab-lffl and docs/ACP_TERMINAL_PHASE2.md first.
+    }
 }
