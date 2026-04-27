@@ -35,6 +35,9 @@ pub mod acp;
 /// Doctor — bootstrap health audit: env vars, system probes, service reachability.
 pub mod doctor;
 
+/// Stash — component versioning and deployment (skills, agents, configs, binaries).
+pub mod stash;
+
 /// Radarr movie management client.
 #[cfg(feature = "radarr")]
 pub mod radarr;

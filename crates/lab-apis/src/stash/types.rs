@@ -1,0 +1,264 @@
+//! Pure domain types for the stash service.
+//!
+//! No I/O, no network, no env reads. All types are plain data structures
+//! intended to be serialised to/from JSON on the wire and in storage.
+
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+// ---------------------------------------------------------------------------
+// Workspace shape
+// ---------------------------------------------------------------------------
+
+/// Describes whether a component occupies a single file or a directory on the
+/// host workspace.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StashWorkspaceShape {
+    /// The component is a single file (e.g. a settings JSON or a shell script).
+    File,
+    /// The component is a directory tree (e.g. a skill or agent bundle).
+    Directory,
+}
+
+// ---------------------------------------------------------------------------
+// Component kind
+// ---------------------------------------------------------------------------
+
+/// Every artifact type that stash tracks.  All 13 kinds are enumerated — do
+/// not collapse or merge variants.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum StashComponentKind {
+    /// A Claude Code skill definition (directory).
+    Skill,
+    /// An AI agent bundle (directory).
+    Agent,
+    /// A slash command definition (directory).
+    Command,
+    /// A notification channel definition (directory).
+    Channel,
+    /// A process / log monitor definition (directory).
+    Monitor,
+    /// A lifecycle hook (directory).
+    Hook,
+    /// An output style / renderer (directory).
+    OutputStyle,
+    /// A visual theme (directory).
+    Theme,
+    /// Settings file (file).
+    Settings,
+    /// MCP configuration file (file).
+    McpConfig,
+    /// LSP configuration file (file).
+    LspConfig,
+    /// A shell or script file (file).
+    Script,
+    /// A compiled binary artefact (file).
+    BinFile,
+}
+
+impl StashComponentKind {
+    /// Return the workspace shape for this kind.
+    ///
+    /// File-shaped kinds live at a single path; directory-shaped kinds occupy a
+    /// directory tree.
+    #[must_use]
+    pub const fn workspace_shape(self) -> StashWorkspaceShape {
+        match self {
+            // directory-shaped kinds
+            Self::Skill
+            | Self::Agent
+            | Self::Command
+            | Self::Channel
+            | Self::Monitor
+            | Self::Hook
+            | Self::OutputStyle
+            | Self::Theme => StashWorkspaceShape::Directory,
+
+            // file-shaped kinds
+            Self::Settings | Self::McpConfig | Self::LspConfig | Self::Script | Self::BinFile => {
+                StashWorkspaceShape::File
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Provider capabilities
+// ---------------------------------------------------------------------------
+
+/// Declares which operations a storage provider supports.
+///
+/// The spec listed `StashProviderCapabilities` by name without defining its
+/// fields.  This struct captures the obvious provider-shape capabilities; the
+/// full field set should be revisited when the provider API is specified.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StashProviderCapabilities {
+    /// Provider can retrieve component content.
+    pub can_read: bool,
+    /// Provider can persist new or updated content.
+    pub can_write: bool,
+    /// Provider maintains a history of revisions.
+    pub supports_revisions: bool,
+    /// Provider can lock components to prevent concurrent writes.
+    pub supports_locking: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Limits
+// ---------------------------------------------------------------------------
+
+/// Compile-time constants that constrain stash operations.
+pub mod limits {
+    /// Maximum length of a component name, in bytes.
+    pub const MAX_COMPONENT_NAME_LEN: usize = 128;
+    /// Maximum length of a component label, in bytes.
+    pub const MAX_COMPONENT_LABEL_LEN: usize = 64;
+    /// Maximum length of a revision label, in bytes.
+    pub const MAX_REVISION_LABEL_LEN: usize = 128;
+    /// Maximum size of a single tracked file (50 MiB).
+    pub const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
+    /// Maximum total size of a component workspace (200 MiB).
+    pub const MAX_WORKSPACE_SIZE: u64 = 200 * 1024 * 1024;
+    /// Maximum number of components tracked per stash instance.
+    pub const MAX_COMPONENTS: usize = 10_000;
+    /// Deploy operation timeout in milliseconds.
+    pub const DEPLOY_TIMEOUT_MS: u64 = 30_000;
+}
+
+// ---------------------------------------------------------------------------
+// Deploy target
+// ---------------------------------------------------------------------------
+
+/// Destination for a stash deploy operation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StashDeployTarget {
+    /// A local filesystem path on this host.
+    Local {
+        /// Stable identifier for this target.
+        id: String,
+        /// Human-readable name shown in UI/logs.
+        name: String,
+        /// Absolute path to the deployment root.
+        path: PathBuf,
+    },
+    /// A remote host accessed through a gateway.
+    Remote {
+        /// Stable identifier for this target.
+        id: String,
+        /// Human-readable name shown in UI/logs.
+        name: String,
+        /// Identifier of the gateway that proxies access to this host.
+        gateway_id: String,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Export options
+// ---------------------------------------------------------------------------
+
+/// Options that control how a component is exported.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StashExportOptions {
+    /// When `true`, secrets embedded in the component are included in the
+    /// export.  Defaults to `false` so that safe-by-default exports never leak
+    /// credentials.
+    #[serde(default)]
+    pub include_secrets: bool,
+    /// When `true`, overwrite an existing export at the destination without
+    /// prompting.
+    #[serde(default)]
+    pub force: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Core structs
+// ---------------------------------------------------------------------------
+
+/// A tracked component — the top-level unit of versioning in stash.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashComponent {
+    /// Stable opaque identifier (UUID or similar).
+    pub id: String,
+    /// Artifact type of this component.
+    pub kind: StashComponentKind,
+    /// Short name used in CLI and MCP surface (`lab stash get <name>`).
+    pub name: String,
+    /// Optional human-readable label / description.
+    pub label: Option<String>,
+    /// Revision ID of the currently checked-out revision, if any.
+    pub head_revision_id: Option<String>,
+    /// Upstream origin URI, if this component was installed from a registry or
+    /// remote stash.
+    pub origin: Option<String>,
+    /// Absolute path to the workspace root on the local host.
+    pub workspace_root: PathBuf,
+    /// Whether the workspace root is a file or a directory.
+    pub workspace_shape: StashWorkspaceShape,
+    /// Unix permission bits for `BinFile` components only.
+    ///
+    /// Stored as `mode & 0o0755` (execute bits only; setuid/setgid/sticky
+    /// always stripped). `None` for non-`BinFile` components.
+    pub unix_mode: Option<u32>,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// ISO-8601 last-updated timestamp.
+    pub updated_at: String,
+}
+
+/// An immutable snapshot of a component's content at a point in time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashRevision {
+    /// Stable opaque identifier for this revision.
+    pub id: String,
+    /// ID of the component this revision belongs to.
+    pub component_id: String,
+    /// Optional human-readable label (e.g. `"v1.2.3"` or `"initial"`).
+    pub label: Option<String>,
+    /// SHA-256 hex digest of the revision's content archive.
+    pub content_digest: String,
+    /// ISO-8601 creation timestamp.
+    pub created_at: String,
+    /// Number of files captured in this revision.
+    pub file_count: usize,
+    /// Unix permission bits for `BinFile` components only.
+    ///
+    /// Only the lower 9 permission bits are stored (`mode & 0o0777`);
+    /// setuid, setgid, and sticky bits are always stripped before storage.
+    pub unix_mode: Option<u32>,
+}
+
+/// Associates a storage provider with a component.
+///
+/// `config` is intentionally typed as `serde_json::Value` — provider-specific
+/// fields vary and should never include secret values; secrets live in the
+/// provider's credential store, not here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashProviderRecord {
+    /// Stable opaque identifier for this provider record.
+    pub id: String,
+    /// ID of the component this record is attached to.
+    pub component_id: String,
+    /// Provider driver name (e.g. `"filesystem"`).
+    pub kind: String,
+    /// Human-readable label for this provider instance.
+    pub label: String,
+    /// Provider-specific non-secret configuration.
+    pub config: serde_json::Value,
+}
+
+/// Lightweight summary of a storage provider, used in list responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StashProviderSummary {
+    /// Stable opaque identifier.
+    pub id: String,
+    /// Provider driver name (e.g. `"filesystem"`).
+    pub kind: String,
+    /// Human-readable label.
+    pub label: String,
+    /// Number of components currently managed by this provider.
+    pub component_count: usize,
+}

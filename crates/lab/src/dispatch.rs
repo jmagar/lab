@@ -30,6 +30,7 @@ pub mod openai;
 pub mod overseerr;
 #[cfg(feature = "paperless")]
 pub mod paperless;
+pub mod path_safety;
 #[cfg(feature = "plex")]
 pub mod plex;
 #[cfg(feature = "prowlarr")]
@@ -45,6 +46,7 @@ pub mod redact;
 pub mod sabnzbd;
 #[cfg(feature = "sonarr")]
 pub mod sonarr;
+pub mod stash;
 #[cfg(feature = "tailscale")]
 pub mod tailscale;
 #[cfg(feature = "tautulli")]
