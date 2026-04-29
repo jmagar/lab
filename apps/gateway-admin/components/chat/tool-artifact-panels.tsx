@@ -359,7 +359,8 @@ export function ToolArtifactPanels({
       ) : null}
 
       {artifact.terminalOutput ? (
-        <div className="mt-2 overflow-hidden rounded-aurora-2 border border-aurora-border-default/70">
+        // O6: bounded height prevents re-measure storm during streaming + virtualization.
+        <div className="mt-2 max-h-96 overflow-auto rounded-aurora-2 border border-aurora-border-default/70">
           <Terminal
             output={artifact.terminalOutput}
             className="rounded-none border-0 bg-aurora-page-bg text-aurora-text-primary"

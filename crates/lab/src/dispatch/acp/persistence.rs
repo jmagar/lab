@@ -809,9 +809,17 @@ fn load_or_generate_hmac_key() -> Vec<u8> {
             return secret.into_bytes();
         }
     }
+    tracing::warn!(
+        surface = "acp",
+        service = "persistence",
+        action = "hmac_key_init",
+        kind = "ephemeral_key",
+        "LAB_ACP_HMAC_SECRET is not set; using an ephemeral non-random HMAC key. \
+         Set LAB_ACP_HMAC_SECRET in ~/.lab/.env for persistent, \
+         cryptographically-random protection."
+    );
     // Derive a 32-byte key from process ID + monotonic time via SHA-256.
-    // This is NOT cryptographically random but is unique per process
-    // instance. For production, set LAB_ACP_HMAC_SECRET.
+    // NOT cryptographically random — unique per process instance only.
     use sha2::Digest;
     let pid = std::process::id();
     let now = std::time::SystemTime::now()

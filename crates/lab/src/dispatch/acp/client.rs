@@ -17,9 +17,22 @@ fn registry_slot() -> &'static RwLock<Option<Arc<AcpSessionRegistry>>> {
 /// Install the shared registry into the process-global slot.
 ///
 /// Called once at startup (e.g. `cli/serve.rs`) with the same `Arc<AcpSessionRegistry>`
-/// that is stored in `AppState`. Subsequent `require_registry()` calls return this Arc.
+/// that is stored in `AppState`. Panics if called a second time; tests that need a fresh
+/// registry should call `reset_registry_for_testing()` between runs.
 pub fn install_registry(registry: Arc<AcpSessionRegistry>) {
-    *registry_slot().write().expect("ACP registry lock poisoned") = Some(registry);
+    let mut slot = registry_slot().write().expect("ACP registry lock poisoned");
+    assert!(slot.is_none(), "ACP registry installed twice");
+    *slot = Some(registry);
+}
+
+/// Clear the process-global registry slot.
+///
+/// **For tests only.** Allows a test that called `install_registry` to reset state so
+/// subsequent calls in other tests do not panic on the double-install assert.
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn reset_registry_for_testing() {
+    *registry_slot().write().expect("ACP registry lock poisoned") = None;
 }
 
 /// Return the installed registry, or a structured error if not yet installed.

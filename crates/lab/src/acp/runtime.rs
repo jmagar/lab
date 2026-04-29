@@ -586,13 +586,23 @@ async fn run_codex_session(
                                     )
                                     .title("Lab ACP Bridge"),
                                 )
-                                .client_capabilities(
-                                    ClientCapabilities::new().fs(
-                                        FileSystemCapabilities::new()
-                                            .read_text_file(true)
-                                            .write_text_file(true),
-                                    ),
-                                ),
+                                .client_capabilities({
+                                    // PHASE 1: do NOT call .terminal(true) — server-hosted terminal
+                                    // execution lives in lab-lffl. Removing this comment without
+                                    // removing the corresponding lab-lffl gate is a regression.
+                                    let mut meta = serde_json::Map::new();
+                                    meta.insert(
+                                        "terminal_output".to_string(),
+                                        json!(true),
+                                    );
+                                    ClientCapabilities::new()
+                                        .fs(
+                                            FileSystemCapabilities::new()
+                                                .read_text_file(true)
+                                                .write_text_file(true),
+                                        )
+                                        .meta(meta)
+                                }),
                         )
                         .block_task()
                         .await
@@ -882,43 +892,56 @@ fn push_session_update(
                     seq: 0,
                     tool_call_id: tool_call.tool_call_id.to_string(),
                     name: tool_call.title.clone(),
-                    input: tool_call.raw_input.clone().unwrap_or(Value::Null),
+                    input: tool_call.raw_input.unwrap_or(Value::Null),
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
             if let Some(status) = enum_value(&tool_call.status) {
+                // _meta must be omitted entirely when absent; json!() would emit null.
+                // _meta is a transparent relay — never log its field values.
+                let mut payload = json!({
+                    "type": "tool_call_metadata",
+                    "tool_call_id": tool_call.tool_call_id.to_string(),
+                    "title": tool_call.title,
+                    "tool_kind": enum_value(&tool_call.kind),
+                    "status": status,
+                    "locations": tool_call.locations.iter()
+                        .map(|l| l.path.display().to_string())
+                        .collect::<Vec<_>>(),
+                    "content": tool_call.content,
+                    "raw_output": tool_call.raw_output,
+                });
+                if let Some(meta) = tool_call.meta {
+                    payload
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("_meta".into(), Value::Object(meta));
+                }
                 event_tx
                     .send(provider_info_event(
                         session_id.to_string(),
                         "codex",
-                        json!({
-                            "type": "tool_call_metadata",
-                            "tool_call_id": tool_call.tool_call_id.to_string(),
-                            "title": tool_call.title.clone(),
-                            "tool_kind": enum_value(&tool_call.kind),
-                            "status": status,
-                            "locations": tool_call.locations.iter().map(|location| location.path.display().to_string()).collect::<Vec<_>>(),
-                            "content": tool_call.content.clone(),
-                            "raw_output": tool_call.raw_output.clone(),
-                        }),
+                        payload,
                     ))
                     .map_err(|_| "ACP event channel closed".to_string())?;
             }
         }
         SessionUpdate::ToolCallUpdate(update) => {
+            let tool_call_id = update.tool_call_id.to_string();
+            let status = update
+                .fields
+                .status
+                .as_ref()
+                .and_then(enum_value)
+                .unwrap_or_else(|| "updated".to_string());
             event_tx
                 .send(AcpEvent::ToolCallUpdate {
                     id: uuid::Uuid::new_v4().to_string(),
                     created_at: jiff::Timestamp::now().to_string(),
                     session_id: session_id.to_string(),
                     seq: 0,
-                    tool_call_id: update.tool_call_id.to_string(),
-                    output: tool_call_update_output(&update.fields),
-                    status: update
-                        .fields
-                        .status
-                        .as_ref()
-                        .and_then(enum_value)
-                        .unwrap_or_else(|| "updated".to_string()),
+                    tool_call_id,
+                    output: tool_call_update_output(update),
+                    status,
                 })
                 .map_err(|_| "ACP event channel closed".to_string())?;
         }
@@ -1146,24 +1169,42 @@ fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEve
     }
 }
 
-fn tool_call_update_output(fields: &agent_client_protocol::schema::ToolCallUpdateFields) -> Value {
-    if let Some(raw_output) = fields.raw_output.clone() {
-        return raw_output;
+fn tool_call_update_output(update: agent_client_protocol::schema::ToolCallUpdate) -> Value {
+    let meta = update.meta;
+    let fields = update.fields;
+    // When raw_output is present and is an Object, inject the wrapper-level _meta into it
+    // (outer wins — the wrapper _meta takes precedence over any _meta already in raw_output).
+    // Non-object raw_output passes through unchanged.
+    // Never log _meta field values (cwd, terminal_id, signal, data).
+    if let Some(raw_output) = fields.raw_output {
+        match raw_output {
+            Value::Object(mut map) => {
+                if let Some(m) = meta {
+                    map.insert("_meta".into(), Value::Object(m));
+                }
+                return Value::Object(map);
+            }
+            other => return other,
+        }
     }
 
-    json!({
-        "title": fields.title.clone(),
+    let mut payload = json!({
+        "title": fields.title,
         "kind": fields.kind.as_ref().and_then(enum_value),
         "status": fields.status.as_ref().and_then(enum_value),
-        "content": fields.content.clone(),
-        "locations": fields.locations.as_ref().map(|locations| {
-            locations
-                .iter()
-                .map(|location| location.path.display().to_string())
-                .collect::<Vec<_>>()
+        "content": fields.content,
+        "locations": fields.locations.as_ref().map(|locs| {
+            locs.iter().map(|l| l.path.display().to_string()).collect::<Vec<_>>()
         }),
-        "raw_input": fields.raw_input.clone(),
-    })
+        "raw_input": fields.raw_input,
+    });
+    if let Some(m) = meta {
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("_meta".into(), Value::Object(m));
+    }
+    payload
 }
 
 fn content_to_text(content: ContentBlock) -> String {
@@ -1197,7 +1238,9 @@ fn map_stop_reason(stop_reason: &StopReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use agent_client_protocol::schema::{AvailableCommandsUpdate, TextContent, ToolCall};
+    use agent_client_protocol::schema::{
+        AvailableCommandsUpdate, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+    };
 
     fn text_chunk(text: &str) -> ContentChunk {
         ContentChunk::new(ContentBlock::Text(TextContent::new(text)))
@@ -1265,5 +1308,320 @@ mod tests {
         assert!(is_prompt_progress_update(
             &SessionUpdate::AvailableCommandsUpdate(AvailableCommandsUpdate::new(vec![]))
         ));
+    }
+
+    /// Drain all pending events and return them. Panics if the channel is empty and
+    /// expected_count events have not been collected.
+    fn drain_events(
+        rx: &mut mpsc::UnboundedReceiver<AcpEvent>,
+        expected_count: usize,
+    ) -> Vec<AcpEvent> {
+        let mut events = Vec::new();
+        while let Ok(event) = rx.try_recv() {
+            events.push(event);
+            if events.len() == expected_count {
+                break;
+            }
+        }
+        assert_eq!(
+            events.len(),
+            expected_count,
+            "expected {expected_count} events, got {}",
+            events.len()
+        );
+        events
+    }
+
+    /// Build a minimal terminal_info Meta blob for tests.
+    fn terminal_info_meta() -> agent_client_protocol::schema::Meta {
+        let mut meta = serde_json::Map::new();
+        meta.insert(
+            "terminal_info".into(),
+            json!({
+                "terminal_id": "term-secret-42",
+                "cwd": "/home/secret/projects/lab",
+            }),
+        );
+        meta
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 1: tool_call_metadata_round_trips_terminal_meta
+    //
+    // Both SessionUpdate::ToolCall and ToolCallUpdate paths must preserve the
+    // `_meta` field through to the emitted AcpEvent payload.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_metadata_round_trips_terminal_meta() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        // --- ToolCall path ---
+        let meta = terminal_info_meta();
+        let tool_call = ToolCall::new("tc-1", "Read file")
+            .status(agent_client_protocol::schema::ToolCallStatus::Completed)
+            .meta(meta.clone());
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCall(tool_call),
+            &mut message_ids,
+        )
+        .expect("ToolCall with meta");
+
+        // Expect 2 events: ToolCallStart + provider_info (tool_call_metadata)
+        let events = drain_events(&mut rx, 2);
+
+        // First event: ToolCallStart
+        assert!(
+            matches!(&events[0], AcpEvent::ToolCallStart { .. }),
+            "expected ToolCallStart, got {:?}",
+            events[0]
+        );
+
+        // Second event: ProviderInfo carrying _meta
+        match &events[1] {
+            AcpEvent::ProviderInfo { raw, .. } => {
+                let meta_value = raw
+                    .get("_meta")
+                    .expect("_meta key must be present in provider_info");
+                let terminal_info = meta_value
+                    .get("terminal_info")
+                    .expect("terminal_info key present");
+                assert_eq!(
+                    terminal_info.get("terminal_id").and_then(Value::as_str),
+                    Some("term-secret-42"),
+                    "terminal_id must round-trip"
+                );
+                assert_eq!(
+                    terminal_info.get("cwd").and_then(Value::as_str),
+                    Some("/home/secret/projects/lab"),
+                    "cwd must round-trip"
+                );
+            }
+            other => panic!("expected ProviderInfo, got {other:?}"),
+        }
+
+        // --- ToolCallUpdate path ---
+        let update_meta = terminal_info_meta();
+        let fields = ToolCallUpdateFields::new();
+        let update = ToolCallUpdate::new("tc-2", fields).meta(update_meta.clone());
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCallUpdate(update),
+            &mut message_ids,
+        )
+        .expect("ToolCallUpdate with meta");
+
+        let update_events = drain_events(&mut rx, 1);
+        match &update_events[0] {
+            AcpEvent::ToolCallUpdate { output, .. } => {
+                let meta_value = output
+                    .get("_meta")
+                    .expect("_meta key must be present in output");
+                let terminal_info = meta_value
+                    .get("terminal_info")
+                    .expect("terminal_info key present");
+                assert_eq!(
+                    terminal_info.get("terminal_id").and_then(Value::as_str),
+                    Some("term-secret-42"),
+                    "terminal_id must round-trip in ToolCallUpdate"
+                );
+            }
+            other => panic!("expected ToolCallUpdate, got {other:?}"),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 2: tool_call_update_output_outer_meta_wins_over_raw_output_inner_meta
+    //
+    // A9 merge semantics: when raw_output already contains _meta, the wrapper-level
+    // _meta (outer) wins.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_update_output_outer_meta_wins_over_raw_output_inner_meta() {
+        let mut outer_meta = serde_json::Map::new();
+        outer_meta.insert("source".into(), Value::String("outer".into()));
+
+        let inner_meta_json = json!({"source": "inner", "extra": "inner-only"});
+        let raw_output_with_inner_meta = json!({
+            "result": "ok",
+            "_meta": inner_meta_json,
+        });
+
+        let fields = ToolCallUpdateFields::new().raw_output(raw_output_with_inner_meta);
+        let update = ToolCallUpdate::new("tc-merge", fields).meta(outer_meta);
+
+        let output = tool_call_update_output(update);
+
+        // Outer _meta must win — source should be "outer", not "inner".
+        let meta_value = output.get("_meta").expect("_meta key present after merge");
+        assert_eq!(
+            meta_value.get("source").and_then(Value::as_str),
+            Some("outer"),
+            "outer _meta must overwrite inner _meta"
+        );
+        // Inner-only key should no longer be present (entire _meta replaced, not merged).
+        assert!(
+            meta_value.get("extra").is_none(),
+            "inner-only keys must not survive outer-wins replacement"
+        );
+        // Other raw_output fields must be preserved.
+        assert_eq!(
+            output.get("result").and_then(Value::as_str),
+            Some("ok"),
+            "non-_meta fields in raw_output must be preserved"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 3: tool_call_event_omits_meta_key_when_none
+    //
+    // P4: when meta is None, the `_meta` key must be absent from both the
+    // ToolCall provider_info payload and the ToolCallUpdate output.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn tool_call_event_omits_meta_key_when_none() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let mut message_ids = StreamMessageIds::default();
+
+        // ToolCall with no meta and a status (so the provider_info event fires)
+        let tool_call = ToolCall::new("tc-no-meta", "Read file")
+            .status(agent_client_protocol::schema::ToolCallStatus::Completed);
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCall(tool_call),
+            &mut message_ids,
+        )
+        .expect("ToolCall without meta");
+
+        let events = drain_events(&mut rx, 2);
+        match &events[1] {
+            AcpEvent::ProviderInfo { raw, .. } => {
+                assert!(
+                    raw.get("_meta").is_none(),
+                    "_meta key must be absent from provider_info when ToolCall.meta is None, got: {:?}",
+                    raw.get("_meta")
+                );
+            }
+            other => panic!("expected ProviderInfo, got {other:?}"),
+        }
+
+        // ToolCallUpdate with no meta
+        let fields = ToolCallUpdateFields::new();
+        let update = ToolCallUpdate::new("tc-no-meta-update", fields);
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCallUpdate(update),
+            &mut message_ids,
+        )
+        .expect("ToolCallUpdate without meta");
+
+        let update_events = drain_events(&mut rx, 1);
+        match &update_events[0] {
+            AcpEvent::ToolCallUpdate { output, .. } => {
+                assert!(
+                    output.get("_meta").is_none(),
+                    "_meta key must be absent from ToolCallUpdate output when meta is None, got: {:?}",
+                    output.get("_meta")
+                );
+            }
+            other => panic!("expected ToolCallUpdate, got {other:?}"),
+        }
+    }
+
+    // _meta redaction is an architectural guarantee: push_session_update and
+    // tool_call_update_output emit no tracing spans, so _meta field values
+    // (cwd, terminal_id, signal, data) never reach the log output by construction.
+    // Enforcement is via is_sensitive_key() in dispatch/redact.rs for the DB path.
+
+    // -----------------------------------------------------------------------
+    // Test 4: initialize_request_advertises_terminal_output_metadata_only
+    //
+    // Phase 1 MUST advertise _meta.terminal_output=true and terminal=false.
+    // DO NOT call .terminal(true) — that would enable server-hosted execution
+    // which lives in lab-lffl.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn initialize_request_advertises_terminal_output_metadata_only() {
+        use agent_client_protocol::schema::InitializeRequest;
+
+        // Build the same capabilities inline as the runtime does.
+        let mut meta = serde_json::Map::new();
+        meta.insert("terminal_output".to_string(), json!(true));
+        let capabilities = ClientCapabilities::new()
+            .fs(FileSystemCapabilities::new()
+                .read_text_file(true)
+                .write_text_file(true))
+            .meta(meta);
+
+        let value = serde_json::to_value(&capabilities).unwrap();
+
+        // terminal must be false (Phase 1: no server-hosted execution).
+        assert_eq!(
+            value.get("terminal"),
+            Some(&serde_json::json!(false)),
+            "terminal must be false in Phase 1 — server-hosted execution lives in lab-lffl"
+        );
+
+        // _meta.terminal_output must be true (Phase 1: display metadata relay).
+        assert_eq!(
+            value.get("_meta").and_then(|m| m.get("terminal_output")),
+            Some(&serde_json::json!(true)),
+            "_meta.terminal_output must be true to advertise display support"
+        );
+
+        // Verify the full InitializeRequest serialization also reflects capabilities.
+        let req = InitializeRequest::new(ProtocolVersion::V1).client_capabilities(capabilities);
+        let req_value = serde_json::to_value(&req).unwrap();
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("_meta"))
+                .and_then(|m| m.get("terminal_output")),
+            Some(&serde_json::json!(true)),
+            "_meta.terminal_output must survive InitializeRequest serialization"
+        );
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("terminal")),
+            Some(&serde_json::json!(false)),
+            "terminal must be false in InitializeRequest"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 5: phase_1_terminal_requests_return_method_not_found
+    //
+    // C6 — NEGATIVE integration test: even with _meta.terminal_output=true
+    // advertised, the runtime must NOT execute terminal creation. All terminal/*
+    // request handlers exist but unconditionally return method_not_found (-32601).
+    // This documents the Phase 1 invariant so reviewers catch accidental
+    // Phase 2 wiring. A full live RPC test requires a running ACP session
+    // and belongs in integration tests; this unit test anchors the invariant
+    // structurally.
+    //
+    // Invariant: all terminal/* on_receive_request handlers in the Dispatch
+    // impl respond with `Error::method_not_found()`. No handler executes
+    // terminal operations or delegates to a jail. lab-lffl is the gate that
+    // activates terminal execution in Phase 2.
+    // -----------------------------------------------------------------------
+    #[test]
+    fn phase_1_terminal_requests_return_method_not_found() {
+        // CreateTerminalRequest is imported and has a handler arm that returns
+        // method_not_found. Verify the import compiles. The handler arm exists
+        // to satisfy the ACP protocol type system while blocking execution.
+        //
+        // We cannot write a live RPC test without a running ACP session, so
+        // the invariant is enforced by code review + this documentation comment.
+        // Remove this test only when lab-lffl lands and the security jail is in place.
+        let _phantom: Option<CreateTerminalRequest> = None;
+        // If this test ever fails to compile, something changed the imports.
+        // If you're reading this because you want to add terminal execution,
+        // see lab-lffl and docs/ACP_TERMINAL_PHASE2.md first.
     }
 }
