@@ -2382,6 +2382,11 @@ async fn connect_websocket_upstream(
     url: &str,
     config: &UpstreamConfig,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    tracing::info!(
+        upstream = %config.name, transport = "websocket",
+        action = "upstream.connect.start", url = %url,
+        "upstream connect start",
+    );
     if config.oauth.is_some() {
         anyhow::bail!(
             "upstream {} declares oauth, but websocket upstream oauth is not yet supported",
@@ -2410,7 +2415,11 @@ async fn connect_websocket_upstream(
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(transport).await?;
     let peer = service.peer().clone();
     let tools = peer.list_all_tools().await?;
-
+    tracing::info!(
+        upstream = %config.name, transport = "websocket",
+        action = "upstream.connect.finish", tool_count = tools.len(),
+        "upstream connect finish",
+    );
     Ok((
         UpstreamConnection {
             _client_service: service,
@@ -2438,6 +2447,11 @@ async fn connect_http_upstream(
     subject: Option<&str>,
     oauth_client_cache: Option<&OauthClientCache>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
+    tracing::info!(
+        upstream = %config.name, transport = "http",
+        action = "upstream.connect.start", url = %url,
+        "upstream connect start",
+    );
     let transport_config = StreamableHttpClientTransportConfig::with_uri(url);
 
     // OAuth path: when the upstream declares oauth config, build an AuthClient.
@@ -2543,11 +2557,21 @@ async fn connect_stdio_upstream(
         .spawn()?;
 
     let pid = process.id();
+    tracing::info!(
+        upstream = %config.name, transport = "stdio",
+        action = "upstream.connect.start", command = %command, pid = ?pid,
+        "upstream connect start",
+    );
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(process).await?;
     let peer = service.peer().clone();
 
     // Discover tools
     let tools = peer.list_all_tools().await?;
+    tracing::info!(
+        upstream = %config.name, transport = "stdio",
+        action = "upstream.connect.finish", pid = ?pid, tool_count = tools.len(),
+        "upstream connect finish",
+    );
 
     let conn = UpstreamConnection {
         _client_service: service,

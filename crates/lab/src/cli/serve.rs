@@ -107,12 +107,14 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         std::env::var("LAB_MCP_HTTP_PORT").ok(),
         config.mcp.port,
     )?;
+    let config_path = config_toml_path().unwrap_or_else(|| "config.toml".into());
     tracing::info!(
         subsystem = "startup",
         phase = "bootstrap.start",
         transport = ?transport,
         bind_host = %host,
         bind_port = port,
+        config_path = %config_path.display(),
         requested_service_count = args.services.len(),
         "starting lab serve bootstrap"
     );

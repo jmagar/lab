@@ -392,6 +392,16 @@ async fn run_codex_session(
     command.process_group(0);
     let mut child = command.spawn().map_err(|error| error.to_string())?;
     let child_process_group = child.id();
+    tracing::info!(
+        surface = "acp",
+        service = "runtime",
+        action = "subprocess.spawn",
+        session_id = %session_id,
+        pid = ?child_process_group,
+        binary = %launch.command,
+        provider = %provider_id,
+        "ACP subprocess spawned",
+    );
 
     let stdin = child
         .stdin
@@ -827,16 +837,43 @@ async fn terminate_codex_child(
     #[cfg(unix)]
     if let Some(pid) = child_process_group.and_then(|value| i32::try_from(value).ok()) {
         let pgid = Pid::from_raw(pid);
+        tracing::info!(
+            surface = "acp", service = "runtime", action = "subprocess.sigterm",
+            pgid = pid, "Sending SIGTERM to ACP subprocess process group",
+        );
         let _ = killpg(pgid, Signal::SIGTERM);
         tokio::time::sleep(Duration::from_millis(250)).await;
         if matches!(child.try_wait(), Ok(None)) {
+            tracing::warn!(
+                surface = "acp", service = "runtime", action = "subprocess.sigkill",
+                pgid = pid, "ACP subprocess did not exit after SIGTERM — sending SIGKILL",
+            );
             let _ = killpg(pgid, Signal::SIGKILL);
         }
-        drop(child.wait().await);
+        let exit_status = child.wait().await.ok();
+        tracing::info!(
+            surface = "acp", service = "runtime", action = "subprocess.exited",
+            pgid = pid,
+            exit_code = ?exit_status.and_then(|s| s.code()),
+            "ACP subprocess process group terminated",
+        );
         return;
     }
 
-    drop(child.kill().await);
+    match child.kill().await {
+        Ok(()) => {
+            tracing::info!(
+                surface = "acp", service = "runtime", action = "subprocess.killed",
+                "ACP subprocess killed (non-unix path)",
+            );
+        }
+        Err(ref e) => {
+            tracing::warn!(
+                surface = "acp", service = "runtime", action = "subprocess.kill",
+                error = %e, "ACP subprocess kill failed (non-unix path)",
+            );
+        }
+    }
 }
 
 fn push_session_update(
@@ -1625,3 +1662,23 @@ mod tests {
         // see lab-lffl and docs/ACP_TERMINAL_PHASE2.md first.
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// Test helpers
+// ---------------------------------------------------------------------------
+
+/// Returns a fake `RuntimeHandle` and the paired `UnboundedReceiver<AcpEvent>`.
+/// Drop the receiver to simulate subprocess exit (event forwarder sees channel close).
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::UnboundedReceiver<AcpEvent>) {
+    let (command_tx, _command_rx) = mpsc::unbounded_channel::<SessionCommand>();
+    let (_event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
+    let handle = RuntimeHandle {
+        provider_session_id: "fake-provider-session".to_string(),
+        command_tx,
+    };
+    (handle, event_rx)
+}
+

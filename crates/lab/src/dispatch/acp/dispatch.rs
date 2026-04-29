@@ -41,6 +41,12 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
         }
         other => {
             if !ACTIONS.iter().any(|a| a.name == other) {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "dispatch",
+                    action = %other,
+                    "ACP dispatch: unknown action",
+                );
                 return Err(ToolError::UnknownAction {
                     message: format!("unknown action `{other}` for service `acp`"),
                     valid: ACTIONS.iter().map(|a| a.name.to_string()).collect(),
@@ -48,7 +54,26 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 });
             }
             let registry = require_registry()?;
-            dispatch_with_registry(&registry, other, params).await
+            let started = std::time::Instant::now();
+            tracing::info!(
+                surface = "acp", service = "dispatch", action = %other,
+                "ACP MCP tool call received",
+            );
+            let result = dispatch_with_registry(&registry, other, params).await;
+            let elapsed_ms = started.elapsed().as_millis();
+            if let Err(ref e) = result {
+                tracing::warn!(
+                    surface = "acp", service = "dispatch", action = %other,
+                    elapsed_ms, error_kind = %e.kind(),
+                    "ACP MCP tool call failed",
+                );
+            } else {
+                tracing::info!(
+                    surface = "acp", service = "dispatch", action = %other,
+                    elapsed_ms, "ACP MCP tool call completed",
+                );
+            }
+            result
         }
     }
 }

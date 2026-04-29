@@ -85,6 +85,12 @@ impl IngestHandle {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.counters.record_drop();
+                tracing::warn!(
+                    target: "lab::dispatch::logs",
+                    surface = "logs", service = "ingest", action = "event.drop",
+                    total_dropped = self.counters.dropped(),
+                    "log ingest queue full — event dropped",
+                );
                 Err(ToolError::Sdk {
                     sdk_kind: "rate_limited".to_string(),
                     message: "log ingest queue is full; event dropped".to_string(),
@@ -127,6 +133,11 @@ pub fn spawn_writer(
             }
             hub.publish(event);
         }
+        tracing::warn!(
+            target: "lab::dispatch::logs",
+            surface = "logs", service = "ingest", action = "writer.exit",
+            "log ingest writer task exited — all senders dropped; log ingest offline",
+        );
     });
 
     (handle, counters)

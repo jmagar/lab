@@ -34,6 +34,7 @@ pub struct LogStore {
 
 impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
+        let path_display = path.display().to_string();
         let (write_conn, read_conn) = tokio::task::spawn_blocking(
             move || -> Result<(Connection, Connection), rusqlite::Error> {
                 if let Some(parent) = path.parent() {
@@ -65,11 +66,17 @@ impl LogStore {
         .map_err(|e| ToolError::internal_message(format!("log store open join: {e}")))?
         .map_err(|e| ToolError::internal_message(format!("log store open: {e}")))?;
 
-        Ok(Self {
+        let store = Self {
             write_conn: Arc::new(Mutex::new(write_conn)),
             read_conn: Arc::new(Mutex::new(read_conn)),
             retention,
-        })
+        };
+        tracing::info!(
+            surface = "logs", service = "store", action = "open",
+            path = %path_display,
+            "log store SQLite opened (WAL mode)",
+        );
+        Ok(store)
     }
 
     pub async fn insert(&self, event: &LogEvent) -> Result<(), ToolError> {

@@ -257,6 +257,12 @@ pub async fn send_rpc_to_node(
     params: Value,
 ) -> Result<Value, ToolError> {
     if pending_map().len() >= MAX_PENDING_RPC {
+        tracing::warn!(
+            surface = "dispatch", service = "node.send", action = "rpc.cap_hit",
+            inflight = pending_map().len(), limit = MAX_PENDING_RPC,
+            node_id = %node_id, method = %method,
+            "master pending-rpc map full — refusing new RPC request",
+        );
         return Err(ToolError::Sdk {
             sdk_kind: "internal_error".to_string(),
             message: format!(
@@ -269,6 +275,12 @@ pub async fn send_rpc_to_node(
     // eating the global budget and starving all other nodes.
     let per_node = pending_count_for_node(node_id);
     if per_node >= MAX_PENDING_RPC_PER_NODE {
+        tracing::warn!(
+            surface = "dispatch", service = "node.send", action = "rpc.per_node_cap_hit",
+            inflight_for_node = per_node, limit = MAX_PENDING_RPC_PER_NODE,
+            node_id = %node_id, method = %method,
+            "per-node RPC cap exceeded — refusing new RPC request",
+        );
         return Err(ToolError::Sdk {
             sdk_kind: "rate_limited".to_string(),
             message: format!(
@@ -353,6 +365,12 @@ pub async fn send_rpc_to_node(
         Err(_) => {
             pending_map().remove(&rpc_id);
             pending_owners().remove(&rpc_id);
+            tracing::warn!(
+                surface = "dispatch", service = "node.send", action = "rpc.timeout",
+                node_id = %node_id, method = %method,
+                timeout_ms = rpc_timeout().as_millis(),
+                "RPC to node timed out — no response within deadline",
+            );
             Err(ToolError::Sdk {
                 sdk_kind: "timeout".to_string(),
                 message: format!(
