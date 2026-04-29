@@ -911,7 +911,10 @@ fn push_session_update(
                     "raw_output": tool_call.raw_output,
                 });
                 if let Some(meta) = tool_call.meta {
-                    payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(meta));
+                    payload
+                        .as_object_mut()
+                        .unwrap()
+                        .insert("_meta".into(), Value::Object(meta));
                 }
                 event_tx
                     .send(provider_info_event(
@@ -1196,7 +1199,10 @@ fn tool_call_update_output(update: agent_client_protocol::schema::ToolCallUpdate
         "raw_input": fields.raw_input,
     });
     if let Some(m) = meta {
-        payload.as_object_mut().unwrap().insert("_meta".into(), Value::Object(m));
+        payload
+            .as_object_mut()
+            .unwrap()
+            .insert("_meta".into(), Value::Object(m));
     }
     payload
 }
@@ -1306,7 +1312,10 @@ mod tests {
 
     /// Drain all pending events and return them. Panics if the channel is empty and
     /// expected_count events have not been collected.
-    fn drain_events(rx: &mut mpsc::UnboundedReceiver<AcpEvent>, expected_count: usize) -> Vec<AcpEvent> {
+    fn drain_events(
+        rx: &mut mpsc::UnboundedReceiver<AcpEvent>,
+        expected_count: usize,
+    ) -> Vec<AcpEvent> {
         let mut events = Vec::new();
         while let Ok(event) = rx.try_recv() {
             events.push(event);
@@ -1352,8 +1361,13 @@ mod tests {
         let tool_call = ToolCall::new("tc-1", "Read file")
             .status(agent_client_protocol::schema::ToolCallStatus::Completed)
             .meta(meta.clone());
-        push_session_update("session-1", &tx, SessionUpdate::ToolCall(tool_call), &mut message_ids)
-            .expect("ToolCall with meta");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCall(tool_call),
+            &mut message_ids,
+        )
+        .expect("ToolCall with meta");
 
         // Expect 2 events: ToolCallStart + provider_info (tool_call_metadata)
         let events = drain_events(&mut rx, 2);
@@ -1368,8 +1382,12 @@ mod tests {
         // Second event: ProviderInfo carrying _meta
         match &events[1] {
             AcpEvent::ProviderInfo { raw, .. } => {
-                let meta_value = raw.get("_meta").expect("_meta key must be present in provider_info");
-                let terminal_info = meta_value.get("terminal_info").expect("terminal_info key present");
+                let meta_value = raw
+                    .get("_meta")
+                    .expect("_meta key must be present in provider_info");
+                let terminal_info = meta_value
+                    .get("terminal_info")
+                    .expect("terminal_info key present");
                 assert_eq!(
                     terminal_info.get("terminal_id").and_then(Value::as_str),
                     Some("term-secret-42"),
@@ -1388,14 +1406,23 @@ mod tests {
         let update_meta = terminal_info_meta();
         let fields = ToolCallUpdateFields::new();
         let update = ToolCallUpdate::new("tc-2", fields).meta(update_meta.clone());
-        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
-            .expect("ToolCallUpdate with meta");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCallUpdate(update),
+            &mut message_ids,
+        )
+        .expect("ToolCallUpdate with meta");
 
         let update_events = drain_events(&mut rx, 1);
         match &update_events[0] {
             AcpEvent::ToolCallUpdate { output, .. } => {
-                let meta_value = output.get("_meta").expect("_meta key must be present in output");
-                let terminal_info = meta_value.get("terminal_info").expect("terminal_info key present");
+                let meta_value = output
+                    .get("_meta")
+                    .expect("_meta key must be present in output");
+                let terminal_info = meta_value
+                    .get("terminal_info")
+                    .expect("terminal_info key present");
                 assert_eq!(
                     terminal_info.get("terminal_id").and_then(Value::as_str),
                     Some("term-secret-42"),
@@ -1462,8 +1489,13 @@ mod tests {
         // ToolCall with no meta and a status (so the provider_info event fires)
         let tool_call = ToolCall::new("tc-no-meta", "Read file")
             .status(agent_client_protocol::schema::ToolCallStatus::Completed);
-        push_session_update("session-1", &tx, SessionUpdate::ToolCall(tool_call), &mut message_ids)
-            .expect("ToolCall without meta");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCall(tool_call),
+            &mut message_ids,
+        )
+        .expect("ToolCall without meta");
 
         let events = drain_events(&mut rx, 2);
         match &events[1] {
@@ -1480,8 +1512,13 @@ mod tests {
         // ToolCallUpdate with no meta
         let fields = ToolCallUpdateFields::new();
         let update = ToolCallUpdate::new("tc-no-meta-update", fields);
-        push_session_update("session-1", &tx, SessionUpdate::ToolCallUpdate(update), &mut message_ids)
-            .expect("ToolCallUpdate without meta");
+        push_session_update(
+            "session-1",
+            &tx,
+            SessionUpdate::ToolCallUpdate(update),
+            &mut message_ids,
+        )
+        .expect("ToolCallUpdate without meta");
 
         let update_events = drain_events(&mut rx, 1);
         match &update_events[0] {
@@ -1516,11 +1553,9 @@ mod tests {
         let mut meta = serde_json::Map::new();
         meta.insert("terminal_output".to_string(), json!(true));
         let capabilities = ClientCapabilities::new()
-            .fs(
-                FileSystemCapabilities::new()
-                    .read_text_file(true)
-                    .write_text_file(true),
-            )
+            .fs(FileSystemCapabilities::new()
+                .read_text_file(true)
+                .write_text_file(true))
             .meta(meta);
 
         let value = serde_json::to_value(&capabilities).unwrap();
