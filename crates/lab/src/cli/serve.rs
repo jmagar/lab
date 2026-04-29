@@ -273,7 +273,11 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     // HTTP modes are mutually exclusive within one process).
     let acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
     crate::dispatch::acp::install_registry(Arc::clone(&acp_registry));
-    tracing::info!(subsystem = "acp", phase = "ready", "ACP session registry installed");
+    tracing::info!(
+        subsystem = "acp",
+        phase = "ready",
+        "ACP session registry installed"
+    );
 
     if stdio_mode {
         tracing::info!(

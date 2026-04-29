@@ -30,6 +30,7 @@ pub fn install_registry(registry: Arc<AcpSessionRegistry>) {
 /// **For tests only.** Allows a test that called `install_registry` to reset state so
 /// subsequent calls in other tests do not panic on the double-install assert.
 #[cfg(test)]
+#[allow(dead_code)]
 pub fn reset_registry_for_testing() {
     *registry_slot().write().expect("ACP registry lock poisoned") = None;
 }
