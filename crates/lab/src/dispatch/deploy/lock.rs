@@ -41,8 +41,22 @@ impl HostLockRegistry {
         let host = host.to_string();
         Box::pin(async move {
             match tokio::time::timeout(timeout, mutex.lock_owned()).await {
-                Ok(guard) => Ok(guard),
-                Err(_) => Err(DeployError::Conflict { host }),
+                Ok(guard) => {
+                    tracing::debug!(
+                        surface = "dispatch", service = "deploy.lock", action = "lock.acquired",
+                        host = %host, timeout_ms = timeout.as_millis(),
+                        "deploy host lock acquired",
+                    );
+                    Ok(guard)
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        surface = "dispatch", service = "deploy.lock", action = "lock.conflict",
+                        host = %host, timeout_ms = timeout.as_millis(),
+                        "deploy host lock contention timeout — another deploy is in progress",
+                    );
+                    Err(DeployError::Conflict { host })
+                }
             }
         })
     }

@@ -83,9 +83,25 @@ impl PeerNotifier {
             }
         }
 
+        let pruned = peers.len().saturating_sub(alive.len());
         let mut guard = self.peers.write().await;
         let added_since_snapshot = guard.split_off(peers.len());
         *guard = alive;
         guard.extend(added_since_snapshot);
+        let total = guard.len();
+        if pruned > 0 {
+            tracing::info!(
+                surface = "mcp", service = "peers", action = "peer.gc",
+                pruned_count = pruned,
+                active_count = total,
+                "pruned stale MCP peer sessions after catalog notify",
+            );
+        } else {
+            tracing::debug!(
+                surface = "mcp", service = "peers", action = "peer.gc",
+                active_count = total,
+                "catalog notify complete — all peers alive",
+            );
+        }
     }
 }

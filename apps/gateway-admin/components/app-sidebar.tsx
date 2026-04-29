@@ -2,18 +2,19 @@
 
 import * as React from 'react'
 import Link from 'next/link'
+import { LabbyIcon } from '@/components/labby-icon'
 import { usePathname } from 'next/navigation'
 import {
   Cable,
   MessageSquareText,
   LayoutDashboard,
-  Package,
   ShoppingBag,
   Settings,
   Activity,
   ScrollText,
   HelpCircle,
   WandSparkles,
+  Server,
 } from 'lucide-react'
 
 import {
@@ -49,9 +50,9 @@ export const primarySidebarNavigation = [
     icon: Cable,
   },
   {
-    title: 'Registry',
-    url: '/registry',
-    icon: Package,
+    title: 'Nodes',
+    url: '/nodes',
+    icon: Server,
   },
   {
     title: 'Marketplace',
@@ -109,9 +110,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link href="/">
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-gradient-to-br from-primary via-info to-accent shadow-lg shadow-primary/25 ring-2 ring-white/10">
-                  <Cable className="size-4 text-white drop-shadow-md" />
-                </div>
+                <LabbyIcon size={32} />
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-bold text-sidebar-foreground">Labby</span>
                   <span className="truncate text-xs text-sidebar-foreground/70">Admin Console</span>

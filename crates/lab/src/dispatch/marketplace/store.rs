@@ -273,6 +273,16 @@ impl RegistryStore {
         .await?
     }
 
+    /// Count latest, non-deleted servers stored in the local mirror.
+    pub async fn count_latest_servers(&self) -> Result<u32, RegistryStoreError> {
+        let pool = self.pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = pool.get()?;
+            count_latest_servers_sync(&conn)
+        })
+        .await?
+    }
+
     pub async fn get_local_metadata(
         &self,
         name: &str,
@@ -622,6 +632,15 @@ fn list_servers_sync(
         servers: rows,
         next_cursor,
     })
+}
+
+fn count_latest_servers_sync(conn: &Connection) -> Result<u32, RegistryStoreError> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM registry_servers WHERE status != 'deleted' AND is_latest = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(u32::try_from(count).unwrap_or(u32::MAX))
 }
 
 #[allow(dead_code)]
@@ -1510,6 +1529,35 @@ mod tests {
             .unwrap()
             .expect("latest server");
         assert_eq!(latest.server.version, "0.9.10");
+    }
+
+    #[tokio::test]
+    async fn count_latest_servers_excludes_deleted_and_non_latest_rows() {
+        let store = temp_store().await;
+        use lab_apis::mcpregistry::types::{RegistryExtensions, ResponseMeta};
+
+        let mut deleted = make_server_response("io.github.user/beta", "2.0.0", true);
+        deleted.meta = Some(ResponseMeta {
+            official: Some(RegistryExtensions {
+                is_latest: true,
+                published_at: "2025-01-01T00:00:00Z".to_string(),
+                status: "deleted".to_string(),
+                status_changed_at: "2025-01-01T00:00:00Z".to_string(),
+                status_message: None,
+                updated_at: None,
+            }),
+            extensions: Default::default(),
+        });
+        store
+            .upsert_page(&[
+                make_server_response("io.github.user/alpha", "1.0.0", true),
+                make_server_response("io.github.user/alpha", "0.9.0", false),
+                deleted,
+            ])
+            .await
+            .unwrap();
+
+        assert_eq!(store.count_latest_servers().await.unwrap(), 1);
     }
 
     #[tokio::test]

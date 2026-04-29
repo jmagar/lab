@@ -24,6 +24,11 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             reason: format!("disk-space check join: {e}"),
         })??;
     check_disk_space(free, 1_500_000_000)?;
+    tracing::info!(
+        surface = "dispatch", service = "deploy.build", action = "build.start",
+        free_bytes = free,
+        "starting local release build",
+    );
     let path = expected_artifact_path("lab");
     let target_triple = detect_host_triple();
     let rebuild_needed = tokio::task::spawn_blocking({
@@ -70,12 +75,20 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     .map_err(|e| DeployError::BuildFailed {
         reason: format!("post-build join: {e}"),
     })??;
-    Ok(BuildOutcome {
+    let outcome = BuildOutcome {
         path,
-        sha256,
+        sha256: sha256.clone(),
         size_bytes: metadata.len(),
-        target_triple,
-    })
+        target_triple: target_triple.clone(),
+    };
+    tracing::info!(
+        surface = "dispatch", service = "deploy.build", action = "build.finish",
+        size_bytes = outcome.size_bytes,
+        sha256 = %sha256,
+        target_triple = %target_triple,
+        "local release build complete",
+    );
+    Ok(outcome)
 }
 
 /// Path where cargo places the binary for `target_triple`.

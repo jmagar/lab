@@ -49,15 +49,19 @@ fn human_console_target_enabled(target: &str) -> bool {
 ///
 /// Accepts config.toml log preferences; env vars `LAB_LOG` / `LAB_LOG_FORMAT`
 /// override them when set.
-fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy) {
-    // Env var wins → config.toml → default.
-    let filter = EnvFilter::try_from_env("LAB_LOG").unwrap_or_else(|_| {
-        let directive = log
-            .filter
-            .as_deref()
-            .unwrap_or("lab=info,lab_apis=warn,rmcp=warn");
+fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_override: Option<&str>) {
+    // Priority: explicit CLI override > LAB_LOG env var > config.toml > default.
+    let filter = if let Some(directive) = filter_override {
         EnvFilter::new(directive)
-    });
+    } else {
+        EnvFilter::try_from_env("LAB_LOG").unwrap_or_else(|_| {
+            let directive = log
+                .filter
+                .as_deref()
+                .unwrap_or("lab=info,lab_apis=warn,rmcp=warn");
+            EnvFilter::new(directive)
+        })
+    };
 
     let use_json = match std::env::var("LAB_LOG_FORMAT").ok() {
         Some(v) => v.eq_ignore_ascii_case("json"),
@@ -110,8 +114,14 @@ async fn main() -> ExitCode {
         }
     };
 
-    // 2. Init tracing using config.toml [log] preferences (env vars override).
-    init_tracing(&config.log, cli.color);
+    // 2. Init tracing. If `lab serve --log-level <level>` was given, pass it
+    //    directly to avoid mutating the environment (crate forbids unsafe_code).
+    let log_filter_override: Option<String> = if let crate::cli::Command::Serve(ref args) = cli.command {
+        args.log_level.as_ref().map(|level| format!("lab={level},warn"))
+    } else {
+        None
+    };
+    init_tracing(&config.log, cli.color, log_filter_override.as_deref());
 
     // 3. Load .env files (secrets + URL env vars).
     if let Err(err) = config::load_dotenv() {

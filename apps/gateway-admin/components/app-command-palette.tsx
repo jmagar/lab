@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   Logs,
   MessageSquareText,
-  Package,
   Search,
   Settings,
   ShoppingBag,
@@ -52,7 +51,6 @@ const ICONS: Record<AppCommandIconKey, LucideIcon> = {
   logs: Logs,
   marketplace: ShoppingBag,
   overview: LayoutDashboard,
-  registry: Package,
   settings: Settings,
   setup: WandSparkles,
 }

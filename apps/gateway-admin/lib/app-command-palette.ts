@@ -10,7 +10,6 @@ export type AppCommandIconKey =
   | 'logs'
   | 'marketplace'
   | 'overview'
-  | 'registry'
   | 'settings'
   | 'setup'
 
@@ -71,28 +70,16 @@ export const appCommandItems: AppCommandItem[] = [
     priority: 98,
   },
   {
-    id: 'destination-registry',
-    kind: 'destination',
-    title: 'Registry',
-    description: 'Search MCP registry servers and inspect installability metadata.',
-    keywords: ['registry', 'mcp', 'servers', 'catalog', 'packages'],
-    group: 'destinations',
-    icon: 'registry',
-    href: '/registry',
-    actionHint: 'Open',
-    priority: 92,
-  },
-  {
     id: 'destination-marketplace',
     kind: 'destination',
     title: 'Marketplace',
-    description: 'Browse available plugins, MCP servers, and ACP agents.',
-    keywords: ['marketplace', 'plugin', 'plugins', 'install', 'agents', 'mcp'],
+    description: 'Browse available plugins, MCP servers, ACP agents, and registry-backed catalog entries.',
+    keywords: ['marketplace', 'plugin', 'plugins', 'install', 'agents', 'mcp', 'registry', 'servers', 'catalog', 'packages', 'acp'],
     group: 'destinations',
     icon: 'marketplace',
     href: '/marketplace',
     actionHint: 'Open',
-    priority: 90,
+    priority: 92,
   },
   {
     id: 'destination-chat',

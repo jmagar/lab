@@ -23,7 +23,7 @@ const MOCK_LOG_EVENT_TEMPLATES = [
     outcome_kind: 'ok',
     fields_json: { route: '/gateways' },
     source_kind: 'mock',
-    source_node_id: null,
+    source_node_id: 'local',
     source_device_id: null,
     ingest_path: 'mock',
     upstream_event_id: null,
@@ -46,7 +46,7 @@ const MOCK_LOG_EVENT_TEMPLATES = [
     outcome_kind: 'mock',
     fields_json: { route: '/registry' },
     source_kind: 'mock',
-    source_node_id: null,
+    source_node_id: 'node-alpha',
     source_device_id: null,
     ingest_path: 'mock',
     upstream_event_id: null,
@@ -69,7 +69,7 @@ const MOCK_LOG_EVENT_TEMPLATES = [
     outcome_kind: 'expired',
     fields_json: { route: '/settings' },
     source_kind: 'mock',
-    source_node_id: null,
+    source_node_id: 'node-beta',
     source_device_id: null,
     ingest_path: 'mock',
     upstream_event_id: null,
@@ -153,6 +153,18 @@ export async function fetchLogs(
       .filter((event) => !query.subsystems?.length || query.subsystems.includes(event.subsystem))
       .filter((event) => !query.surfaces?.length || query.surfaces.includes(event.surface))
       .filter((event) => !query.action || event.action === query.action)
+      .filter((event) => {
+        if (!query.source_node_ids?.length) {
+          return true
+        }
+        return event.source_node_id != null && query.source_node_ids.includes(event.source_node_id)
+      })
+      .filter((event) => {
+        if (!query.source_kinds?.length) {
+          return true
+        }
+        return event.source_kind != null && query.source_kinds.includes(event.source_kind)
+      })
       .filter((event) => !query.text || `${event.message} ${JSON.stringify(event.fields_json)}`.toLowerCase().includes(query.text.toLowerCase()))
       .slice(0, query.limit ?? 200)
     return { events: structuredClone(filtered), next_cursor: null }

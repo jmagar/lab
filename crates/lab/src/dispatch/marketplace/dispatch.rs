@@ -666,31 +666,12 @@ async fn sources_add(
             });
         }
     };
-    let output = tokio::process::Command::new("claude")
-        .args(["plugin", "marketplace", "add", &target])
-        .output()
-        .await
-        .map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("spawn `claude plugin marketplace add`: {e}"),
-        })?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    if !output.status.success() {
-        return Err(ToolError::Sdk {
-            sdk_kind: "server_error".into(),
-            message: format!("`claude plugin marketplace add {target}` failed: {stderr}"),
-        });
-    }
-    if let Some(auto_update) = auto_update {
-        persist_marketplace_auto_update(&target, auto_update)?;
-    }
-    Ok(serde_json::json!({
-        "ok": true,
-        "target": target,
-        "stdout": stdout,
-        "stderr": stderr,
-    }))
+    Err(ToolError::Sdk {
+        sdk_kind: "not_supported".into(),
+        message: format!(
+            "marketplace.sources.add is not supported in MCP server mode — use `claude plugin marketplace add {target}` directly from the CLI"
+        ),
+    })
 }
 
 fn persist_marketplace_auto_update(target: &str, auto_update: bool) -> Result<(), ToolError> {
@@ -732,28 +713,12 @@ fn persist_marketplace_auto_update(target: &str, auto_update: bool) -> Result<()
 
 async fn plugin_shell(verb: &'static str, id: &str) -> Result<Value, ToolError> {
     parse_plugin_id(id)?;
-    let output = tokio::process::Command::new("claude")
-        .args(["plugin", verb, id])
-        .output()
-        .await
-        .map_err(|e| ToolError::Sdk {
-            sdk_kind: "internal_error".into(),
-            message: format!("spawn `claude plugin {verb}`: {e}"),
-        })?;
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    if !output.status.success() {
-        return Err(ToolError::Sdk {
-            sdk_kind: "server_error".into(),
-            message: format!("`claude plugin {verb} {id}` failed: {stderr}"),
-        });
-    }
-    Ok(serde_json::json!({
-        "ok": true,
-        "id": id,
-        "stdout": stdout,
-        "stderr": stderr,
-    }))
+    Err(ToolError::Sdk {
+        sdk_kind: "not_supported".into(),
+        message: format!(
+            "marketplace.plugin.{verb} is not supported in MCP server mode — use `claude plugin {verb} {id}` directly from the CLI"
+        ),
+    })
 }
 
 #[derive(Debug, Clone, Serialize)]

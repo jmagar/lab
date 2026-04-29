@@ -137,7 +137,17 @@ impl WsClient {
     async fn connect_and_run_session(&self, queue: &NodeOutboundQueue) -> Result<()> {
         let token = token::load_or_create(&self.token_path).await?;
         let tailnet_identity = TailnetIdentity::discover(&self.node_id);
+        tracing::info!(
+            surface = "node", service = "ws_client", action = "ws.connect.start",
+            node_id = %self.node_id,
+            "node websocket connecting to master",
+        );
         let (socket, _) = self.open_websocket().await?;
+        tracing::info!(
+            surface = "node", service = "ws_client", action = "ws.connect.finish",
+            node_id = %self.node_id,
+            "node websocket connected",
+        );
 
         let initialize = build_initialize_request(&self.node_id, &token, &tailnet_identity);
         let (tx, rx) = mpsc::channel::<Message>(PENDING_CHANNEL_CAPACITY);
@@ -469,20 +479,38 @@ impl WsClient {
         tx: &mpsc::Sender<Message>,
         pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
     ) -> Result<()> {
+        let metrics = tokio::task::spawn_blocking({
+            let node_id = self.node_id.clone();
+            move || crate::node::sysmetrics::collect(&node_id)
+        })
+        .await
+        .unwrap_or_else(|_| crate::node::checkin::NodeStatus {
+            node_id: self.node_id.clone(),
+            connected: true,
+            cpu_percent: None,
+            memory_used_bytes: None,
+            total_memory_bytes: None,
+            storage_used_bytes: None,
+            total_storage_bytes: None,
+            os: Some(std::env::consts::OS.to_string()),
+            ips: vec![],
+            health: Some("healthy".to_string()),
+            version: None,
+            uptime_seconds: None,
+            cores: None,
+            cpu_clock_mhz: None,
+            cpu_temp_c: None,
+            doctor_issues: vec![],
+            active_claude_sessions: None,
+            active_codex_sessions: None,
+        });
         let request_id = Uuid::new_v4().to_string();
+        let params = serde_json::to_value(&metrics)?;
         let request = json!({
             "jsonrpc": "2.0",
             "id": request_id,
             "method": "nodes/status.push",
-            "params": {
-                "node_id": self.node_id,
-                "connected": true,
-                "cpu_percent": Value::Null,
-                "memory_used_bytes": Value::Null,
-                "storage_used_bytes": Value::Null,
-                "os": std::env::consts::OS,
-                "ips": [],
-            }
+            "params": params,
         });
         let response = Self::send_and_await(tx, pending, &request, &request_id).await?;
         validate_success_response(&response, &json!(request_id))?;

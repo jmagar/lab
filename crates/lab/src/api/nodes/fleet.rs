@@ -67,6 +67,10 @@ fn debounce_map() -> &'static DashMap<String, Instant> {
 const COMMAND_CHANNEL_CAPACITY: usize = 512;
 const COMMAND_TTL: Duration = Duration::from_secs(5 * 60);
 const COMMAND_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
+/// How often to send a WebSocket Ping frame to keep connections alive.
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
+/// Evict a node connection if no Pong has been received within this window.
+const HEARTBEAT_TIMEOUT: Duration = Duration::from_secs(60);
 
 struct CommandState {
     output_tx: mpsc::Sender<serde_json::Value>,
@@ -165,6 +169,13 @@ pub async fn websocket_upgrade(
         }))
 }
 
+fn unix_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 async fn handle_websocket(
     socket: WebSocket,
     store: Arc<crate::node::store::NodeStore>,
@@ -218,6 +229,38 @@ async fn handle_websocket(
         }
     });
 
+    // Track last received Pong timestamp (unix seconds) for heartbeat eviction.
+    let last_pong = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(unix_now_secs()));
+
+    // Heartbeat task: send a Ping every HEARTBEAT_INTERVAL seconds.
+    let tx_heartbeat = tx.clone();
+    let last_pong_hb = std::sync::Arc::clone(&last_pong);
+    let heartbeat_task = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
+        interval.tick().await; // skip immediate tick
+        loop {
+            interval.tick().await;
+            // Evict if we haven't received a Pong within HEARTBEAT_TIMEOUT.
+            let age_s = unix_now_secs().saturating_sub(last_pong_hb.load(std::sync::atomic::Ordering::Relaxed));
+            if age_s > HEARTBEAT_TIMEOUT.as_secs() {
+                tracing::warn!(
+                    surface = "api", service = "nodes", action = "ws.heartbeat.evict",
+                    last_pong_ago_s = age_s,
+                    "evicting stale node connection: no pong received in >{}s",
+                    HEARTBEAT_TIMEOUT.as_secs(),
+                );
+                break; // dropping tx_heartbeat will close the channel → write_task exits
+            }
+            if tx_heartbeat
+                .send(Message::Ping(vec![].into()))
+                .await
+                .is_err()
+            {
+                break;
+            }
+        }
+    });
+
     // Security gate: require `initialize` within INITIALIZE_TIMEOUT (10s).
     let first_msg_result = tokio::time::timeout(INITIALIZE_TIMEOUT, stream.next()).await;
     let first_message = match first_msg_result {
@@ -231,12 +274,14 @@ async fn handle_websocket(
             );
             drop(tx);
             sweep_task.abort();
+            heartbeat_task.abort();
             drop(write_task.await);
             return Ok(());
         }
         Ok(None) => {
             drop(tx);
             sweep_task.abort();
+            heartbeat_task.abort();
             drop(write_task.await);
             return Ok(());
         }
@@ -275,7 +320,10 @@ async fn handle_websocket(
         Message::Ping(payload) => {
             let _pong = tx.send(Message::Pong(payload)).await;
         }
-        Message::Close(_) | Message::Binary(_) | Message::Pong(_) => {}
+        Message::Pong(_) => {
+            last_pong.store(unix_now_secs(), std::sync::atomic::Ordering::Relaxed);
+        }
+        Message::Close(_) | Message::Binary(_) => {}
     }
 
     // Main read loop.
@@ -445,7 +493,13 @@ async fn handle_websocket(
                     break;
                 }
             }
-            Message::Pong(_) => {}
+            Message::Pong(_) => {
+                last_pong.store(unix_now_secs(), std::sync::atomic::Ordering::Relaxed);
+                tracing::trace!(
+                    surface = "api", service = "nodes", action = "ws.pong",
+                    node_id = ?session_node_id, "pong received",
+                );
+            }
             Message::Binary(_) => {
                 if tx
                     .send(Message::Text(
@@ -482,6 +536,7 @@ async fn handle_websocket(
 
     drop(command_states);
     sweep_task.abort();
+    heartbeat_task.abort();
     drop(tx);
     drop(write_task.await);
 

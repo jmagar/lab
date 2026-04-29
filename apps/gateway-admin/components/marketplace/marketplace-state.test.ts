@@ -24,6 +24,17 @@ const sources: Marketplace[] = [
     repository: 'labby/marketplace',
     githubOwner: 'labby',
   },
+  {
+    id: 'acp-registry',
+    name: 'ACP Registry',
+    owner: 'Agent Client Protocol',
+    description: 'Official ACP agent registry mirrored into Marketplace.',
+    autoUpdateEnabled: true,
+    pluginCount: 1,
+    lastUpdatedAt: '',
+    source: 'git',
+    remoteUrl: 'https://cdn.agentclientprotocol.com',
+  },
 ]
 
 const plugins: Plugin[] = [
@@ -211,6 +222,8 @@ test('buildMarketplaceCatalogItems creates unified plugin mcp agent and source r
   assert.equal(items.find((item) => item.id === 'component:codex-helper:channels:channels.json')?.kind, 'channel')
   assert.equal(items.find((item) => item.id === 'mcp:filesystem')?.distribution, 'npm')
   assert.equal(items.find((item) => item.id === 'agent:codex-cli')?.ecosystem, 'ACP')
+  assert.equal(items.find((item) => item.id === 'agent:codex-cli')?.sourceId, 'acp-registry')
+  assert.equal(items.find((item) => item.id === 'agent:codex-cli')?.sourceName, 'ACP Registry')
   assert.deepEqual(items.find((item) => item.id === 'plugin:gateway-audit')?.avatar, { kind: 'github', owner: 'labby' })
   assert.deepEqual(items.find((item) => item.id === 'component:codex-helper:agents:agents/reviewer.md')?.avatar, { kind: 'github', owner: 'labby' })
   assert.deepEqual(items.find((item) => item.id === 'agent:codex-cli')?.avatar, { kind: 'github', owner: 'openai' })
@@ -312,7 +325,7 @@ test('marketplaceCatalogSummary counts lenses from unified rows', () => {
   const summary = marketplaceCatalogSummary(items)
 
   assert.deepEqual(summary, {
-    all: 16,
+    all: 17,
     installed: 2,
     plugins: 2,
     agents: 1,
@@ -321,7 +334,7 @@ test('marketplaceCatalogSummary counts lenses from unified rows', () => {
     mcpServers: 2,
     lspServers: 1,
     acpAgents: 1,
-    sources: 1,
+    sources: 2,
     updates: 1,
   })
 })
@@ -396,7 +409,7 @@ test('filterMarketplaceCatalogItems treats sources as catalog items and facets',
   const sourceLens = filterMarketplaceCatalogItems(items, { ...baseFilters, lens: 'sources' })
   const sourceFacet = filterMarketplaceCatalogItems(items, { ...baseFilters, sourceIds: ['official'] })
 
-  assert.deepEqual(sourceLens.map((item) => item.id), ['source:official'])
+  assert.deepEqual(sourceLens.map((item) => item.id), ['source:official', 'source:acp-registry'])
   assert.deepEqual(sourceFacet.map((item) => item.id), [
     'plugin:gateway-audit',
     'plugin:codex-helper',
@@ -445,6 +458,15 @@ test('filterMarketplaceCatalogItems lets source filters target MCP Registry rows
       'component:codex-helper:channels:channels.json',
       'source:official',
     ],
+  )
+})
+
+test('filterMarketplaceCatalogItems lets source filters target ACP Registry rows', () => {
+  const items = buildMarketplaceCatalogItems({ plugins, sources, mcpServers, acpAgents })
+
+  assert.deepEqual(
+    filterMarketplaceCatalogItems(items, { ...baseFilters, sourceIds: ['acp-registry'] }).map((item) => item.id),
+    ['agent:codex-cli', 'source:acp-registry'],
   )
 })
 

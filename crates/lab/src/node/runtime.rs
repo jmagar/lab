@@ -103,6 +103,10 @@ impl NodeRuntime {
 
     pub async fn spawn_ws_flush_loop(&self) -> Result<()> {
         if matches!(self.resolved.role, NodeRole::Master) {
+            tracing::debug!(
+                surface = "node", service = "runtime", action = "ws_flush.skip",
+                "skipping ws flush loop: process is master role",
+            );
             return Ok(());
         }
 
@@ -116,6 +120,11 @@ impl NodeRuntime {
             self.token_path(),
         )?;
         let queue = Arc::new(self.outbound_queue().await?.clone());
+        tracing::info!(
+            surface = "node", service = "runtime", action = "ws_flush.spawn",
+            node_id = %self.resolved.local_host,
+            "spawning node→master websocket flush loop",
+        );
         tokio::spawn(async move {
             ws_client.run(queue).await;
         });

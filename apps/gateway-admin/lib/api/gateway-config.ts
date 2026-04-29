@@ -19,6 +19,14 @@ export function nodesUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/nodes`
 }
 
+export function nodeDetailUrl(nodeId: string, baseUrl?: string): string {
+  return `${nodesUrl(baseUrl)}/${encodeURIComponent(nodeId)}`
+}
+
+export function nodeLogsSearchUrl(baseUrl?: string): string {
+  return `${nodesUrl(baseUrl)}/logs/search`
+}
+
 export function gatewayDetailHref(id: string): string {
   return `/gateway/?id=${encodeURIComponent(id)}`
 }

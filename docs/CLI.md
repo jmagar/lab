@@ -50,7 +50,6 @@ lab
 ├── scaffold
 ├── extract
 ├── oauth
-├── mcpregistry meta
 ├── help
 └── completions
 ```
@@ -67,7 +66,7 @@ Examples:
 - `lab unraid array`
 - `lab openai models`
 - `lab qdrant collections`
-- `lab mcpregistry meta set io.github.user/server --featured true --reviewed true`
+- `lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
 
 The CLI must not invent a second semantic model that drifts from MCP or the SDK.
 
@@ -241,20 +240,20 @@ Expected `.mcp.json` behavior:
 6. write atomically
 7. verify the rewritten file parses
 
-## `lab mcpregistry meta`
+## Marketplace MCP metadata
 
-`lab mcpregistry meta` is the typed operator surface for Lab-owned registry metadata.
+Lab-owned MCP Registry metadata now lives under the unified Marketplace surface.
 
 Commands:
 
-- `lab mcpregistry meta get <name> [--version <version>]`
-- `lab mcpregistry meta set <name> [typed flags]`
-- `lab mcpregistry meta delete <name> [--version <version>]`
+- `lab marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'`
+- `lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
+- `lab marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'`
 
 Rules:
 
-- use typed flags for the first-class metadata contract where possible
-- use `--json` only for advanced cases that do not fit the typed surface
+- use Marketplace `mcp.*` actions instead of a standalone `mcpregistry` command
+- pass metadata as JSON params; validation remains in the shared dispatch layer
 - the CLI sets a stable audit actor label when writing metadata
 - metadata validation is enforced by the shared dispatch layer, not by ad hoc CLI checks
 

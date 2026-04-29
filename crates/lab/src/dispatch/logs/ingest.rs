@@ -128,7 +128,11 @@ pub fn spawn_writer(
         while let Some(raw) = rx.recv().await {
             let event = canonicalize(raw);
             if let Err(err) = store.insert(&event).await {
-                tracing::warn!(target: "lab::dispatch::logs", ?err, "log store insert failed; event dropped");
+                tracing::warn!(
+                    target: "lab::dispatch::logs",
+                    surface = "logs", service = "ingest", action = "event.insert_failed",
+                    error = %err, "log store insert failed; event dropped",
+                );
                 continue;
             }
             hub.publish(event);

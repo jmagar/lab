@@ -1,8 +1,12 @@
 #![allow(dead_code)]
 
+#[cfg(any(feature = "mcpregistry", feature = "acp_registry"))]
+use lab_apis::marketplace::PluginSource;
 use lab_apis::marketplace::{Artifact, Marketplace, MarketplaceRuntime, Plugin, PluginComponent};
 use serde_json::Value;
 
+#[cfg(feature = "mcpregistry")]
+use crate::config;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::marketplace::backend::{MarketplaceBackend, PluginFilter};
 use crate::dispatch::marketplace::backends::claude::ClaudeMarketplaceBackend;
@@ -54,7 +58,7 @@ pub fn list_plugins_sync(
 pub async fn sources_list(
     runtime: Option<MarketplaceRuntime>,
 ) -> Result<Vec<Marketplace>, ToolError> {
-    tokio::task::spawn_blocking(move || match runtime {
+    let mut sources = tokio::task::spawn_blocking(move || match runtime {
         Some(MarketplaceRuntime::Claude) => claude_backend().list_sources(),
         Some(MarketplaceRuntime::Codex) => codex_backend().list_sources(),
         Some(MarketplaceRuntime::Gemini) => Ok(Vec::new()),
@@ -72,7 +76,14 @@ pub async fn sources_list(
         }
     })
     .await
-    .map_err(join_err)?
+    .map_err(join_err)??;
+
+    #[cfg(feature = "mcpregistry")]
+    append_mcp_registry_source(&mut sources).await;
+    #[cfg(feature = "acp_registry")]
+    append_acp_registry_source(&mut sources).await;
+
+    Ok(sources)
 }
 
 pub async fn plugins_list(
@@ -224,5 +235,204 @@ fn join_err(error: tokio::task::JoinError) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("join error: {error}"),
+    }
+}
+
+#[cfg(feature = "mcpregistry")]
+const MCP_REGISTRY_SOURCE_ID: &str = "mcp-registry";
+#[cfg(feature = "mcpregistry")]
+const MCP_REGISTRY_SOURCE_NAME: &str = "MCP Registry";
+#[cfg(feature = "acp_registry")]
+const ACP_REGISTRY_SOURCE_ID: &str = "acp-registry";
+#[cfg(feature = "acp_registry")]
+const ACP_REGISTRY_SOURCE_NAME: &str = "ACP Registry";
+
+#[cfg(feature = "mcpregistry")]
+async fn append_mcp_registry_source(sources: &mut Vec<Marketplace>) {
+    if sources
+        .iter()
+        .any(|source| source.id == MCP_REGISTRY_SOURCE_ID)
+    {
+        return;
+    }
+
+    sources.push(mcp_registry_marketplace(
+        &configured_mcp_registry_url_or_default(),
+        local_mcp_registry_server_count().await,
+    ));
+}
+
+#[cfg(feature = "acp_registry")]
+async fn append_acp_registry_source(sources: &mut Vec<Marketplace>) {
+    if sources
+        .iter()
+        .any(|source| source.id == ACP_REGISTRY_SOURCE_ID)
+    {
+        return;
+    }
+
+    sources.push(acp_registry_marketplace(
+        &crate::dispatch::marketplace::acp_client::configured_registry_url(),
+        acp_registry_agent_count().await,
+    ));
+}
+
+#[cfg(feature = "mcpregistry")]
+fn configured_mcp_registry_url_or_default() -> String {
+    match config::load_toml(&config::toml_candidates()) {
+        Ok(cfg) => config::mcpregistry_url(&cfg).to_string(),
+        Err(error) => {
+            tracing::warn!(
+                service = "marketplace",
+                source = MCP_REGISTRY_SOURCE_ID,
+                error = %error,
+                "falling back to default MCP Registry URL for marketplace source"
+            );
+            config::DEFAULT_MCPREGISTRY_URL.to_string()
+        }
+    }
+}
+
+#[cfg(feature = "mcpregistry")]
+async fn local_mcp_registry_server_count() -> u32 {
+    let db_path = config::registry_db_path();
+    if !db_path.exists() {
+        return 0;
+    }
+
+    let store = match crate::dispatch::marketplace::store::RegistryStore::open(&db_path).await {
+        Ok(store) => store,
+        Err(error) => {
+            tracing::warn!(
+                service = "marketplace",
+                source = MCP_REGISTRY_SOURCE_ID,
+                path = %db_path.display(),
+                error = %error,
+                "could not open local MCP Registry store for marketplace source count"
+            );
+            return 0;
+        }
+    };
+
+    match store.count_latest_servers().await {
+        Ok(count) => count,
+        Err(error) => {
+            tracing::warn!(
+                service = "marketplace",
+                source = MCP_REGISTRY_SOURCE_ID,
+                path = %db_path.display(),
+                error = %error,
+                "could not count local MCP Registry servers for marketplace source"
+            );
+            0
+        }
+    }
+}
+
+#[cfg(feature = "mcpregistry")]
+fn mcp_registry_marketplace(url: &str, total_plugins: u32) -> Marketplace {
+    Marketplace {
+        id: MCP_REGISTRY_SOURCE_ID.to_string(),
+        name: MCP_REGISTRY_SOURCE_NAME.to_string(),
+        owner: "Model Context Protocol".to_string(),
+        gh_user: "modelcontextprotocol".to_string(),
+        repo: None,
+        source: PluginSource::Git,
+        url: Some(url.to_string()),
+        path: None,
+        desc: "Official MCP server registry mirrored into Marketplace.".to_string(),
+        auto_update: true,
+        total_plugins,
+        last_updated: String::new(),
+        runtime: None,
+    }
+}
+
+#[cfg(feature = "acp_registry")]
+async fn acp_registry_agent_count() -> u32 {
+    let client = match crate::dispatch::marketplace::acp_client::require_acp_client() {
+        Ok(client) => client,
+        Err(error) => {
+            tracing::warn!(
+                service = "marketplace",
+                source = ACP_REGISTRY_SOURCE_ID,
+                error = %error,
+                "could not build ACP Registry client for marketplace source count"
+            );
+            return 0;
+        }
+    };
+
+    match client.list_agents().await {
+        Ok(agents) => u32::try_from(agents.len()).unwrap_or(u32::MAX),
+        Err(error) => {
+            tracing::warn!(
+                service = "marketplace",
+                source = ACP_REGISTRY_SOURCE_ID,
+                error = %error,
+                "could not count ACP Registry agents for marketplace source"
+            );
+            0
+        }
+    }
+}
+
+#[cfg(feature = "acp_registry")]
+fn acp_registry_marketplace(url: &str, total_plugins: u32) -> Marketplace {
+    Marketplace {
+        id: ACP_REGISTRY_SOURCE_ID.to_string(),
+        name: ACP_REGISTRY_SOURCE_NAME.to_string(),
+        owner: "Agent Client Protocol".to_string(),
+        gh_user: String::new(),
+        repo: None,
+        source: PluginSource::Git,
+        url: Some(url.to_string()),
+        path: None,
+        desc: "Official ACP agent registry mirrored into Marketplace.".to_string(),
+        auto_update: true,
+        total_plugins,
+        last_updated: String::new(),
+        runtime: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(feature = "mcpregistry")]
+    #[test]
+    fn mcp_registry_marketplace_uses_marketplace_source_identity() {
+        let source = mcp_registry_marketplace("https://registry.modelcontextprotocol.io", 42);
+
+        assert_eq!(source.id, MCP_REGISTRY_SOURCE_ID);
+        assert_eq!(source.name, MCP_REGISTRY_SOURCE_NAME);
+        assert_eq!(source.owner, "Model Context Protocol");
+        assert_eq!(source.gh_user, "modelcontextprotocol");
+        assert_eq!(source.source, PluginSource::Git);
+        assert_eq!(
+            source.url.as_deref(),
+            Some("https://registry.modelcontextprotocol.io")
+        );
+        assert!(source.auto_update);
+        assert_eq!(source.total_plugins, 42);
+    }
+
+    #[cfg(feature = "acp_registry")]
+    #[test]
+    fn acp_registry_marketplace_uses_marketplace_source_identity() {
+        let source = acp_registry_marketplace("https://cdn.agentclientprotocol.com", 7);
+
+        assert_eq!(source.id, ACP_REGISTRY_SOURCE_ID);
+        assert_eq!(source.name, ACP_REGISTRY_SOURCE_NAME);
+        assert_eq!(source.owner, "Agent Client Protocol");
+        assert_eq!(source.gh_user, "");
+        assert_eq!(source.source, PluginSource::Git);
+        assert_eq!(
+            source.url.as_deref(),
+            Some("https://cdn.agentclientprotocol.com")
+        );
+        assert!(source.auto_update);
+        assert_eq!(source.total_plugins, 7);
     }
 }

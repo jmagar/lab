@@ -80,6 +80,7 @@ export interface LogFilterState {
   subsystems: LogSubsystem[]
   levels: LogLevel[]
   limit: number
+  source_node_ids?: string[]
 }
 
 export interface LogStreamStatus {

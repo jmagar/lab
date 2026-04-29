@@ -23,6 +23,8 @@ export function connectLogStream(
 ) {
   if (USE_MOCK_DATA) {
     handlers.onOpen?.()
+    const mockNodeIds = ['local', 'node-alpha', 'node-beta']
+    let nodeOffset = 0
     const buildMockEvent = (): LogEvent => ({
       event_id: `mock-stream-${Date.now()}`,
       ts: Date.now(),
@@ -41,7 +43,7 @@ export function connectLogStream(
       outcome_kind: 'ok',
       fields_json: { source: 'mock-stream' },
       source_kind: 'mock',
-      source_node_id: null,
+      source_node_id: mockNodeIds[nodeOffset++ % mockNodeIds.length],
       source_device_id: null,
       ingest_path: 'mock',
       upstream_event_id: null,

@@ -2383,6 +2383,7 @@ async fn connect_websocket_upstream(
     config: &UpstreamConfig,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "websocket",
         action = "upstream.connect.start", url = %url,
         "upstream connect start",
@@ -2416,6 +2417,7 @@ async fn connect_websocket_upstream(
     let peer = service.peer().clone();
     let tools = peer.list_all_tools().await?;
     tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "websocket",
         action = "upstream.connect.finish", tool_count = tools.len(),
         "upstream connect finish",
@@ -2448,6 +2450,7 @@ async fn connect_http_upstream(
     oauth_client_cache: Option<&OauthClientCache>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
     tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "http",
         action = "upstream.connect.start", url = %url,
         "upstream connect start",
@@ -2507,6 +2510,12 @@ async fn connect_http_upstream(
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
     let peer = service.peer().clone();
     let tools = peer.list_all_tools().await?;
+    tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
+        upstream = %config.name, transport = "http",
+        action = "upstream.connect.finish", tool_count = tools.len(),
+        "upstream connect finish",
+    );
 
     Ok((
         UpstreamConnection {
@@ -2558,6 +2567,7 @@ async fn connect_stdio_upstream(
 
     let pid = process.id();
     tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "stdio",
         action = "upstream.connect.start", command = %command, pid = ?pid,
         "upstream connect start",
@@ -2568,6 +2578,7 @@ async fn connect_stdio_upstream(
     // Discover tools
     let tools = peer.list_all_tools().await?;
     tracing::info!(
+        surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "stdio",
         action = "upstream.connect.finish", pid = ?pid, tool_count = tools.len(),
         "upstream connect finish",

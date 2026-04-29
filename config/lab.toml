@@ -1,0 +1,42 @@
+# lab — docker container configuration
+# ─────────────────────────────────────
+# Search order: ./ → ~/.lab/ → ~/.config/lab/
+# Mounted at /home/lab/.config/lab/config.toml by docker-compose.yml.
+#
+# Secrets (tokens, keys, passwords) belong in .env — NOT here.
+
+[mcp]
+# Transport is set to http in the container (CMD = ["serve"]).
+transport = "http"
+# host / port are set via LAB_MCP_HTTP_HOST / LAB_MCP_HTTP_PORT env vars
+# in docker-compose.yml — no need to repeat them here unless you want
+# config-file-only deployments.
+# host = "0.0.0.0"
+# port = 8765
+
+# MCP session keep-alive (seconds).  0 = use built-in default.
+# session_ttl_secs = 300
+
+[log]
+# level: "error" | "warn" | "info" | "debug" | "trace"
+# Overridden by LAB_LOG env var (or RUST_LOG for tracing crates).
+level = "info"
+# format: "pretty" | "json" | "compact"
+format = "json"
+
+[auth]
+# Mode: "token" | "oauth" | "disabled"
+#
+#   token  — set LAB_MCP_HTTP_TOKEN in .env (or docker-compose environment:).
+#             Simplest option for a single-user / internal deployment.
+#
+#   oauth  — set LAB_PUBLIC_URL + LAB_OAUTH_ENCRYPTION_KEY in .env.
+#             Required for multi-user or externally-accessible deployments.
+#
+#   disabled — no authentication. Only safe when port is NOT exposed externally
+#              (e.g. 127.0.0.1 binding in docker-compose.override.yml).
+mode = "token"
+
+# Optional: explicit path for the OAuth SQLite store.
+# Defaults to ~/.local/share/lab/auth.db (inside the lab-data volume).
+# sqlite_path = "/home/lab/.local/share/lab/auth.db"

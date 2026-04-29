@@ -14,9 +14,11 @@ pub fn resolve_local_hostname() -> Result<String> {
         return Ok(value);
     }
 
-    if let Ok(value) = fs::read_to_string("/etc/hostname") {
-        if let Some(normalized) = normalize_host_identifier(&value) {
-            return Ok(normalized);
+    for path in ["/etc/hostname", "/etc/HOSTNAME"] {
+        if let Ok(value) = fs::read_to_string(path) {
+            if let Some(normalized) = normalize_host_identifier(&value) {
+                return Ok(normalized);
+            }
         }
     }
 
@@ -38,6 +40,14 @@ pub fn resolve_runtime_role(
         NodeRole::NonMaster
     };
 
+    tracing::info!(
+        surface = "node", service = "identity", action = "role.resolved",
+        local_host = %local_host,
+        master_host = %master_host,
+        role = ?role,
+        is_master = matches!(role, NodeRole::Master),
+        "runtime role resolved",
+    );
     Ok(ResolvedNodeRuntime {
         local_host,
         master_host,

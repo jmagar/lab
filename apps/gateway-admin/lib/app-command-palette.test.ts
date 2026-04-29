@@ -21,7 +21,6 @@ test('app command palette includes core admin destinations', () => {
   for (const href of [
     '/',
     '/gateways',
-    '/registry',
     '/marketplace',
     '/chat',
     '/setup',

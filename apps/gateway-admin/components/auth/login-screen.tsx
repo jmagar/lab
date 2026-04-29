@@ -1,5 +1,6 @@
 'use client'
 
+import { LabbyIcon } from '../labby-icon.tsx'
 import {
   AURORA_DISPLAY_1,
   AURORA_MUTED_LABEL,
@@ -32,6 +33,10 @@ export function LoginScreen({ errorMessage, requestId, returnTo }: LoginScreenPr
   return (
     <div className={cn(AURORA_PAGE_SHELL, 'flex min-h-screen items-center justify-center px-6')}>
       <div className={cn(AURORA_STRONG_PANEL, 'w-full max-w-md p-8')}>
+        <div className="flex items-center gap-3 mb-6">
+          <LabbyIcon size={40} />
+          <span className="text-xl font-bold text-aurora-text-primary">Labby</span>
+        </div>
         <p className={AURORA_MUTED_LABEL}>
           {errorMessage ? 'Authentication Error' : 'Authentication Required'}
         </p>

@@ -137,14 +137,15 @@ export function useChatSessionController(options: {
   const refreshSessions = React.useCallback(async () => {
     const response = await fetchAcp('/sessions')
     if (!response.ok) {
+      // On error: preserve current selectedRunId — resetting it to null would
+      // re-trigger the shouldAutoCreateInitialRun bootstrap loop.
       setRuns([])
-      setSelectedRunId(null)
       return
     }
     const payload = await readJsonSafe<{ sessions: RawSessionSummary[] }>(response)
     if (!payload) {
+      // Same: keep selectedRunId stable on parse error.
       setRuns([])
-      setSelectedRunId(null)
       return
     }
     const nextRuns = payload.sessions.map(toRun)
@@ -247,15 +248,24 @@ export function useChatSessionController(options: {
     }
   }, [providers, selectedProviderId])
 
+  // Keep a stable ref so the bootstrap effect does not re-fire every time
+  // createSession's identity changes (which happens on every providerHealth update).
+  const createSessionBootstrapRef = React.useRef(createSession)
+  React.useEffect(() => {
+    createSessionBootstrapRef.current = createSession
+  })
+
   React.useEffect(() => {
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) {
       return
     }
 
     void (async () => {
-      await createSessionForIntent(createSession, 'bootstrap', false)
+      await createSessionForIntent(createSessionBootstrapRef.current, 'bootstrap', false)
     })()
-  }, [createSession, providerHealth?.ready, runs.length, selectedRunId])
+  // Intentionally omit createSession — use ref above to avoid re-firing on identity changes.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerHealth?.ready, runs.length, selectedRunId])
 
   React.useEffect(() => {
     if (!selectedRunId || events.length === 0) {

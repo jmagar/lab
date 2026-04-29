@@ -120,14 +120,16 @@ impl SqliteAcpPersistence {
     /// `db_path` must not contain `..` components. The file is created with
     /// mode 0600 on first open.
     pub async fn open(db_path: PathBuf) -> Result<Self, AcpError> {
-        crate::dispatch::helpers::reject_path_traversal(&db_path.to_string_lossy()).map_err(
-            |_| {
-                AcpError::Internal(format!(
-                    "LAB_ACP_DB path must not contain `..` components: {}",
-                    db_path.display()
-                ))
-            },
-        )?;
+        // Reject `..` components specifically — absolute paths are valid here.
+        if db_path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
+            return Err(AcpError::Internal(format!(
+                "LAB_ACP_DB path must not contain `..` components: {}",
+                db_path.display()
+            )));
+        }
 
         let hmac_key = Arc::new(load_or_generate_hmac_key());
         let path = db_path.clone();

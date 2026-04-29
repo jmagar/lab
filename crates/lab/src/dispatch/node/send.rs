@@ -59,8 +59,15 @@ pub async fn send_to_node(node_id: &str, msg: Message) -> Result<(), NodeDispatc
     sender
         .send(msg)
         .await
-        .map_err(|_| NodeDispatchError::ChannelClosed {
-            node_id: node_id.to_string(),
+        .map_err(|_| {
+            tracing::warn!(
+                surface = "dispatch", service = "node.send", action = "send.channel_closed",
+                node_id = %node_id,
+                "send channel closed for node (race with disconnect)",
+            );
+            NodeDispatchError::ChannelClosed {
+                node_id: node_id.to_string(),
+            }
         })
 }
 

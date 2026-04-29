@@ -99,3 +99,8 @@ docker-compose.yml
 *.pem
 *.cert
 config.local.toml
+
+# ── Frontend apps (exclude build artifacts / node_modules, keep only out/) ────
+apps/
+!apps/gateway-admin/out
+!apps/gateway-admin/out/**

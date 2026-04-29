@@ -60,6 +60,8 @@ pub struct AppState {
     pub web_assets_dir: Option<Arc<PathBuf>>,
     /// Whether to serve Labby assets embedded into the lab binary.
     pub embedded_web_assets: bool,
+    /// Instant at which the server became ready (used by `/health` uptime_s).
+    pub server_start: std::time::Instant,
     /// Canonical absolute path of the configured workspace root, or
     /// `None` when `workspace.root` is invalid at startup.
     /// Backs the `dispatch/fs/` service (workspace filesystem browser).
@@ -124,6 +126,7 @@ impl AppState {
             embedded_web_assets: false,
             workspace_root: None,
             web_ui_auth_disabled: false,
+            server_start: std::time::Instant::now(),
             #[cfg(feature = "mcpregistry")]
             registry_store: None,
         }

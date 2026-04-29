@@ -233,7 +233,7 @@ def fetch_all(owner: str, repo: str, number: int) -> dict[str, Any]:
     assert pr_meta is not None
 
     conversation_comments.sort(key=lambda x: x["createdAt"], reverse=True)
-    reviews.sort(key=lambda x: x["submittedAt"], reverse=True)
+    reviews.sort(key=lambda x: x["submittedAt"] or "", reverse=True)
     review_threads.sort(
         key=lambda x: x["comments"]["nodes"][0]["createdAt"] if x["comments"]["nodes"] else "",
         reverse=True,

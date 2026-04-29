@@ -444,9 +444,21 @@ export function ChatSessionProvider({
 
     void (async () => {
       try {
-        const response = await fetchAcpRef.current(`/sessions/${selectedRunId}/events?since=${lastSeqRef.current}`, {
+        // Obtain a short-lived HMAC ticket before opening the SSE stream.
+        const ticketRes = await fetchAcpRef.current(`/sessions/${selectedRunId}/subscribe_ticket`, {
+          method: 'POST',
           signal: abortController.signal,
         })
+        if (!ticketRes.ok) {
+          setConnectionState('error')
+          return
+        }
+        const { ticket } = await ticketRes.json() as { ticket: string }
+
+        const response = await fetchAcpRef.current(
+          `/sessions/${selectedRunId}/events?since=${lastSeqRef.current}&ticket=${encodeURIComponent(ticket)}`,
+          { signal: abortController.signal },
+        )
 
         if (!response.ok || !response.body) {
           setConnectionState('error')

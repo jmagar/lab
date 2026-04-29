@@ -58,7 +58,7 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 | --- | --- | --- |
 | `help` | Show the action catalog | |
 | `schema` | Return the parameter schema for a named action | |
-| `sources.list` | List configured marketplaces with enriched owner/desc/plugin-count | |
+| `sources.list` | List Marketplace sources, including configured plugin marketplaces plus MCP/ACP registry feeds | |
 | `sources.add` | Register a new marketplace via `claude plugin marketplace add` | **yes** |
 | `plugins.list` | List all plugins across marketplaces with installed state | |
 | `plugin.get` | Return a single plugin by `name@marketplace` id | |

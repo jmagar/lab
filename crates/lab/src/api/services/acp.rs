@@ -28,6 +28,7 @@ pub fn routes(_state: AppState) -> Router<AppState> {
         .route("/sessions", get(list_sessions).post(create_session))
         .route("/sessions/{session_id}/prompt", post(prompt_session))
         .route("/sessions/{session_id}/cancel", post(cancel_session))
+        .route("/sessions/{session_id}/subscribe_ticket", post(subscribe_ticket))
         .route("/sessions/{session_id}/events", get(stream_events))
 }
 
@@ -143,6 +144,18 @@ async fn cancel_session(
         "confirm": true,
     });
     match dispatch_with_registry(&state.acp_registry, "session.cancel", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn subscribe_ticket(
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> impl IntoResponse {
+    // TODO(phase-2): extract authenticated principal from request extensions.
+    let params = json!({ "session_id": session_id, "principal": "" });
+    match dispatch_with_registry(&state.acp_registry, "session.subscribe_ticket", params).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
     }

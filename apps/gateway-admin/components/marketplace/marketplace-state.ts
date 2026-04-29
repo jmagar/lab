@@ -123,6 +123,8 @@ const RUNTIME_LABELS: Record<MarketplaceRuntime, string> = {
 
 export const MCP_REGISTRY_SOURCE_ID = 'mcp-registry'
 export const MCP_REGISTRY_SOURCE_NAME = 'MCP Registry'
+export const ACP_REGISTRY_SOURCE_ID = 'acp-registry'
+export const ACP_REGISTRY_SOURCE_NAME = 'ACP Registry'
 
 function sourceDisplayName(source: Marketplace): string {
   return source.name || source.id
@@ -412,6 +414,8 @@ export function buildMarketplaceCatalogItems({
       subtitle: agent.id,
       description: agent.description ?? '',
       version: agent.version,
+      sourceId: ACP_REGISTRY_SOURCE_ID,
+      sourceName: ACP_REGISTRY_SOURCE_NAME,
       distribution: agentDistribution(agent),
       ecosystem: 'ACP',
       installed: Boolean(agent.installed),

@@ -21,6 +21,9 @@ export function buildLogSearchQuery(
   if (options?.afterTs != null) {
     query.after_ts = options.afterTs
   }
+  if (filters.source_node_ids?.length) {
+    query.source_node_ids = filters.source_node_ids
+  }
 
   return query
 }

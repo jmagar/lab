@@ -1,0 +1,48 @@
+services:
+  lab-master:
+    image: lab:dev
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+
+    ports:
+      # LAB_HOST_PORT lets you remap the host-side port without editing this file.
+      - "${LAB_HOST_PORT:-8765}:8765"
+
+    volumes:
+      # Named volume — persists SQLite DBs, master.lock, OAuth keys across
+      # container restarts and image rebuilds.
+      - lab-data:/home/lab/.local
+      # Host config file mounted read-only.  Copy config/lab.toml.example →
+      # config/lab.toml, edit, then `docker compose up -d`.
+      - ./config/lab.toml:/home/lab/.config/lab/config.toml:ro
+
+    environment:
+      # Bind to all container interfaces so the port mapping works.
+      # The host-side port mapping (above) controls external exposure.
+      LAB_MCP_HTTP_HOST: "0.0.0.0"
+      LAB_MCP_HTTP_PORT: "8765"
+      # Structured log levels — RUST_LOG for tracing, LAB_LOG for app filter.
+      RUST_LOG: "lab=info,warn"
+      LAB_LOG: "info"
+
+    # Load secrets from .env (see .env.docker.example).
+    # File is optional so `docker compose up` works without it (token auth
+    # can also be set via LAB_MCP_HTTP_TOKEN above, but .env is safer).
+    env_file:
+      - path: .env
+        required: false
+
+    # ── Hard outer boundary ──────────────────────────────────────────────────
+    # Even if the spawn-guard logic in the binary fails, the container's pid
+    # namespace + these limits prevent a fork-bomb from reaching the host.
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          pids: 200
+
+volumes:
+  lab-data:
+    driver: local

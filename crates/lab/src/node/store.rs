@@ -55,6 +55,7 @@ impl NodeStore {
 
     pub async fn record_hello(&self, hello: NodeHello) {
         let mut inner = self.inner.write().await;
+        let is_new = !inner.contains_key(&hello.node_id);
         let snapshot = inner
             .entry(hello.node_id.clone())
             .or_insert_with(|| NodeSnapshot {
@@ -66,10 +67,17 @@ impl NodeStore {
                 metadata: None,
                 logs: VecDeque::new(),
             });
-        snapshot.node_id = hello.node_id;
+        snapshot.node_id = hello.node_id.clone();
         snapshot.connected = true;
         snapshot.last_seen = SystemTime::now();
-        snapshot.role = Some(hello.role);
+        snapshot.role = Some(hello.role.clone());
+        tracing::info!(
+            surface = "node", service = "store", action = "node.hello",
+            node_id = %hello.node_id,
+            role = ?hello.role,
+            is_new_node = is_new,
+            "node hello recorded",
+        );
     }
 
     pub async fn record_status(&self, status: NodeStatus) {
@@ -88,6 +96,12 @@ impl NodeStore {
         snapshot.node_id = status.node_id.clone();
         snapshot.connected = status.connected;
         snapshot.last_seen = SystemTime::now();
+        tracing::debug!(
+            surface = "node", service = "store", action = "node.status",
+            node_id = %status.node_id,
+            connected = status.connected,
+            "node status recorded",
+        );
         snapshot.status = Some(status);
     }
 
@@ -104,10 +118,26 @@ impl NodeStore {
                 metadata: None,
                 logs: VecDeque::new(),
             });
+        let prev_connected = snapshot.connected;
         snapshot.connected = connected;
         snapshot.last_seen = SystemTime::now();
         if let Some(status) = snapshot.status.as_mut() {
             status.connected = connected;
+        }
+        if prev_connected != connected {
+            if connected {
+                tracing::info!(
+                    surface = "node", service = "store", action = "node.connected",
+                    node_id = %node_id,
+                    "node marked connected",
+                );
+            } else {
+                tracing::info!(
+                    surface = "node", service = "store", action = "node.disconnected",
+                    node_id = %node_id,
+                    "node marked disconnected",
+                );
+            }
         }
     }
 

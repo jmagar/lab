@@ -1,0 +1,30 @@
+# docker-compose.override.yml.example
+# ─────────────────────────────────────
+# Copy to docker-compose.override.yml for local dev overrides.
+# docker-compose.override.yml is .gitignored — safe for local secrets/tweaks.
+#
+# Docker Compose merges this file automatically when present.
+
+services:
+  lab-master:
+    # Always rebuild from local source in dev.
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    # Bind only to loopback on the dev machine — no accidental LAN exposure.
+    ports:
+      - "127.0.0.1:8765:8765"
+
+    # Relax resource limits for profiling / debugging.
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+          pids: 1000
+
+    # Mount source for quick config iteration without rebuild (config only —
+    # binaries still need a rebuild).
+    # volumes:
+    #   - lab-data:/home/lab/.local
+    #   - ./config/lab.toml:/home/lab/.config/lab/config.toml:ro

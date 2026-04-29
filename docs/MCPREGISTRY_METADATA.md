@@ -122,15 +122,15 @@ These filter only on Lab-owned metadata and do not affect upstream official fiel
 
 ## CLI Surface
 
-The typed CLI surface is:
+Registry metadata is operated through the unified Marketplace CLI surface:
 
 ```bash
-lab mcpregistry meta get <name> --version latest
-lab mcpregistry meta set <name> --featured true --reviewed true --tag recommended,stable
-lab mcpregistry meta delete <name> --version latest
+lab marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'
+lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'
+lab marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'
 ```
 
-For advanced cases, `meta set --json '<object>'` remains available.
+For advanced cases, include the full metadata object in `--params`.
 
 ## UI Surface
 

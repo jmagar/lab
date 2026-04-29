@@ -75,6 +75,11 @@ pub struct ServeArgs {
     /// Bind port for the HTTP transport.
     #[arg(long)]
     pub port: Option<u16>,
+    /// Override the log filter level for this process.
+    /// Sets `LAB_LOG=lab=<level>,warn` before tracing init.
+    /// Example: `--log-level debug`
+    #[arg(long)]
+    pub log_level: Option<String>,
     #[command(subcommand)]
     pub command: Option<ServeCommand>,
 }
@@ -844,6 +849,23 @@ async fn run_http(
         "binding http listener"
     );
     let listener = bind_or_reclaim(&addr, port).await?;
+    // Notify systemd that the socket is ready (sd_notify READY=1).
+    #[cfg(feature = "systemd")]
+    {
+        if std::env::var_os("NOTIFY_SOCKET").is_some() {
+            if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
+                tracing::warn!(
+                    surface = "api", service = "http", action = "sd_notify.error",
+                    error = %e, "sd_notify failed"
+                );
+            } else {
+                tracing::info!(
+                    surface = "api", service = "http", action = "sd_notify.ready",
+                    "systemd READY=1 sent"
+                );
+            }
+        }
+    }
     tracing::info!(
         subsystem = "api_server",
         phase = "ready",
@@ -881,7 +903,30 @@ async fn run_http(
         mcp_server_enabled = mount_http_mcp,
         "lab serve ready"
     );
-    axum::serve(listener, router).await?;
+    // SIGUSR1 → config reload signal handler (unix only).
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigusr1 = signal(SignalKind::user_defined1())
+            .context("failed to register SIGUSR1 handler")?;
+        tokio::select! {
+            result = axum::serve(listener, router) => { result?; }
+            _ = async {
+                loop {
+                    sigusr1.recv().await;
+                    tracing::info!(
+                        surface = "api", service = "http", action = "config.reload",
+                        "SIGUSR1 received — config reload triggered",
+                    );
+                    // Future: re-read config.toml and apply diffs here.
+                }
+            } => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        axum::serve(listener, router).await?;
+    }
     Ok(ExitCode::SUCCESS)
 }
 

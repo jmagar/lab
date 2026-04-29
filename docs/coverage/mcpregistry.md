@@ -107,7 +107,7 @@ The service exposes **two** HTTP surfaces:
 2. **`GET /v0.1/servers/*`** — REST wire-compatible with the upstream
    MCP Registry v0.1 spec. Handler: `crates/lab/src/api/services/registry_v01.rs`.
 
-The REST surface backs the `lab://mcpregistry/…` UI and any consumer expecting the
+The REST surface backs the Marketplace registry UI and any consumer expecting the
 upstream shape. It reads from the local SQLite registry store (populated by `sync`),
 not the upstream — so it survives upstream outages and supports richer sort semantics.
 
