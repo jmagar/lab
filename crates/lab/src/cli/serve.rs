@@ -126,14 +126,18 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "service registry ready"
     );
     let local_host = resolve_local_hostname().context("resolve local hostname")?;
-    let resolved_runtime = resolve_runtime_role(
-        &local_host,
-        config
-            .device
-            .as_ref()
-            .and_then(|prefs| prefs.master.as_deref()),
-    )
-    .context("resolve device runtime role")?;
+    let configured_master = config
+        .node
+        .as_ref()
+        .and_then(|prefs| prefs.controller.as_deref())
+        .or_else(|| {
+            config
+                .device
+                .as_ref()
+                .and_then(|prefs| prefs.master.as_deref())
+        });
+    let resolved_runtime = resolve_runtime_role(&local_host, configured_master)
+        .context("resolve device runtime role")?;
     tracing::info!(
         subsystem = "startup",
         phase = "bootstrap.device-runtime",
@@ -225,16 +229,26 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         pool_builder = pool_builder.with_oauth_client_cache(rt.cache.clone());
     }
     let pool = Arc::new(pool_builder);
-    pool.discover_all_with_in_process_peers(&config.upstream, &registry)
-        .await;
-    tracing::info!(
-        subsystem = "gateway_client",
-        phase = "discovery.finish",
-        upstream_count = config.upstream.len(),
-        discovered_upstream_count = pool.upstream_count().await,
-        "upstream gateway discovery complete"
-    );
-    gateway_runtime.swap(Some(pool)).await;
+    // In MCP-only (stdio) mode skip upstream discovery entirely — no child processes
+    // should be spawned, making the axon↔lab recursion cycle physically impossible.
+    if !stdio_mode {
+        pool.discover_all_with_in_process_peers(&config.upstream, &registry)
+            .await;
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "discovery.finish",
+            upstream_count = config.upstream.len(),
+            discovered_upstream_count = pool.upstream_count().await,
+            "upstream gateway discovery complete"
+        );
+        gateway_runtime.swap(Some(pool)).await;
+    } else {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "discovery.skipped",
+            "upstream discovery skipped for MCP-only stdio mode — no upstream processes spawned"
+        );
+    }
     let notifier = PeerNotifier::default();
     let (notify_tx, notify_rx) = mpsc::unbounded_channel();
     let _catalog_notifier_task = tokio::spawn(notifier.clone().run(notify_rx));
@@ -252,14 +266,24 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     }
     gateway_manager.set_notifier(CatalogChangeNotifier::new(notify_tx));
     let gateway_manager = Arc::new(gateway_manager);
-    gateway_manager.seed_config(config.clone()).await;
-    install_gateway_manager(Arc::clone(&gateway_manager));
-    tracing::info!(
-        subsystem = "gateway_client",
-        phase = "manager.ready",
-        upstream_count = config.upstream.len(),
-        "gateway manager installed"
-    );
+    // Skip seeding and installing the gateway manager in MCP-only mode — seeding
+    // can trigger async tasks that spawn upstream connections.
+    if !stdio_mode {
+        gateway_manager.seed_config(config.clone()).await;
+        install_gateway_manager(Arc::clone(&gateway_manager));
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "manager.ready",
+            upstream_count = config.upstream.len(),
+            "gateway manager installed"
+        );
+    } else {
+        tracing::info!(
+            subsystem = "gateway_client",
+            phase = "manager.skipped",
+            "gateway manager seed skipped for MCP-only stdio mode"
+        );
+    }
     let logs_system = bootstrap_running_log_system(
         resolve_store_path(Some(config)),
         resolve_retention(Some(config)),
@@ -740,6 +764,47 @@ async fn run_http(
     notifier: PeerNotifier,
     mount_http_mcp: bool,
 ) -> Result<ExitCode> {
+    // ── Single-master lock ────────────────────────────────────────────────────
+    // Only one HTTP master instance may run per device at a time. Exits
+    // immediately with a clear error if the lock is already held by another
+    // process. This guard is NOT applied in stdio/MCP-only mode — `lab serve
+    // mcp --stdio` may run freely alongside a running master.
+    let _master_lock: std::fs::File = {
+        let lock_dir = std::env::var("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(".local/state/lab");
+        std::fs::create_dir_all(&lock_dir)
+            .with_context(|| format!("create master lock dir {}", lock_dir.display()))?;
+        let lock_path = lock_dir.join("master.lock");
+        let mut lock_file = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)
+            .with_context(|| format!("open master lock file {}", lock_path.display()))?;
+        match lock_file.try_lock() {
+            Ok(()) => {}
+            Err(std::fs::TryLockError::WouldBlock) => {
+                eprintln!(
+                    "lab: another master instance is already running on this device \
+                     (lock: {}). Use 'lab serve mcp --stdio' for node/MCP-only mode.",
+                    lock_path.display()
+                );
+                std::process::exit(1);
+            }
+            Err(std::fs::TryLockError::Error(e)) => {
+                return Err(anyhow::Error::new(e)
+                    .context(format!("acquire master lock ({})", lock_path.display())));
+            }
+        }
+        let pid = std::process::id();
+        use std::io::Write as _;
+        let _write = write!(lock_file, "{pid}\n");
+        tracing::info!(pid, lock_path = %lock_path.display(), "acquired master lock");
+        lock_file // held alive until run_http returns — lock released on drop
+    };
+    // ── end single-master lock ────────────────────────────────────────────────
+
     let web_assets_enabled = state.web_assets_dir.is_some();
     let bearer_token_configured = bearer_token.is_some();
     tracing::info!(
@@ -851,6 +916,8 @@ async fn run_stdio(
     node_role: crate::config::NodeRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
+    // LAB_SPAWN_DEPTH guard removed: MCP-only mode never spawns upstream processes,
+    // so the axon↔lab recursion cycle is architecturally impossible.
     tracing::info!(
         subsystem = "mcp_server",
         phase = "start",
