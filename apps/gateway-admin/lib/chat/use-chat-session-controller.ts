@@ -1,11 +1,21 @@
 'use client'
 
 import * as React from 'react'
-import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
-import { gatewayHeaders } from '@/lib/api/gateway-request'
-import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
+import { createAcpFetcher } from '@/lib/acp/fetch'
 import { toProjects } from './session-events'
 import { useSessionEvents } from './use-session-events'
+import {
+  type ProviderListPayload,
+  type SessionCreatePayload,
+  type ErrorPayload,
+  type RawSessionSummary,
+  toRun,
+  normalizeProviderHealth,
+  normalizeProviderList,
+  extractCreatedSession,
+  readJsonSafe,
+  errorMessageFromPayload,
+} from './acp-normalizers'
 import type { ACPAgent, ACPRun } from '@/components/chat/types'
 import type { BridgeSessionSummary, ProviderHealth } from '@/lib/acp/types'
 import type { AttachmentRef } from '@/lib/fs/types'
@@ -18,47 +28,6 @@ export const ACP_AGENT: ACPAgent = {
   description: 'codex-acp over local ACP bridge',
   version: 'live',
   capabilities: ['tool_use', 'streaming', 'permissions', 'plans'],
-}
-
-type ProviderListPayload = {
-  providers?: Array<{
-    name?: string
-    available?: boolean
-    version?: string | null
-    error?: string | null
-    command?: string | null
-    args?: string[] | null
-  }>
-  provider?: ProviderHealth
-}
-
-type SessionCreatePayload = {
-  session?: BridgeSessionSummary
-} & BridgeSessionSummary
-
-type ErrorPayload = {
-  message?: string
-  error?: string
-  kind?: string
-}
-
-type RawSessionSummary = {
-  id: string
-  provider: string
-  title: string
-  cwd: string
-  status?: string
-  state?: string
-  createdAt?: string
-  updatedAt?: string
-  providerSessionId?: string
-  agentName?: string
-  agentVersion?: string
-  created_at?: string
-  updated_at?: string
-  provider_session_id?: string
-  agent_name?: string
-  agent_version?: string
 }
 
 export type SessionCreationIntent = 'bootstrap' | 'manual' | 'send'
@@ -109,97 +78,15 @@ export async function ensurePromptRunId(
   return run.id
 }
 
-function normalizeSessionSummary(session: RawSessionSummary): BridgeSessionSummary {
-  return {
-    id: session.id,
-    provider: session.provider,
-    title: session.title,
-    cwd: session.cwd,
-    status: (session.status ?? session.state ?? 'idle') as BridgeSessionSummary['status'],
-    createdAt: session.createdAt ?? session.created_at ?? '',
-    updatedAt: session.updatedAt ?? session.updated_at ?? '',
-    providerSessionId: session.providerSessionId ?? session.provider_session_id ?? '',
-    agentName: session.agentName ?? session.agent_name ?? 'Codex',
-    agentVersion: session.agentVersion ?? session.agent_version ?? 'unknown',
-  }
-}
-
-function toRun(session: RawSessionSummary): ACPRun {
-  const normalized = normalizeSessionSummary(session)
-  return {
-    id: normalized.id,
-    projectId: 'workspace',
-    agentId: normalized.provider,
-    provider: normalized.provider,
-    title: normalized.title,
-    createdAt: new Date(normalized.createdAt),
-    updatedAt: new Date(normalized.updatedAt),
-    status: normalized.status,
-    providerSessionId: normalized.providerSessionId,
-    cwd: normalized.cwd,
-  }
-}
-
-function normalizeProviderHealth(payload: ProviderListPayload): ProviderHealth {
-  if (payload.provider) {
-    return payload.provider
-  }
-
-  const provider = payload.providers?.[0]
-  return {
-    provider: provider?.name ?? 'codex',
-    ready: Boolean(provider?.available),
-    command: '',
-    args: [],
-    message: provider?.error ?? '',
-  }
-}
-
-function normalizeProviderList(payload: ProviderListPayload): ProviderHealth[] {
-  if (payload.provider) {
-    return [payload.provider]
-  }
-
-  return (payload.providers ?? []).map((provider) => ({
-    provider: provider.name ?? 'codex-acp',
-    ready: Boolean(provider.available),
-    command: provider.command ?? '',
-    args: provider.args ?? [],
-    message: provider.error ?? '',
-  }))
-}
-
-function extractCreatedSession(payload: SessionCreatePayload): RawSessionSummary {
-  return payload.session ?? payload
-}
-
-async function readJsonSafe<T>(response: Response): Promise<T | null> {
-  const text = await response.text()
-  if (!text) {
-    return null
-  }
-
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    return null
-  }
-}
-
-function errorMessageFromPayload(payload: ErrorPayload | null, fallback: string) {
-  return payload?.message ?? payload?.error ?? fallback
-}
-
 export function useChatSessionController(options: {
   isMobileViewport: boolean
   onSessionPanelClose?: () => void
 }) {
   const { isMobileViewport, onSessionPanelClose } = options
-  const acpBase = React.useMemo(() => `${normalizeGatewayApiBase()}/acp`, [])
-  const standaloneBearerAuth = React.useMemo(() => isStandaloneBearerAuthMode(), [])
-  const requestCredentials = React.useMemo<RequestCredentials>(
-    () => (standaloneBearerAuth ? 'omit' : 'include'),
-    [standaloneBearerAuth],
+  const fetchAcpRef = React.useRef(createAcpFetcher())
+  const fetchAcp = React.useCallback(
+    (path: string, init?: RequestInit) => fetchAcpRef.current(path, init),
+    [],
   )
   const [runs, setRuns] = React.useState<ACPRun[]>([])
   const [selectedRunId, setSelectedRunId] = React.useState<string | null>(null)
@@ -246,24 +133,6 @@ export function useChatSessionController(options: {
         name: selectedRun.provider,
       })
     : (agents.find((agent) => agent.id === selectedProviderId) ?? agents[0] ?? ACP_AGENT)
-
-  const fetchAcp = React.useCallback(
-    async (path: string, init?: RequestInit) => {
-      const headers = new Headers(init?.headers ?? {})
-      const authHeaders = gatewayHeaders()
-      for (const [key, value] of Object.entries(authHeaders)) {
-        headers.set(key, value)
-      }
-
-      return fetch(`${acpBase}${path}`, {
-        ...init,
-        headers,
-        credentials: requestCredentials,
-        cache: 'no-store',
-      })
-    },
-    [acpBase, requestCredentials],
-  )
 
   const refreshSessions = React.useCallback(async () => {
     const response = await fetchAcp('/sessions')
@@ -331,7 +200,13 @@ export function useChatSessionController(options: {
         }))
         throw new Error(message)
       }
-      const run = toRun(extractCreatedSession(payload))
+      // Narrow: SessionCreatePayload has an `id` field; ErrorPayload does not
+      const isSessionPayload = 'id' in payload || ('session' in payload && payload.session != null)
+      if (!isSessionPayload) {
+        const message = errorMessageFromPayload(payload as ErrorPayload, 'Failed to create ACP session.')
+        throw new Error(message)
+      }
+      const run = toRun(extractCreatedSession(payload as SessionCreatePayload))
       setRuns((current) => integrateCreatedRun(current, run))
       setSelectedRunId(run.id)
       if (createOptions?.closeSessionPanel) {

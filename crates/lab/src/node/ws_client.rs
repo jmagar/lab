@@ -941,7 +941,7 @@ pub fn build_initialize_request(
 
 pub fn queue_envelope_to_request(envelope: &QueuedEnvelope, id: &str) -> Result<Value> {
     let method = match envelope.kind.as_str() {
-        "syslog_batch" => "nodes/log.event",
+        "syslog_batch" | "application_log_batch" => "nodes/log.event",
         "status" => "nodes/status.push",
         "metadata" => "nodes/metadata.push",
         other => return Err(anyhow!("unsupported queued envelope kind `{other}`")),
@@ -1045,6 +1045,60 @@ mod tests {
         )
         .expect("metadata");
         assert_eq!(metadata["method"], "nodes/metadata.push");
+    }
+
+    #[test]
+    fn application_log_batch_envelope_serializes_with_application_source() {
+        let payload = serde_json::json!({
+            "node_id": "device-1",
+            "events": [{"message": "hello", "source": "application"}]
+        });
+        let envelope = QueuedEnvelope::application_log_batch(payload.clone());
+        let serialized = serde_json::to_value(&envelope).expect("serialize");
+        assert_eq!(serialized["kind"], "application_log_batch");
+        assert_eq!(serialized["payload"], payload);
+    }
+
+    #[test]
+    fn application_log_batch_maps_to_log_event_method() {
+        let envelope = QueuedEnvelope::application_log_batch(serde_json::json!({
+            "node_id": "device-1",
+            "events": [{"message": "hello", "source": "application"}]
+        }));
+        let request = queue_envelope_to_request(&envelope, "44444444-4444-4444-8444-444444444444")
+            .expect("request");
+        assert_eq!(request["method"], "nodes/log.event");
+        assert_eq!(
+            request["params"]["events"][0]["source"].as_str(),
+            Some("application")
+        );
+    }
+
+    #[tokio::test]
+    async fn application_log_batch_round_trip_through_queue() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let queue = NodeOutboundQueue::open(tempdir.path().join("node-runtime-queue.jsonl"))
+            .await
+            .expect("open queue");
+
+        let payload = serde_json::json!({
+            "node_id": "device-1",
+            "events": [{"message": "app event", "source": "application"}]
+        });
+        queue
+            .push(QueuedEnvelope::application_log_batch(payload.clone()))
+            .await
+            .expect("push");
+
+        let drained = queue.drain_batch(10).await.expect("drain");
+        assert_eq!(drained.len(), 1);
+        let envelope = &drained[0];
+        assert_eq!(envelope.kind, "application_log_batch");
+
+        let request = queue_envelope_to_request(envelope, "55555555-5555-4555-8555-555555555555")
+            .expect("request");
+        assert_eq!(request["method"], "nodes/log.event");
+        assert_eq!(request["params"], payload);
     }
 
     #[tokio::test]

@@ -1,7 +1,9 @@
 import { AuthBootstrap } from '@/components/auth/auth-bootstrap'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/app-sidebar'
+import { AppCommandPalette } from '@/components/app-command-palette'
 import { Toaster } from '@/components/ui/sonner'
+import { AdminLayoutClient } from '@/components/admin-layout-client'
 
 export default function AdminLayout({
   children,
@@ -12,7 +14,12 @@ export default function AdminLayout({
     <AuthBootstrap>
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>{children}</SidebarInset>
+        <SidebarInset>
+          <AdminLayoutClient>
+            {children}
+          </AdminLayoutClient>
+        </SidebarInset>
+        <AppCommandPalette />
         <Toaster />
       </SidebarProvider>
     </AuthBootstrap>

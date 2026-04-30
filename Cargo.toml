@@ -120,7 +120,8 @@ todo         = "warn"
 unimplemented = "warn"
 dbg_macro    = "warn"
 print_stderr = "allow"
-mod_module_files = "warn"   # forbid mod.rs — enforce foo.rs sibling to foo/ style
+mod_module_files  = "deny"  # forbid mod.rs — enforce foo.rs sibling to foo/ style
+disallowed_macros = "deny"  # see /clippy.toml — bans `#[async_trait]` in our code
 
 # allow some pedantic noise
 module_name_repetitions = "allow"

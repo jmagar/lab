@@ -37,6 +37,7 @@ export function ChatShell() {
     agents,
     projects,
     messages,
+    connectionState,
     selectRun,
     createRun,
     sendPrompt,
@@ -179,7 +180,7 @@ export function ChatShell() {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <MessageThread run={selectedRun} messages={messages} />
+          <MessageThread run={selectedRun} messages={messages} connectionState={connectionState} />
           <ChatInput
             onSend={sendPrompt}
             disabled={!providerReady}

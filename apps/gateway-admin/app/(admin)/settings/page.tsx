@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { KeyRound, LifeBuoy, PlugZap, Search, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { AppHeader } from '@/components/app-header'
@@ -22,9 +22,13 @@ import {
   useGatewayMutations,
   useGatewayToolSearchConfig,
 } from '@/lib/hooks/use-gateways'
+import { useBrowserSession } from '@/lib/auth/session'
 import { cn, getErrorMessage } from '@/lib/utils'
+import { AllowedUsersPanel } from '@/components/allowed-users-panel'
 
 export default function SettingsPage() {
+  const session = useBrowserSession()
+  const isAdmin = session.status === 'authenticated' && session.isAdmin === true
   const { data: gateways, isLoading, error } = useGateways()
   const {
     data: toolSearchConfig,
@@ -32,6 +36,7 @@ export default function SettingsPage() {
     error: toolSearchError,
   } = useGatewayToolSearchConfig()
   const { setToolSearchConfig } = useGatewayMutations()
+  const isSavingRef = useRef(false)
   const [isToolSearchSaving, setIsToolSearchSaving] = useState(false)
   const snapshot = gateways ? buildGatewaySettingsSnapshot(gateways, {
     hasStandaloneBearerAuth: isStandaloneBearerAuthMode(),
@@ -40,10 +45,8 @@ export default function SettingsPage() {
   const canToggleToolSearch = Boolean(toolSearchConfig) && !isToolSearchLoading && !isToolSearchSaving
 
   async function handleToolSearchToggle(enabled: boolean) {
-    if (!toolSearchConfig) {
-      return
-    }
-
+    if (!toolSearchConfig || isSavingRef.current) return
+    isSavingRef.current = true
     setIsToolSearchSaving(true)
     try {
       await setToolSearchConfig({
@@ -55,6 +58,7 @@ export default function SettingsPage() {
     } catch (requestError) {
       toast.error(getErrorMessage(requestError, 'Failed to update gateway tool search'))
     } finally {
+      isSavingRef.current = false
       setIsToolSearchSaving(false)
     }
   }
@@ -250,6 +254,9 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Allowed users (admin only) */}
+        {isAdmin ? <AllowedUsersPanel /> : null}
       </div>
     </div>
   )

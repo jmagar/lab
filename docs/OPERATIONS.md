@@ -55,6 +55,7 @@ When `LAB_AUTH_MODE=oauth`, `lab` persists local auth state on disk:
 
 Rules:
 
+- `LAB_AUTH_ADMIN_EMAIL` must be set to the bootstrap admin's Google email; startup fails closed if it is missing so no Google account can authenticate without explicit permission
 - both files must use restrictive permissions; on Unix, `lab` requires they are not group- or world-readable
 - new files are created with `0600` permissions on Unix
 - the SQLite store is opened in WAL mode with a non-zero busy timeout

@@ -252,8 +252,9 @@ impl GatewayManager {
     }
 
     pub async fn seed_config(&self, config: LabConfig) {
-        let mut config = config;
-        config.normalize_legacy_tool_search();
+        // config.rs normalizes legacy tool_search before calling seed_config;
+        // do not re-normalize here with false — that would incorrectly promote
+        // legacy upstream config when the root [tool_search] is explicitly disabled.
         *self.config.write().await = config;
     }
 
@@ -1673,6 +1674,13 @@ impl GatewayManager {
         &self,
         name: &str,
     ) -> Result<(String, crate::dispatch::upstream::types::UpstreamTool), ToolError> {
+        if !self.config.read().await.tool_search.enabled {
+            return Err(ToolError::Sdk {
+                sdk_kind: "unknown_tool".to_string(),
+                message: "tool search is not enabled; tool_invoke requires tool_search mode"
+                    .to_string(),
+            });
+        }
         let pool = self.current_pool().await.ok_or_else(|| ToolError::Sdk {
             sdk_kind: "unknown_tool".to_string(),
             message: format!("tool `{name}` is not available"),
@@ -1700,6 +1708,13 @@ impl GatewayManager {
 
     fn schedule_tool_search_rebuilds(&self, cfg: &LabConfig, pool: Option<Arc<UpstreamPool>>) {
         if !cfg.tool_search.enabled {
+            for entry in self.tool_indexes.iter() {
+                if let Ok(mut guard) = entry.in_flight.lock()
+                    && let Some(handle) = guard.take()
+                {
+                    handle.abort();
+                }
+            }
             self.tool_indexes.clear();
             return;
         }

@@ -7,6 +7,7 @@ import {
   AURORA_MUTED_LABEL,
   AURORA_PAGE_FRAME,
   AURORA_PAGE_SHELL,
+  AURORA_STAT_PANEL,
   AURORA_STRONG_PANEL,
   controlTone,
 } from '@/components/aurora/tokens'
@@ -27,8 +28,8 @@ export {
  * Shared Aurora constants live in @/components/aurora/tokens.
  */
 
-export const AURORA_GATEWAY_STAT =
-  'rounded-[1.05rem] border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(18,40,56,0.96),rgba(12,27,38,0.98))] px-4 py-3 shadow-[0_8px_18px_rgba(0,0,0,0.18),var(--aurora-highlight-medium)]'
+/** @deprecated Use AURORA_STAT_PANEL from aurora/tokens instead. */
+export const AURORA_GATEWAY_STAT = AURORA_STAT_PANEL
 
 export const AURORA_GATEWAY_CARD =
   'rounded-[1.2rem] border border-aurora-border-strong bg-[linear-gradient(180deg,rgba(14,31,44,0.98),rgba(9,21,30,0.98))] shadow-[0_16px_30px_rgba(0,0,0,0.2),var(--aurora-highlight-medium)]'

@@ -7,6 +7,11 @@ changes rather than internal refactors.
 ## [Unreleased]
 
 ### Added
+- Added `LAB_AUTH_ADMIN_EMAIL` env var (required in oauth mode). The Google
+  email of the bootstrap admin permitted to log in. The id_token's
+  `email_verified` claim is enforced — unverified accounts are rejected even
+  when the address matches. A SQLite-backed multi-user allowlist managed
+  through the Labby web UI is planned as a follow-up.
 - Added `lab-auth`, a dedicated auth crate for hosted HTTP OAuth flows.
 - Added Google-backed OAuth support for the HTTP MCP server, including dynamic
   client registration, PKCE, local JWT issuance, and JWKS publishing.
@@ -22,6 +27,12 @@ changes rather than internal refactors.
   patterns for callback-relay style clients such as Codex.
 
 ### Changed
+- **Breaking (auth):** OAuth mode now requires `LAB_AUTH_ADMIN_EMAIL` to be set.
+  Startup fails closed if it is missing. The previous behavior of allowing every
+  Google account when no allowlist was configured was a fail-open
+  misconfiguration risk. Operators upgrading to this release must add
+  `LAB_AUTH_ADMIN_EMAIL` to their environment before `lab serve --transport http`
+  will start in oauth mode.
 - **Breaking (HTTP API):** `gateway.add`, `gateway.update`, `gateway.remove`, and
   `gateway.reload` are now marked destructive. HTTP and MCP callers must include
   `"confirm": true` in `params` or the request is rejected with
