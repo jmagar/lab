@@ -13,6 +13,7 @@
 //! has no `Uvx` or `Binary` variant.
 
 use std::path::PathBuf;
+use std::time::Instant;
 
 use serde_json::Value;
 
@@ -61,6 +62,18 @@ pub async fn dispatch_acp_with_client(
     action: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
+    let started = Instant::now();
+    let result = dispatch_acp_with_client_inner(client, action, params).await;
+    log_acp_dispatch_outcome(action, started, &result);
+    result
+}
+
+#[cfg(feature = "acp_registry")]
+async fn dispatch_acp_with_client_inner(
+    client: &AcpRegistryClient,
+    action: &str,
+    params: Value,
+) -> Result<Value, ToolError> {
     match action {
         "agent.list" => {
             let agents = client.list_agents().await?;
@@ -84,6 +97,39 @@ pub async fn dispatch_acp_with_client(
             valid: ACP_ACTIONS.iter().map(|a| a.name.to_string()).collect(),
             hint: None,
         }),
+    }
+}
+
+#[cfg(feature = "acp_registry")]
+fn log_acp_dispatch_outcome(action: &str, started: Instant, result: &Result<Value, ToolError>) {
+    let elapsed_ms = started.elapsed().as_millis();
+    match result {
+        Ok(_) => tracing::info!(
+            surface = "mcp",
+            service = "marketplace",
+            action,
+            event = "acp.dispatch.finished",
+            elapsed_ms,
+            "marketplace ACP dispatch finished"
+        ),
+        Err(error) if error.is_internal() => tracing::error!(
+            surface = "mcp",
+            service = "marketplace",
+            action,
+            event = "acp.dispatch.failed",
+            elapsed_ms,
+            kind = error.kind(),
+            "marketplace ACP dispatch failed"
+        ),
+        Err(error) => tracing::warn!(
+            surface = "mcp",
+            service = "marketplace",
+            action,
+            event = "acp.dispatch.failed",
+            elapsed_ms,
+            kind = error.kind(),
+            "marketplace ACP dispatch failed"
+        ),
     }
 }
 
@@ -495,9 +541,9 @@ fn validate_agent_id_for_path(agent_id: &str) -> Result<(), ToolError> {
             .as_bytes()
             .first()
             .is_some_and(u8::is_ascii_alphanumeric)
-        && agent_id.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
-        });
+        && agent_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
 
     if valid {
         return Ok(());
@@ -959,6 +1005,22 @@ mod tests {
         for id in invalid_ids {
             let err = validate_agent_id_for_path(id).expect_err(id);
             assert_eq!(err.kind(), "invalid_param");
+        }
+    }
+
+    #[test]
+    fn acp_dispatch_observability_uses_stable_dispatch_fields() {
+        let source = include_str!("acp_dispatch.rs");
+
+        for required in [
+            "event = \"acp.dispatch.finished\"",
+            "event = \"acp.dispatch.failed\"",
+            "surface = \"mcp\"",
+            "service = \"marketplace\"",
+            "elapsed_ms",
+            "kind = error.kind()",
+        ] {
+            assert!(source.contains(required), "missing {required}");
         }
     }
 }

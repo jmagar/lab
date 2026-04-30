@@ -7,6 +7,9 @@
 //! absent, every `mcp.*` action returns a structured `not_configured` error.
 
 #[cfg(feature = "mcpregistry")]
+use std::time::Instant;
+
+#[cfg(feature = "mcpregistry")]
 use lab_apis::mcpregistry::McpRegistryClient;
 #[cfg(feature = "mcpregistry")]
 use lab_apis::mcpregistry::types::{EnvironmentVariable, ServerJSON};
@@ -254,6 +257,29 @@ async fn dispatch_mcp_install(
     client: &McpRegistryClient,
     params: &Value,
 ) -> Result<Value, ToolError> {
+    tracing::info!(
+        surface = "mcp",
+        service = "marketplace",
+        action = "mcp.install",
+        event = "install.attempt",
+        server_name = install_server_name(params),
+        version = install_version(params),
+        target_kind = install_target_kind(params),
+        gateway_target_count = gateway_target_count(params),
+        client_target_count = client_target_count(params),
+        "marketplace MCP install attempt started"
+    );
+    let started = Instant::now();
+    let result = dispatch_mcp_install_inner(client, params).await;
+    log_mcp_install_outcome(params, started, &result);
+    result
+}
+
+#[cfg(feature = "mcpregistry")]
+async fn dispatch_mcp_install_inner(
+    client: &McpRegistryClient,
+    params: &Value,
+) -> Result<Value, ToolError> {
     let name = mcp_params::require_name(params)?;
     let version = params["version"].as_str().unwrap_or("latest");
 
@@ -373,6 +399,128 @@ async fn dispatch_mcp_install(
     }
 
     Ok(serde_json::json!({ "results": results }))
+}
+
+#[cfg(feature = "mcpregistry")]
+fn gateway_target_count(params: &Value) -> usize {
+    params
+        .get("gateway_ids")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+#[cfg(feature = "mcpregistry")]
+fn client_target_count(params: &Value) -> usize {
+    params
+        .get("client_targets")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len)
+}
+
+#[cfg(feature = "mcpregistry")]
+fn install_target_kind(params: &Value) -> &'static str {
+    match (
+        gateway_target_count(params) > 0,
+        client_target_count(params) > 0,
+    ) {
+        (true, true) => "mixed",
+        (true, false) => "gateway",
+        (false, true) => "client",
+        (false, false) => "none",
+    }
+}
+
+#[cfg(feature = "mcpregistry")]
+fn install_server_name(params: &Value) -> &str {
+    params
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("<missing>")
+}
+
+#[cfg(feature = "mcpregistry")]
+fn install_version(params: &Value) -> &str {
+    params
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("latest")
+}
+
+#[cfg(feature = "mcpregistry")]
+fn result_counts(result: &Result<Value, ToolError>) -> (usize, usize) {
+    let Some(results) = result
+        .as_ref()
+        .ok()
+        .and_then(|value| value.get("results"))
+        .and_then(Value::as_array)
+    else {
+        return (0, 0);
+    };
+
+    results
+        .iter()
+        .fold((0, 0), |(ok_count, error_count), value| {
+            if value.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                (ok_count + 1, error_count)
+            } else {
+                (ok_count, error_count + 1)
+            }
+        })
+}
+
+#[cfg(feature = "mcpregistry")]
+fn log_mcp_install_outcome(params: &Value, started: Instant, result: &Result<Value, ToolError>) {
+    let elapsed_ms = started.elapsed().as_millis();
+    let (installed_count, error_count) = result_counts(result);
+    match result {
+        Ok(_) => tracing::info!(
+            surface = "mcp",
+            service = "marketplace",
+            action = "mcp.install",
+            event = "install.finished",
+            elapsed_ms,
+            server_name = install_server_name(params),
+            version = install_version(params),
+            target_kind = install_target_kind(params),
+            gateway_target_count = gateway_target_count(params),
+            client_target_count = client_target_count(params),
+            installed_count,
+            error_count,
+            "marketplace MCP install finished"
+        ),
+        Err(error) if error.is_internal() => tracing::error!(
+            surface = "mcp",
+            service = "marketplace",
+            action = "mcp.install",
+            event = "install.failed",
+            elapsed_ms,
+            kind = error.kind(),
+            server_name = install_server_name(params),
+            version = install_version(params),
+            target_kind = install_target_kind(params),
+            gateway_target_count = gateway_target_count(params),
+            client_target_count = client_target_count(params),
+            installed_count,
+            error_count,
+            "marketplace MCP install failed"
+        ),
+        Err(error) => tracing::warn!(
+            surface = "mcp",
+            service = "marketplace",
+            action = "mcp.install",
+            event = "install.failed",
+            elapsed_ms,
+            kind = error.kind(),
+            server_name = install_server_name(params),
+            version = install_version(params),
+            target_kind = install_target_kind(params),
+            gateway_target_count = gateway_target_count(params),
+            client_target_count = client_target_count(params),
+            installed_count,
+            error_count,
+            "marketplace MCP install failed"
+        ),
+    }
 }
 
 #[cfg(feature = "mcpregistry")]
@@ -943,5 +1091,24 @@ mod tests {
         let err = install_stdio(&pkg, "demo", &json!({}), "io.github/demo").unwrap_err();
 
         assert_eq!(err.kind(), "unsupported_registry_type");
+    }
+
+    #[test]
+    fn mcp_install_observability_logs_target_counts_not_payloads() {
+        let source = include_str!("mcp_dispatch.rs");
+
+        for required in [
+            "event = \"install.attempt\"",
+            "event = \"install.finished\"",
+            "event = \"install.failed\"",
+            "elapsed_ms",
+            "target_kind",
+            "gateway_target_count",
+            "client_target_count",
+            "installed_count",
+            "error_count",
+        ] {
+            assert!(source.contains(required), "missing {required}");
+        }
     }
 }
