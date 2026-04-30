@@ -433,6 +433,7 @@ mod tests {
             "gateway.virtual_server.remove",
             "gateway.virtual_server.quarantine.restore",
             "gateway.reload",
+            "gateway.oauth.probe",
             "gateway.oauth.clear",
             "gateway.mcp.enable",
             "gateway.mcp.disable",

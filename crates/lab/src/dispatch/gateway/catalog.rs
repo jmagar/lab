@@ -380,7 +380,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         name: "gateway.oauth.probe",
         description: "Probe a URL for OAuth support via RFC 8414 AS metadata discovery. \
                        Registers a transient OAuth manager so subsequent authorize calls work.",
-        destructive: false,
+        destructive: true,
         returns: "ProbeResult",
         params: &[ParamSpec {
             name: "url",
@@ -518,6 +518,7 @@ mod tests {
             "gateway.update",
             "gateway.remove",
             "gateway.reload",
+            "gateway.oauth.probe",
         ] {
             let spec = ACTIONS
                 .iter()
