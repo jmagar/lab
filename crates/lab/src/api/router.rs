@@ -174,6 +174,7 @@ async fn authenticate_request(
     next: Next,
     static_token: Option<Arc<str>>,
     auth_state: Option<Arc<lab_auth::state::AuthState>>,
+    actor_key_deriver: Option<Arc<crate::observability::activity::ActorKeyDeriver>>,
     resource_url: Option<Arc<str>>,
     allow_session_cookie: bool,
 ) -> Result<axum::response::Response, std::convert::Infallible> {
@@ -187,10 +188,13 @@ async fn authenticate_request(
         if let Some(ref expected) = static_token
             && tokens_equal(&token, expected.as_ref())
         {
+            let sub = "static-bearer".to_string();
+            let actor_key = derive_actor_key(actor_key_deriver.as_deref(), &sub);
             request
                 .extensions_mut()
                 .insert(crate::api::oauth::AuthContext {
-                    sub: "static-bearer".to_string(),
+                    sub,
+                    actor_key,
                     scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
                     issuer: "local".to_string(),
                     via_session: false,
@@ -228,6 +232,7 @@ async fn authenticate_request(
                     request
                         .extensions_mut()
                         .insert(crate::api::oauth::AuthContext {
+                            actor_key: derive_actor_key(actor_key_deriver.as_deref(), &claims.sub),
                             sub: claims.sub,
                             scopes: claims
                                 .scope
@@ -279,6 +284,7 @@ async fn authenticate_request(
                 request
                     .extensions_mut()
                     .insert(crate::api::oauth::AuthContext {
+                        actor_key: derive_actor_key(actor_key_deriver.as_deref(), &session.subject),
                         sub: session.subject,
                         scopes: vec!["lab:read".to_string(), "lab:admin".to_string()],
                         issuer: "browser-session".to_string(),
@@ -325,6 +331,15 @@ async fn authenticate_request(
         },
         resource_url.as_deref(),
     ))
+}
+
+fn derive_actor_key(
+    deriver: Option<&crate::observability::activity::ActorKeyDeriver>,
+    subject: &str,
+) -> Option<Arc<str>> {
+    deriver
+        .and_then(|deriver| deriver.derive_subject(subject))
+        .map(crate::observability::activity::ActorKey::into_arc)
 }
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
@@ -407,7 +422,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
                     subsystem = "startup",
                     phase = "fs.mount.skipped",
                     reason = "web_ui_auth_disabled",
-                    "fs service is configured but LAB_WEB_UI_DISABLE_AUTH=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
+                    "fs service is configured but LAB_WEB_UI_AUTH_DISABLED=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
                 );
             } else {
                 v1 = v1.nest("/fs", services::fs::routes(state.clone()));
@@ -707,6 +722,7 @@ pub fn build_router(
         .map(Arc::from);
     let auth_state_for_v1 = auth_state.clone();
     let static_token_for_v1 = static_token.clone();
+    let actor_key_deriver_for_v1 = state.actor_key_deriver.clone();
     let resource_url_for_v1 = resource_url.clone();
     let v1_protected = if needs_auth {
         v1_router.route_layer(axum::middleware::from_fn(
@@ -716,6 +732,7 @@ pub fn build_router(
                     next,
                     static_token_for_v1.clone(),
                     auth_state_for_v1.clone(),
+                    actor_key_deriver_for_v1.clone(),
                     resource_url_for_v1.clone(),
                     true,
                 )
@@ -730,6 +747,7 @@ pub fn build_router(
         let v0_1_router = build_v0_1_router();
         let auth_state_for_v0_1 = auth_state.clone();
         let static_token_for_v0_1 = static_token.clone();
+        let actor_key_deriver_for_v0_1 = state.actor_key_deriver.clone();
         let resource_url_for_v0_1 = resource_url.clone();
         if needs_auth {
             v0_1_router.route_layer(axum::middleware::from_fn(
@@ -739,6 +757,7 @@ pub fn build_router(
                         next,
                         static_token_for_v0_1.clone(),
                         auth_state_for_v0_1.clone(),
+                        actor_key_deriver_for_v0_1.clone(),
                         resource_url_for_v0_1.clone(),
                         true,
                     )
@@ -751,6 +770,7 @@ pub fn build_router(
 
     let auth_state_for_mcp = auth_state.clone();
     let static_token_for_mcp = static_token.clone();
+    let actor_key_deriver_for_mcp = state.actor_key_deriver.clone();
     let resource_url_for_mcp = resource_url.clone();
     let mcp_protected = mcp_router.map(|mcp| {
         if needs_auth {
@@ -761,6 +781,7 @@ pub fn build_router(
                         next,
                         static_token_for_mcp.clone(),
                         auth_state_for_mcp.clone(),
+                        actor_key_deriver_for_mcp.clone(),
                         resource_url_for_mcp.clone(),
                         false,
                     )
@@ -855,6 +876,7 @@ pub fn build_router(
     let dev_routes = if needs_auth {
         let auth_state_for_dev = auth_state.clone();
         let static_token_for_dev = static_token.clone();
+        let actor_key_deriver_for_dev = state.actor_key_deriver.clone();
         let resource_url_for_dev = resource_url.clone();
         dev_routes.route_layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
@@ -863,6 +885,7 @@ pub fn build_router(
                     next,
                     static_token_for_dev.clone(),
                     auth_state_for_dev.clone(),
+                    actor_key_deriver_for_dev.clone(),
                     resource_url_for_dev.clone(),
                     true,
                 )
@@ -1011,11 +1034,21 @@ mod tests {
     use std::fs;
     use std::sync::Arc;
 
+    use axum::Extension;
     use axum::body::Body;
     use axum::http::{Request, StatusCode, header};
     use tower::ServiceExt;
 
     use super::*;
+
+    async fn actor_key_probe(
+        auth: Option<Extension<crate::api::oauth::AuthContext>>,
+    ) -> Json<serde_json::Value> {
+        let actor_key = auth
+            .and_then(|Extension(ctx)| ctx.actor_key)
+            .map(|key| key.to_string());
+        Json(serde_json::json!({ "actor_key": actor_key }))
+    }
 
     #[tokio::test]
     async fn actions_known_service_returns_200() {
@@ -1341,6 +1374,138 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn static_bearer_bind_attaches_actor_key_when_deriver_is_configured() {
+        let deriver =
+            crate::observability::activity::ActorKeyDeriver::from_secret("test-secret").unwrap();
+        let expected = deriver.derive_subject("static-bearer").unwrap();
+        let deriver = Arc::new(deriver);
+        let app = Router::new()
+            .route("/probe", get(actor_key_probe))
+            .route_layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        Some(Arc::<str>::from("secret-token")),
+                        None,
+                        Some(Arc::clone(&deriver)),
+                        None,
+                        false,
+                    )
+                },
+            ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/probe")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["actor_key"], expected.as_str());
+    }
+
+    #[tokio::test]
+    async fn browser_session_bind_attaches_actor_key_when_deriver_is_configured() {
+        let auth_state = Arc::new(test_lab_auth_state().await);
+        let session = seed_browser_session(&auth_state).await;
+        let deriver =
+            crate::observability::activity::ActorKeyDeriver::from_secret("test-secret").unwrap();
+        let expected = deriver.derive_subject(&session.subject).unwrap();
+        let deriver = Arc::new(deriver);
+        let auth_state_for_layer = Arc::clone(&auth_state);
+        let app = Router::new()
+            .route("/probe", get(actor_key_probe))
+            .route_layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        None,
+                        Some(Arc::clone(&auth_state_for_layer)),
+                        Some(Arc::clone(&deriver)),
+                        None,
+                        true,
+                    )
+                },
+            ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/probe")
+                    .header(
+                        header::COOKIE,
+                        format!(
+                            "{}={}",
+                            lab_auth::session::BROWSER_SESSION_COOKIE_NAME,
+                            session.session_id
+                        ),
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["actor_key"], expected.as_str());
+    }
+
+    #[tokio::test]
+    async fn authenticated_bind_leaves_actor_key_null_without_deriver() {
+        let app = Router::new()
+            .route("/probe", get(actor_key_probe))
+            .route_layer(axum::middleware::from_fn(
+                move |request: Request<Body>, next: Next| {
+                    authenticate_request(
+                        request,
+                        next,
+                        Some(Arc::<str>::from("secret-token")),
+                        None,
+                        None,
+                        None,
+                        false,
+                    )
+                },
+            ));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/probe")
+                    .header(header::AUTHORIZATION, "Bearer secret-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["actor_key"], serde_json::Value::Null);
     }
 
     #[tokio::test]

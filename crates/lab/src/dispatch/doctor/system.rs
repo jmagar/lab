@@ -250,15 +250,38 @@ pub fn run_auth_checks() -> Vec<Finding> {
     ));
 
     // --- Safety gate ---
-    let web_ui_auth_disabled = std::env::var("LAB_WEB_UI_AUTH_DISABLED")
-        .is_ok_and(|v| v.eq_ignore_ascii_case("true") || v == "1");
+    let web_ui_auth_disabled = match crate::config::resolve_web_ui_auth_disabled_env() {
+        Ok(setting) => setting,
+        Err(error) => {
+            findings.push(auth_finding(
+                "auth:web-ui-auth-disabled",
+                Severity::Fail,
+                format!("{error}"),
+            ));
+            None
+        }
+    };
+    let web_ui_auth_disabled_source = web_ui_auth_disabled
+        .map_or(crate::config::WEB_UI_AUTH_DISABLED_ENV, |setting| {
+            setting.source
+        });
+    let web_ui_auth_disabled_value = web_ui_auth_disabled.is_some_and(|setting| setting.disabled);
     findings.push(auth_finding(
         "auth:web-ui-auth-disabled",
-        if web_ui_auth_disabled { Severity::Fail } else { Severity::Ok },
-        if web_ui_auth_disabled {
-            "LAB_WEB_UI_AUTH_DISABLED=true — /v1/* routes are unprotected (dev only, never in production)"
+        if web_ui_auth_disabled_value {
+            Severity::Fail
         } else {
-            "LAB_WEB_UI_AUTH_DISABLED not set (protected mode)"
+            Severity::Ok
+        },
+        if web_ui_auth_disabled_value {
+            format!(
+                "{web_ui_auth_disabled_source}=true — /v1/* routes are unprotected (dev only, never in production)"
+            )
+        } else {
+            format!(
+                "{} not set (protected mode)",
+                crate::config::WEB_UI_AUTH_DISABLED_ENV
+            )
         },
     ));
 

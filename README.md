@@ -283,7 +283,7 @@ Protected route behavior:
 
 | Surface | Accepted auth | Notes |
 | --- | --- | --- |
-| `/v1/*` product API | Static bearer token, Lab OAuth JWT bearer token, or Labby browser session cookie | Browser session POSTs use CSRF protection. `LAB_WEB_UI_DISABLE_AUTH` bypasses `/v1` auth only for development. |
+| `/v1/*` product API | Static bearer token, Lab OAuth JWT bearer token, or Labby browser session cookie | Browser session POSTs use CSRF protection. `LAB_WEB_UI_AUTH_DISABLED` bypasses `/v1` auth only for development. |
 | `/mcp` HTTP MCP | Static bearer token or Lab OAuth JWT bearer token | Browser session cookies are not accepted for MCP transport. |
 | `/v0.1/*` MCP Registry compatibility routes | Same as protected `/v1` routes | Mounted when the registry feature is enabled. |
 | Labby web UI | Browser session in OAuth mode, or the configured development bypass | Static assets and SPA paths are served by `lab serve`; data calls still use `/v1`. |
@@ -520,7 +520,7 @@ Server and runtime env:
 | `LAB_AUTH_ALLOWED_REDIRECT_URIS` | Optional non-loopback MCP OAuth callback allowlist |
 | `LAB_AUTH_ADMIN_EMAIL` | Bootstrap admin Google email; required for OAuth mode (fail-closed default) |
 | `LAB_WEB_ASSETS_DIR` | Static Labby export directory override |
-| `LAB_WEB_UI_DISABLE_AUTH` | Development-only bypass for Labby browser auth |
+| `LAB_WEB_UI_AUTH_DISABLED` | Development-only bypass for Labby browser auth. `LAB_WEB_UI_DISABLE_AUTH` is accepted as a legacy alias. |
 | `LAB_LOG` / `LAB_LOG_FORMAT` | Tracing filter and text/json log format |
 | `LAB_ADMIN_ENABLED` | Runtime opt-in for the `lab_admin` MCP tool |
 

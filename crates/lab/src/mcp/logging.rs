@@ -49,6 +49,7 @@ fn notification_payload(
     action: &str,
     elapsed_ms: u128,
     outcome: DispatchLogOutcome,
+    actor_key: Option<&str>,
 ) -> (LoggingLevel, serde_json::Value) {
     let (level, kind) = match outcome {
         DispatchLogOutcome::Success => (LoggingLevel::Info, None),
@@ -63,6 +64,9 @@ fn notification_payload(
     });
     if let Some(kind) = kind {
         payload["kind"] = json!(kind);
+    }
+    if let Some(actor_key) = actor_key {
+        payload["actor_key"] = json!(actor_key);
     }
 
     (level, payload)
@@ -85,7 +89,9 @@ impl LabMcpServer {
         elapsed_ms: u128,
         outcome: DispatchLogOutcome,
     ) {
-        let (level, payload) = notification_payload(service, action, elapsed_ms, outcome);
+        let actor_key = super::server::actor_key_from_extensions(&context.extensions);
+        let (level, payload) =
+            notification_payload(service, action, elapsed_ms, outcome, actor_key);
 
         if !self.should_emit_logging_notification(level) {
             return;
@@ -135,8 +141,13 @@ mod tests {
 
     #[test]
     fn notification_payload_omits_kind_for_success() {
-        let (level, payload) =
-            notification_payload("lab", "list_resources", 12, DispatchLogOutcome::Success);
+        let (level, payload) = notification_payload(
+            "lab",
+            "list_resources",
+            12,
+            DispatchLogOutcome::Success,
+            None,
+        );
         assert_eq!(level, LoggingLevel::Info);
         assert_eq!(payload["surface"], "mcp");
         assert_eq!(payload["service"], "lab");
@@ -155,9 +166,11 @@ mod tests {
                 level: LoggingLevel::Error,
                 kind: "upstream_error",
             },
+            Some("actor-fixture"),
         );
         assert_eq!(level, LoggingLevel::Error);
         assert_eq!(payload["kind"], "upstream_error");
+        assert_eq!(payload["actor_key"], "actor-fixture");
     }
 
     #[test]
@@ -170,6 +183,7 @@ mod tests {
                 level: LoggingLevel::Error,
                 kind: "internal_error",
             },
+            None,
         );
         assert!(payload.get("error").is_none());
         assert!(payload.get("message").is_none());

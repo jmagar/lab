@@ -162,18 +162,31 @@ async fn list_allowed_emails(
     let start = Instant::now();
     let req_id = request_id(&headers).map(ToOwned::to_owned);
     let action = "auth.allowed_user.list";
+    let actor_key = auth.actor_key.as_deref();
     log_auth_dispatch_start(action, req_id.as_deref());
 
     // Require admin.
     let admin_email = match require_admin_email(&state) {
         Ok(e) => e,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
     if let Err(err) = require_admin(&auth, admin_email) {
-        log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+        log_auth_dispatch(
+            action,
+            req_id.as_deref(),
+            start,
+            Some(err.kind()),
+            actor_key,
+        );
         return no_store(err.into_response());
     }
 
@@ -181,7 +194,13 @@ async fn list_allowed_emails(
     let auth_state = match require_oauth_state(&state) {
         Ok(s) => s,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
@@ -198,12 +217,12 @@ async fn list_allowed_emails(
                 elapsed_ms = start.elapsed().as_millis(),
                 "auth.allowed_user.list failed"
             );
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind));
+            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind), actor_key);
             return no_store(auth_err(err).into_response());
         }
     };
 
-    log_auth_dispatch(action, req_id.as_deref(), start, None);
+    log_auth_dispatch(action, req_id.as_deref(), start, None, actor_key);
     no_store((StatusCode::OK, Json(json!({ "entries": entries }))).into_response())
 }
 
@@ -225,18 +244,31 @@ async fn add_allowed_email(
     let start = Instant::now();
     let req_id = request_id(&headers).map(ToOwned::to_owned);
     let action = "auth.allowed_user.add";
+    let actor_key = auth.actor_key.as_deref();
     log_auth_dispatch_start(action, req_id.as_deref());
 
     // Require admin.
     let admin_email = match require_admin_email(&state) {
         Ok(e) => e,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
     if let Err(err) = require_admin(&auth, admin_email) {
-        log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+        log_auth_dispatch(
+            action,
+            req_id.as_deref(),
+            start,
+            Some(err.kind()),
+            actor_key,
+        );
         return no_store(err.into_response());
     }
 
@@ -244,7 +276,13 @@ async fn add_allowed_email(
     let auth_state = match require_oauth_state(&state) {
         Ok(s) => s,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
@@ -253,7 +291,13 @@ async fn add_allowed_email(
     let email = match validate_email(&body.email) {
         Ok(e) => e,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
@@ -288,7 +332,7 @@ async fn add_allowed_email(
                 elapsed_ms = start.elapsed().as_millis(),
                 "auth.allowed_user.add failed"
             );
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind));
+            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind), actor_key);
             return no_store(auth_err(err).into_response());
         }
     }
@@ -307,7 +351,7 @@ async fn add_allowed_email(
         elapsed_ms = start.elapsed().as_millis(),
         "auth.allowed_user.add complete"
     );
-    log_auth_dispatch(action, req_id.as_deref(), start, None);
+    log_auth_dispatch(action, req_id.as_deref(), start, None, actor_key);
     no_store((StatusCode::CREATED, Json(json!({ "entry": entry }))).into_response())
 }
 
@@ -323,18 +367,31 @@ async fn delete_allowed_email(
     let start = Instant::now();
     let req_id = request_id(&headers).map(ToOwned::to_owned);
     let action = "auth.allowed_user.remove";
+    let actor_key = auth.actor_key.as_deref();
     log_auth_dispatch_start(action, req_id.as_deref());
 
     // Require admin.
     let admin_email = match require_admin_email(&state) {
         Ok(e) => e,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
     if let Err(err) = require_admin(&auth, admin_email) {
-        log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+        log_auth_dispatch(
+            action,
+            req_id.as_deref(),
+            start,
+            Some(err.kind()),
+            actor_key,
+        );
         return no_store(err.into_response());
     }
 
@@ -342,7 +399,13 @@ async fn delete_allowed_email(
     let auth_state = match require_oauth_state(&state) {
         Ok(s) => s,
         Err(err) => {
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(err.kind()));
+            log_auth_dispatch(
+                action,
+                req_id.as_deref(),
+                start,
+                Some(err.kind()),
+                actor_key,
+            );
             return no_store(err.into_response());
         }
     };
@@ -373,7 +436,7 @@ async fn delete_allowed_email(
                 elapsed_ms = start.elapsed().as_millis(),
                 "auth.allowed_user.remove failed"
             );
-            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind));
+            log_auth_dispatch(action, req_id.as_deref(), start, Some(kind), actor_key);
             return no_store(auth_err(err).into_response());
         }
     }
@@ -386,6 +449,6 @@ async fn delete_allowed_email(
         elapsed_ms = start.elapsed().as_millis(),
         "auth.allowed_user.remove complete"
     );
-    log_auth_dispatch(action, req_id.as_deref(), start, None);
+    log_auth_dispatch(action, req_id.as_deref(), start, None, actor_key);
     no_store(StatusCode::NO_CONTENT.into_response())
 }

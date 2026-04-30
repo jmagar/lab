@@ -42,6 +42,8 @@ pub struct AppState {
     pub config: Arc<LabConfig>,
     /// OAuth-mode auth server state, mounted only when LAB_AUTH_MODE=oauth.
     pub oauth_state: Option<Arc<lab_auth::state::AuthState>>,
+    /// Cached actor-key deriver used at authenticated bind boundaries.
+    pub actor_key_deriver: Option<Arc<crate::observability::activity::ActorKeyDeriver>>,
     /// Shared gateway manager for runtime upstream pool access and config mutation.
     ///
     /// `None` when gateway management is not wired for this process.
@@ -116,6 +118,7 @@ impl AppState {
             auth_config: None,
             config: Arc::new(LabConfig::default()),
             oauth_state: None,
+            actor_key_deriver: None,
             gateway_manager: None,
             node_store: None,
             enrollment_store: None,
@@ -148,6 +151,15 @@ impl AppState {
     #[must_use]
     pub fn with_oauth_state(mut self, auth_state: lab_auth::state::AuthState) -> Self {
         self.oauth_state = Some(Arc::new(auth_state));
+        self
+    }
+
+    #[must_use]
+    pub fn with_actor_key_deriver(
+        mut self,
+        deriver: crate::observability::activity::ActorKeyDeriver,
+    ) -> Self {
+        self.actor_key_deriver = Some(Arc::new(deriver));
         self
     }
 

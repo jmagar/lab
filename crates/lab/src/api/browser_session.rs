@@ -35,6 +35,17 @@ fn session_cookie(headers: &HeaderMap) -> Option<String> {
     lab_auth::session::read_cookie(headers, BROWSER_SESSION_COOKIE_NAME)
 }
 
+fn actor_key_for_session(
+    state: &AppState,
+    session: &lab_auth::types::BrowserSessionRow,
+) -> Option<std::sync::Arc<str>> {
+    state
+        .actor_key_deriver
+        .as_deref()
+        .and_then(|deriver| deriver.derive_subject(&session.subject))
+        .map(crate::observability::activity::ActorKey::into_arc)
+}
+
 async fn load_browser_session(
     auth_state: &lab_auth::state::AuthState,
     headers: &HeaderMap,
@@ -118,14 +129,14 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
             "expires_at": DEV_SESSION_EXPIRES_AT,
             "csrf_token": "",
         }));
-        log_auth_dispatch("session.get", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.get", request_id.as_deref(), start, None, None);
         return response;
     }
 
     let login_available = state.oauth_state.is_some();
     let Some(auth_state) = oauth_state(&state) else {
         let response = unauthenticated_session_response(false);
-        log_auth_dispatch("session.get", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.get", request_id.as_deref(), start, None, None);
         return response;
     };
 
@@ -135,13 +146,14 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
         .map(|cfg| cfg.admin_email.as_str())
         .unwrap_or("");
 
-    let body = match load_browser_session(&auth_state, &headers).await {
+    match load_browser_session(&auth_state, &headers).await {
         Ok(Some(session)) => {
+            let actor_key = actor_key_for_session(&state, &session);
             let is_admin = session
                 .email
                 .as_deref()
                 .is_some_and(|e| e.eq_ignore_ascii_case(admin_email) && !admin_email.is_empty());
-            serde_json::json!({
+            let body = serde_json::json!({
                 "authenticated": true,
                 "login_available": login_available,
                 "is_admin": is_admin,
@@ -151,11 +163,19 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
                 },
                 "expires_at": session.expires_at,
                 "csrf_token": session.csrf_token,
-            })
+            });
+            log_auth_dispatch(
+                "session.get",
+                request_id.as_deref(),
+                start,
+                None,
+                actor_key.as_deref(),
+            );
+            return no_store_json(body);
         }
         Ok(None) => {
             let response = unauthenticated_session_response(login_available);
-            log_auth_dispatch("session.get", request_id.as_deref(), start, None);
+            log_auth_dispatch("session.get", request_id.as_deref(), start, None, None);
             return response;
         }
         Err(error) => {
@@ -165,13 +185,11 @@ pub async fn auth_session(State(state): State<AppState>, headers: HeaderMap) -> 
                 request_id.as_deref(),
                 start,
                 Some("internal_error"),
+                None,
             );
             return internal_error_response("failed to load browser session");
         }
-    };
-
-    log_auth_dispatch("session.get", request_id.as_deref(), start, None);
-    no_store_json(body)
+    }
 }
 
 pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> impl IntoResponse {
@@ -187,22 +205,24 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                 &lab_auth::session::clear_browser_session_cookie(auth_state),
             );
         }
-        log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.logout", request_id.as_deref(), start, None, None);
         return response;
     }
 
     let Some(auth_state) = oauth_state(&state) else {
-        log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
+        log_auth_dispatch("session.logout", request_id.as_deref(), start, None, None);
         return StatusCode::NO_CONTENT.into_response();
     };
 
     let mut response = StatusCode::NO_CONTENT.into_response();
+    let mut actor_key = None;
     if let Some(session_id) = session_cookie(&headers) {
         let csrf = headers
             .get(BROWSER_CSRF_HEADER_NAME)
             .and_then(|value| value.to_str().ok());
         match auth_state.store.find_browser_session(&session_id).await {
             Ok(Some(session)) => {
+                actor_key = actor_key_for_session(&state, &session);
                 if csrf != Some(session.csrf_token.as_str()) {
                     tracing::warn!(
                         has_csrf_header = csrf.is_some(),
@@ -213,6 +233,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                         request_id.as_deref(),
                         start,
                         Some("validation_failed"),
+                        actor_key.as_deref(),
                     );
                     return invalid_csrf_response();
                 }
@@ -223,6 +244,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                         request_id.as_deref(),
                         start,
                         Some("internal_error"),
+                        actor_key.as_deref(),
                     );
                     return internal_error_response("failed to revoke browser session");
                 }
@@ -235,6 +257,7 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
                     request_id.as_deref(),
                     start,
                     Some("internal_error"),
+                    None,
                 );
                 return internal_error_response("failed to load browser session");
             }
@@ -244,6 +267,12 @@ pub async fn auth_logout(State(state): State<AppState>, headers: HeaderMap) -> i
         &mut response,
         &lab_auth::session::clear_browser_session_cookie(&auth_state),
     );
-    log_auth_dispatch("session.logout", request_id.as_deref(), start, None);
+    log_auth_dispatch(
+        "session.logout",
+        request_id.as_deref(),
+        start,
+        None,
+        actor_key.as_deref(),
+    );
     response
 }

@@ -338,7 +338,7 @@ where
             source_kind: None,
             source_node_id: None,
             source_device_id: None,
-            actor_key: None,
+            actor_key: visitor.actor_key,
             ingest_path: Some("tracing".to_string()),
             upstream_event_id: None,
         };
@@ -359,6 +359,7 @@ struct FieldVisitor {
     instance: Option<String>,
     auth_flow: Option<String>,
     outcome_kind: Option<String>,
+    actor_key: Option<String>,
     extra: serde_json::Map<String, serde_json::Value>,
 }
 
@@ -404,6 +405,7 @@ impl FieldVisitor {
             "instance" => self.instance = Some(value),
             "auth_flow" => self.auth_flow = Some(value),
             "outcome_kind" => self.outcome_kind = Some(value),
+            "actor_key" => self.actor_key = Some(value),
             _ => {
                 self.extra
                     .insert(name.to_string(), serde_json::Value::String(value));

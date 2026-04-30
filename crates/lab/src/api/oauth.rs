@@ -1,4 +1,5 @@
 use axum::http::request::Parts;
+use std::sync::Arc;
 
 /// Stored in request extensions by the HTTP auth middleware.
 ///
@@ -8,6 +9,7 @@ use axum::http::request::Parts;
 #[derive(Debug, Clone)]
 pub struct AuthContext {
     pub sub: String,
+    pub actor_key: Option<Arc<str>>,
     pub scopes: Vec<String>,
     pub issuer: String,
     pub via_session: bool,

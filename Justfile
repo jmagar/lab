@@ -68,7 +68,7 @@ run *ARGS:
 chat-local:
     #!/usr/bin/env bash
     set -euo pipefail
-    export LAB_WEB_UI_DISABLE_AUTH=true
+    export LAB_WEB_UI_AUTH_DISABLED=true
     export LAB_MCP_HTTP_TOKEN="${LAB_MCP_HTTP_TOKEN:-dev-token}"
     export LAB_CORS_ORIGINS="${LAB_CORS_ORIGINS:-http://dookie:3000,http://127.0.0.1:3000,http://localhost:3000}"
     export LAB_CHAT_LOCAL_PORT="${LAB_CHAT_LOCAL_PORT:-8766}"

@@ -105,6 +105,7 @@ pub fn verify_upstream_subject_resolution_support() -> anyhow::Result<()> {
     let (parts, _) = http::Request::new(()).into_parts();
     let auth = crate::api::oauth::AuthContext {
         sub: "startup-self-test".to_string(),
+        actor_key: None,
         scopes: Vec::new(),
         issuer: "https://lab.example.com".to_string(),
         via_session: false,
@@ -1364,6 +1365,7 @@ impl ServerHandler for LabMcpServer {
 
         let start = Instant::now();
         let subject = self.request_subject_log_tag(&context);
+        let actor_key = self.request_actor_key(&context);
         let dispatch_action = if svc.is_some() {
             action.as_str()
         } else {
@@ -1374,6 +1376,7 @@ impl ServerHandler for LabMcpServer {
             service,
             action = dispatch_action,
             subject,
+            actor_key,
             tool = %service,
             instance = instance.as_deref(),
             param_key_count,
@@ -1400,7 +1403,7 @@ impl ServerHandler for LabMcpServer {
                 .map_err(|te| anyhow::Error::from(DispatchError::from(te)));
             let elapsed_ms = start.elapsed().as_millis();
             let (result, outcome) =
-                format_dispatch_result(result, &service, &action, elapsed_ms, &subject);
+                format_dispatch_result(result, &service, &action, elapsed_ms, &subject, actor_key);
             self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
                 .await;
             return Ok(result);
@@ -1724,7 +1727,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         let err = anyhow::anyhow!("service `{service}` has no dispatcher wired");
         let (result, outcome) =
-            format_dispatch_result(Err(err), &service, &action, elapsed_ms, &subject);
+            format_dispatch_result(Err(err), &service, &action, elapsed_ms, &subject, actor_key);
         self.emit_dispatch_notification(&context, &service, &action, elapsed_ms, outcome)
             .await;
         Ok(result)
@@ -1767,6 +1770,10 @@ impl LabMcpServer {
         self.request_subject(context)
             .map(redact_subject_for_logging)
             .unwrap_or_default()
+    }
+
+    fn request_actor_key<'a>(&self, context: &'a RequestContext<RoleServer>) -> Option<&'a str> {
+        actor_key_from_extensions(&context.extensions)
     }
 
     async fn oauth_upstream_configs(&self) -> Vec<crate::config::UpstreamConfig> {
@@ -1876,6 +1883,10 @@ fn subject_from_extensions(extensions: &rmcp::model::Extensions) -> Option<&str>
     auth_context_from_extensions(extensions).map(|auth| auth.sub.as_str())
 }
 
+pub(crate) fn actor_key_from_extensions(extensions: &rmcp::model::Extensions) -> Option<&str> {
+    auth_context_from_extensions(extensions).and_then(|auth| auth.actor_key.as_deref())
+}
+
 fn auth_context_from_extensions(
     extensions: &rmcp::model::Extensions,
 ) -> Option<&crate::api::oauth::AuthContext> {
@@ -1903,6 +1914,7 @@ fn format_dispatch_result(
     action: &str,
     elapsed_ms: u128,
     subject: &str,
+    actor_key: Option<&str>,
 ) -> (CallToolResult, DispatchLogOutcome) {
     match result {
         Ok(v) => {
@@ -1911,6 +1923,7 @@ fn format_dispatch_result(
                 service,
                 action,
                 subject,
+                actor_key,
                 tool = %service,
                 elapsed_ms,
                 "dispatch ok"
@@ -1930,6 +1943,7 @@ fn format_dispatch_result(
                     service,
                     action,
                     subject,
+                    actor_key,
                     tool = %service,
                     elapsed_ms,
                     kind,
@@ -1941,6 +1955,7 @@ fn format_dispatch_result(
                     service,
                     action,
                     subject,
+                    actor_key,
                     tool = %service,
                     elapsed_ms,
                     kind,
@@ -2500,6 +2515,7 @@ mod tests {
         let mut parts = axum::http::Request::new(()).into_parts().0;
         parts.extensions.insert(crate::api::oauth::AuthContext {
             sub: "alice".to_string(),
+            actor_key: Some(std::sync::Arc::<str>::from("actor-alice")),
             scopes: vec!["lab".to_string()],
             issuer: "https://lab.example.com".to_string(),
             via_session: true,
@@ -2511,6 +2527,10 @@ mod tests {
         extensions.insert(parts);
 
         assert_eq!(super::subject_from_extensions(&extensions), Some("alice"));
+        assert_eq!(
+            super::actor_key_from_extensions(&extensions),
+            Some("actor-alice")
+        );
     }
 
     #[test]

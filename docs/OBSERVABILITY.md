@@ -134,6 +134,13 @@ Compute `actor_key` once when binding an authenticated session, then clone that
 bound value into later events. Do not derive it inside tracing subscriber
 callbacks or per-log-event hot paths.
 
+New activity-producing callsites should build events through
+`observability::activity_event::ActivityEvent`. The builder takes typed
+`Subsystem`, `Surface`, and `LogLevel` values from
+`dispatch::logs::types`, then produces a `RawLogEvent` for the existing ingest
+pipeline. Do not add new activity callsites that spell `surface` or
+`subsystem` as string literals.
+
 The raw subject remains a credential-adjacent identifier and must not be stored
 in persisted log fields or returned to the Activity UI. A short redacted display
 tag is allowed only for human diagnostics and must not be used for

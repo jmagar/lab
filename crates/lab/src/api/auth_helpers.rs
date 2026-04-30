@@ -24,6 +24,7 @@ pub(crate) fn log_auth_dispatch(
     request_id: Option<&str>,
     started: Instant,
     kind: Option<&str>,
+    actor_key: Option<&str>,
 ) {
     let elapsed_ms = started.elapsed().as_millis();
     match kind {
@@ -32,6 +33,7 @@ pub(crate) fn log_auth_dispatch(
             service = "auth",
             action,
             request_id,
+            actor_key,
             elapsed_ms,
             "auth oauth dispatch complete"
         ),
@@ -40,6 +42,7 @@ pub(crate) fn log_auth_dispatch(
             service = "auth",
             action,
             request_id,
+            actor_key,
             elapsed_ms,
             kind,
             "auth oauth dispatch failed"
@@ -49,6 +52,7 @@ pub(crate) fn log_auth_dispatch(
             service = "auth",
             action,
             request_id,
+            actor_key,
             elapsed_ms,
             kind,
             "auth oauth dispatch failed"

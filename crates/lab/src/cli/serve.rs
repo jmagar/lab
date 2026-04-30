@@ -368,6 +368,19 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     let mut state = AppState::from_registry(registry)
         .with_config(config.clone())
         .with_acp_registry(Arc::clone(&acp_registry));
+    if auth_configured {
+        match crate::observability::activity::ActorKeyDeriver::load_or_create() {
+            Ok(deriver) => {
+                state = state.with_actor_key_deriver(deriver);
+            }
+            Err(error) => {
+                tracing::warn!(
+                    error = %error,
+                    "actor_key derivation disabled because actor-key secret could not be loaded"
+                );
+            }
+        }
+    }
     state = state.with_gateway_manager(Arc::clone(&gateway_manager));
     state = state.with_auth_config(auth_config);
     let web_ui_auth_disabled = resolve_web_ui_auth_disabled(
@@ -655,10 +668,15 @@ fn resolve_web_ui_auth_disabled(
     web_assets_enabled: bool,
     oauth_enabled: bool,
 ) -> Result<bool> {
-    if let Ok(value) = std::env::var("LAB_WEB_UI_DISABLE_AUTH") {
-        return value
-            .parse::<bool>()
-            .with_context(|| format!("invalid LAB_WEB_UI_DISABLE_AUTH value `{value}`"));
+    if let Some(setting) = crate::config::resolve_web_ui_auth_disabled_env()? {
+        if setting.legacy_alias {
+            tracing::warn!(
+                env_var = setting.source,
+                canonical_env_var = crate::config::WEB_UI_AUTH_DISABLED_ENV,
+                "legacy web UI auth-disable env var used; prefer canonical env var"
+            );
+        }
+        return Ok(setting.disabled);
     }
 
     if let Some(disabled) = web.disable_auth {

@@ -38,12 +38,12 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 For local binary-served UI work, keep the same-origin `/v1` path and start `lab serve` with web auth disabled for the browser surface only:
 
 ```bash
-LAB_WEB_UI_DISABLE_AUTH=true \
+LAB_WEB_UI_AUTH_DISABLED=true \
 LAB_MCP_HTTP_TOKEN=your-local-dev-token \
 cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
 ```
 
-That mode keeps the MCP/backend token in place while making `/auth/session` and `/v1/*` immediately usable from the exported `/chat` UI on the same origin. Hosted deployments should leave `LAB_WEB_UI_DISABLE_AUTH` unset so browser OAuth remains active.
+That mode keeps the MCP/backend token in place while making `/auth/session` and `/v1/*` immediately usable from the exported `/chat` UI on the same origin. Hosted deployments should leave `LAB_WEB_UI_AUTH_DISABLED` unset so browser OAuth remains active. `LAB_WEB_UI_DISABLE_AUTH` is accepted as a legacy alias.
 
 There is also a repo shortcut for that local ACP UI mode:
 
@@ -51,7 +51,7 @@ There is also a repo shortcut for that local ACP UI mode:
 just chat-local
 ```
 
-Browser-facing bearer mode is intentionally disabled in the current UI. The chat and gateway screens always use the Rust-owned browser session flow plus CSRF headers when talking to `/v1/*`. If you need a local-only backend bypass, use `LAB_WEB_UI_DISABLE_AUTH=true` on the Rust side rather than embedding a public browser token.
+Browser-facing bearer mode is intentionally disabled in the current UI. The chat and gateway screens always use the Rust-owned browser session flow plus CSRF headers when talking to `/v1/*`. If you need a local-only backend bypass, use `LAB_WEB_UI_AUTH_DISABLED=true` on the Rust side rather than embedding a public browser token.
 
 When the frontend and Rust backend run on different origins during local development, the backend must allow the frontend origin through CORS:
 

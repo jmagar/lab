@@ -644,6 +644,7 @@ mod tests {
     fn test_auth_context() -> AuthContext {
         AuthContext {
             sub: "browser-user".to_string(),
+            actor_key: None,
             scopes: vec!["lab:admin".to_string()],
             issuer: "https://issuer.example".to_string(),
             via_session: true,

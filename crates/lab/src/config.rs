@@ -27,6 +27,8 @@ use lab_auth::config as auth_config;
 use serde::{Deserialize, Serialize, Serializer};
 
 pub const DEFAULT_MCPREGISTRY_URL: &str = "https://registry.modelcontextprotocol.io";
+pub const WEB_UI_AUTH_DISABLED_ENV: &str = "LAB_WEB_UI_AUTH_DISABLED";
+pub const WEB_UI_AUTH_DISABLED_LEGACY_ENV: &str = "LAB_WEB_UI_DISABLE_AUTH";
 
 /// Fully-resolved `lab` configuration, assembled from env + TOML.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -708,6 +710,53 @@ pub struct WebPreferences {
     /// Disable `/v1/*` auth for the hosted web UI. Intended only for trusted reverse-proxy setups.
     #[serde(default)]
     pub disable_auth: Option<bool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WebUiAuthDisabledEnv {
+    pub disabled: bool,
+    pub source: &'static str,
+    pub legacy_alias: bool,
+}
+
+pub fn resolve_web_ui_auth_disabled_env() -> Result<Option<WebUiAuthDisabledEnv>> {
+    resolve_web_ui_auth_disabled_values(
+        std::env::var(WEB_UI_AUTH_DISABLED_ENV).ok().as_deref(),
+        std::env::var(WEB_UI_AUTH_DISABLED_LEGACY_ENV)
+            .ok()
+            .as_deref(),
+    )
+}
+
+pub fn resolve_web_ui_auth_disabled_values(
+    canonical: Option<&str>,
+    legacy: Option<&str>,
+) -> Result<Option<WebUiAuthDisabledEnv>> {
+    if let Some(value) = canonical.filter(|value| !value.trim().is_empty()) {
+        return Ok(Some(WebUiAuthDisabledEnv {
+            disabled: parse_web_ui_auth_disabled_bool(WEB_UI_AUTH_DISABLED_ENV, value)?,
+            source: WEB_UI_AUTH_DISABLED_ENV,
+            legacy_alias: false,
+        }));
+    }
+
+    if let Some(value) = legacy.filter(|value| !value.trim().is_empty()) {
+        return Ok(Some(WebUiAuthDisabledEnv {
+            disabled: parse_web_ui_auth_disabled_bool(WEB_UI_AUTH_DISABLED_LEGACY_ENV, value)?,
+            source: WEB_UI_AUTH_DISABLED_LEGACY_ENV,
+            legacy_alias: true,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_web_ui_auth_disabled_bool(name: &str, value: &str) -> Result<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => anyhow::bail!("invalid {name} value `{value}`; expected true/false or 1/0"),
+    }
 }
 
 /// Shared workspace root for Lab-managed files.
@@ -1502,6 +1551,40 @@ root = "/srv/lab-stash"
         assert_eq!(
             workspace_root_for_home(&cfg, Path::new("/tmp/ignored")),
             PathBuf::from("/srv/lab-stash")
+        );
+    }
+
+    #[test]
+    fn web_ui_auth_disabled_env_prefers_canonical_alias() {
+        let setting = resolve_web_ui_auth_disabled_values(Some("true"), Some("false"))
+            .expect("env values should parse")
+            .expect("setting should resolve");
+
+        assert!(setting.disabled);
+        assert_eq!(setting.source, WEB_UI_AUTH_DISABLED_ENV);
+        assert!(!setting.legacy_alias);
+    }
+
+    #[test]
+    fn web_ui_auth_disabled_env_accepts_legacy_alias() {
+        let setting = resolve_web_ui_auth_disabled_values(None, Some("1"))
+            .expect("env values should parse")
+            .expect("setting should resolve");
+
+        assert!(setting.disabled);
+        assert_eq!(setting.source, WEB_UI_AUTH_DISABLED_LEGACY_ENV);
+        assert!(setting.legacy_alias);
+    }
+
+    #[test]
+    fn web_ui_auth_disabled_env_rejects_invalid_values() {
+        let error = resolve_web_ui_auth_disabled_values(Some("sometimes"), None)
+            .expect_err("invalid bool should fail");
+
+        assert!(
+            error
+                .to_string()
+                .contains("invalid LAB_WEB_UI_AUTH_DISABLED value")
         );
     }
 

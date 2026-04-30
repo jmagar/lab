@@ -383,6 +383,10 @@ same origin as the API and MCP server. Asset directory resolution is:
 3. repo-local fallback: `apps/gateway-admin/out`
 
 The web shell is public; the UI then talks to same-origin `/v1/*` and `/mcp`.
+Set `LAB_WEB_UI_AUTH_DISABLED=true` only for local development or trusted
+reverse-proxy setups where browser auth is intentionally bypassed. The legacy
+alias `LAB_WEB_UI_DISABLE_AUTH` is still accepted, but new configs should use
+`LAB_WEB_UI_AUTH_DISABLED`.
 
 ## Upstream MCP Servers
 
