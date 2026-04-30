@@ -17,6 +17,8 @@ use super::params::{opt_str, opt_u64, require_str};
 
 /// SSE ticket lifetime in seconds.
 const TICKET_TTL_SECS: u64 = 30;
+const MAX_ACP_PARAMS_BYTES: usize = 64 * 1024;
+const MAX_ACP_PROMPT_BYTES: usize = 32 * 1024;
 
 fn require_confirm(params: &Value, action: &str) -> Result<(), ToolError> {
     if params
@@ -30,6 +32,34 @@ fn require_confirm(params: &Value, action: &str) -> Result<(), ToolError> {
             message: format!("{action} is destructive; pass `\"confirm\": true` to proceed"),
         })
     }
+}
+
+fn ensure_params_size(params: &Value) -> Result<(), ToolError> {
+    let size = serde_json::to_vec(params)
+        .map(|bytes| bytes.len())
+        .unwrap_or(usize::MAX);
+    if size > MAX_ACP_PARAMS_BYTES {
+        return Err(ToolError::Sdk {
+            sdk_kind: "content_too_large".to_string(),
+            message: format!(
+                "ACP params exceed {MAX_ACP_PARAMS_BYTES} bytes (received {size} bytes)"
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn ensure_prompt_size(prompt: &str) -> Result<(), ToolError> {
+    let size = prompt.len();
+    if size > MAX_ACP_PROMPT_BYTES {
+        return Err(ToolError::Sdk {
+            sdk_kind: "content_too_large".to_string(),
+            message: format!(
+                "ACP prompt exceeds {MAX_ACP_PROMPT_BYTES} bytes (received {size} bytes)"
+            ),
+        });
+    }
+    Ok(())
 }
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
@@ -83,6 +113,8 @@ pub async fn dispatch_with_registry(
     action: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
+    ensure_params_size(&params)?;
+
     match action {
         "help" => Ok(help_payload("acp", ACTIONS)),
         "schema" => {
@@ -205,6 +237,7 @@ pub async fn dispatch_with_registry(
                     message: "required param `text` is missing or empty".to_string(),
                     param: "text".to_string(),
                 })?;
+            ensure_prompt_size(raw_text)?;
 
             // Optional structured page context (HTTP / MCP / CLI can all supply it).
             let page_ctx = params
@@ -216,6 +249,7 @@ pub async fn dispatch_with_registry(
                     entity_id: obj.get("entityId").and_then(|v| v.as_str()),
                 });
             let effective_text = build_prompt_with_context(session_id, raw_text, page_ctx.as_ref());
+            ensure_prompt_size(&effective_text)?;
 
             registry
                 .prompt_session(session_id, &effective_text, principal)
@@ -395,6 +429,9 @@ fn load_hmac_key() -> &'static [u8] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    use crate::acp::registry::AcpSessionRegistry;
     use serde_json::json;
 
     #[tokio::test]
@@ -416,6 +453,69 @@ mod tests {
     async fn unknown_action_returns_kind() {
         let e = dispatch("session.serch", json!({})).await.unwrap_err();
         assert_eq!(e.kind(), "unknown_action");
+    }
+
+    #[tokio::test]
+    async fn session_prompt_rejects_oversized_prompt() {
+        let registry = AcpSessionRegistry::new_for_tests(Duration::from_millis(100));
+        registry
+            .inject_fake_session("sess-over-limit", "alice")
+            .await;
+        let prompt = "x".repeat(MAX_ACP_PROMPT_BYTES + 1);
+
+        let err = dispatch_with_registry(
+            &registry,
+            "session.prompt",
+            json!({
+                "session_id": "sess-over-limit",
+                "principal": "alice",
+                "text": prompt,
+            }),
+        )
+        .await
+        .expect_err("oversized prompt must be rejected");
+
+        assert_eq!(err.kind(), "content_too_large");
+    }
+
+    #[tokio::test]
+    async fn session_prompt_rejects_oversized_params() {
+        let registry = AcpSessionRegistry::new_for_tests(Duration::from_millis(100));
+        let oversized = "x".repeat(MAX_ACP_PARAMS_BYTES + 1);
+
+        let err = dispatch_with_registry(
+            &registry,
+            "session.list",
+            json!({
+                "principal": "alice",
+                "padding": oversized,
+            }),
+        )
+        .await
+        .expect_err("oversized params must be rejected");
+
+        assert_eq!(err.kind(), "content_too_large");
+    }
+
+    #[tokio::test]
+    async fn session_prompt_dispatches_normal_prompt() {
+        let registry = AcpSessionRegistry::new_for_tests(Duration::from_millis(100));
+        registry.inject_fake_session("sess-normal", "alice").await;
+
+        let value = dispatch_with_registry(
+            &registry,
+            "session.prompt",
+            json!({
+                "session_id": "sess-normal",
+                "principal": "alice",
+                "text": "hello",
+            }),
+        )
+        .await
+        .expect("normal prompt dispatch");
+
+        assert_eq!(value["ok"], true);
+        assert_eq!(value["session_id"], "sess-normal");
     }
 
     #[test]

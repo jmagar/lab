@@ -39,6 +39,7 @@ fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Erro
 const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_PERMISSION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROVIDER_STDERR_CHARS: usize = 2_048;
+const SESSION_COMMAND_QUEUE_CAPACITY: usize = 8;
 
 fn acp_prompt_idle_timeout() -> Duration {
     std::env::var("LAB_ACP_PROMPT_IDLE_TIMEOUT_MS")
@@ -75,22 +76,24 @@ fn lab_client_capabilities() -> ClientCapabilities {
 pub struct RuntimeHandle {
     #[allow(dead_code)]
     pub provider_session_id: String,
-    command_tx: mpsc::UnboundedSender<SessionCommand>,
+    command_tx: mpsc::Sender<SessionCommand>,
     permissions: Arc<PendingPermissions>,
+    #[cfg(test)]
+    _event_tx_for_tests: Option<mpsc::UnboundedSender<AcpEvent>>,
 }
 
 impl RuntimeHandle {
     pub async fn prompt(&self, prompt: String) -> Result<(), String> {
         self.command_tx
-            .send(SessionCommand::Prompt(prompt))
-            .map_err(|_| "ACP session command channel closed".to_string())
+            .try_send(SessionCommand::Prompt(prompt))
+            .map_err(session_command_send_error)
     }
 
     pub async fn cancel(&self) -> Result<(), String> {
         self.permissions.cancel_all();
         self.command_tx
-            .send(SessionCommand::Cancel)
-            .map_err(|_| "ACP session command channel closed".to_string())
+            .try_send(SessionCommand::Cancel)
+            .map_err(session_command_send_error)
     }
 
     pub async fn approve_permission(
@@ -109,6 +112,13 @@ impl RuntimeHandle {
 enum SessionCommand {
     Prompt(String),
     Cancel,
+}
+
+fn session_command_send_error(error: mpsc::error::TrySendError<SessionCommand>) -> String {
+    match error {
+        mpsc::error::TrySendError::Full(_) => "ACP session command queue saturated".to_string(),
+        mpsc::error::TrySendError::Closed(_) => "ACP session command channel closed".to_string(),
+    }
 }
 
 #[derive(Default)]
@@ -352,7 +362,7 @@ pub async fn launch_codex_runtime(
     event_tx: mpsc::UnboundedSender<AcpEvent>,
 ) -> Result<(RuntimeHandle, StartSessionResult), String> {
     let (started_tx, started_rx) = oneshot::channel();
-    let (command_tx, command_rx) = mpsc::unbounded_channel();
+    let (command_tx, command_rx) = mpsc::channel(SESSION_COMMAND_QUEUE_CAPACITY);
     let permissions = Arc::new(PendingPermissions::new(acp_permission_timeout()));
     let thread_permissions = Arc::clone(&permissions);
 
@@ -388,6 +398,8 @@ pub async fn launch_codex_runtime(
             provider_session_id: started.provider_session_id.clone(),
             command_tx,
             permissions,
+            #[cfg(test)]
+            _event_tx_for_tests: None,
         },
         StartSessionResult {
             provider_session_id: started.provider_session_id,
@@ -809,7 +821,7 @@ async fn run_codex_session(
     input: StartSessionInput,
     event_tx: mpsc::UnboundedSender<AcpEvent>,
     started_tx: oneshot::Sender<Result<RuntimeStarted, String>>,
-    mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
+    mut command_rx: mpsc::Receiver<SessionCommand>,
     permissions: Arc<PendingPermissions>,
 ) -> Result<(), String> {
     let launch = resolve_provider_launch(input.provider.as_deref())?;
@@ -2258,12 +2270,38 @@ mod tests {
 #[cfg(test)]
 #[allow(dead_code)]
 pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::UnboundedReceiver<AcpEvent>) {
-    let (command_tx, _command_rx) = mpsc::unbounded_channel::<SessionCommand>();
-    let (_event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
+    let (command_tx, command_rx) = mpsc::channel::<SessionCommand>(SESSION_COMMAND_QUEUE_CAPACITY);
+    tokio::spawn(async move {
+        let _command_rx = command_rx;
+        std::future::pending::<()>().await;
+    });
+    let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
     let handle = RuntimeHandle {
         provider_session_id: "fake-provider-session".to_string(),
         command_tx,
         permissions: Arc::new(PendingPermissions::new(DEFAULT_PERMISSION_TIMEOUT)),
+        _event_tx_for_tests: Some(event_tx),
+    };
+    (handle, event_rx)
+}
+
+#[cfg(test)]
+#[allow(dead_code)]
+pub fn saturated_fake_handle_for_tests() -> (RuntimeHandle, mpsc::UnboundedReceiver<AcpEvent>) {
+    let (command_tx, command_rx) = mpsc::channel::<SessionCommand>(1);
+    command_tx
+        .try_send(SessionCommand::Prompt("already queued".to_string()))
+        .expect("prefill command queue");
+    tokio::spawn(async move {
+        let _command_rx = command_rx;
+        std::future::pending::<()>().await;
+    });
+    let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
+    let handle = RuntimeHandle {
+        provider_session_id: "fake-provider-session".to_string(),
+        command_tx,
+        permissions: Arc::new(PendingPermissions::new(DEFAULT_PERMISSION_TIMEOUT)),
+        _event_tx_for_tests: Some(event_tx),
     };
     (handle, event_rx)
 }

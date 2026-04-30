@@ -18,7 +18,7 @@ impl IntoResponse for ToolError {
         let status = match self.kind() {
             "auth_failed" => StatusCode::UNAUTHORIZED,
             "not_found" => StatusCode::NOT_FOUND,
-            "rate_limited" => StatusCode::TOO_MANY_REQUESTS,
+            "rate_limited" | "queue_saturated" => StatusCode::TOO_MANY_REQUESTS,
             "sync_in_progress" | "service_unavailable" => StatusCode::SERVICE_UNAVAILABLE,
             "missing_param" | "invalid_param" | "validation_failed" => {
                 StatusCode::UNPROCESSABLE_ENTITY
@@ -87,5 +87,15 @@ mod tests {
         }
         .into_response();
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn queue_saturated_maps_to_429() {
+        let response = ToolError::Sdk {
+            sdk_kind: "queue_saturated".to_string(),
+            message: "queue full".to_string(),
+        }
+        .into_response();
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     }
 }

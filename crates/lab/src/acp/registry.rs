@@ -438,7 +438,7 @@ impl AcpSessionRegistry {
         runtime
             .prompt(prompt.to_string())
             .await
-            .map_err(internal_message)?;
+            .map_err(session_command_error)?;
 
         if let Some(db) = self.persistence().await {
             let summary = session.summary.read().await;
@@ -1025,6 +1025,59 @@ impl AcpSessionRegistry {
         summary
     }
 
+    /// Inject a pre-built session whose runtime command queue is already full.
+    #[cfg(test)]
+    pub async fn inject_saturated_fake_session(
+        &self,
+        session_id: &str,
+        principal: &str,
+    ) -> AcpSessionSummary {
+        use super::runtime::saturated_fake_handle_for_tests;
+
+        let created_at = jiff::Timestamp::now().to_string();
+        let summary = AcpSessionSummary {
+            id: session_id.to_string(),
+            provider: "codex-acp".to_string(),
+            title: "Test session".to_string(),
+            cwd: ".".to_string(),
+            state: AcpSessionState::Idle,
+            created_at: created_at.clone(),
+            updated_at: created_at,
+            principal: if principal.is_empty() {
+                None
+            } else {
+                Some(principal.to_string())
+            },
+            provider_session_id: Some("fake-provider-session".to_string()),
+            agent_name: Some("test-agent".to_string()),
+            agent_version: Some("0.0.1".to_string()),
+        };
+        let session = Session::new(
+            session_id.to_string(),
+            principal.to_string(),
+            summary.clone(),
+        );
+        let (fake_rt, fake_rx) = saturated_fake_handle_for_tests();
+        {
+            *session.handle.lock().await = Some(fake_rt);
+        }
+        {
+            self.sessions
+                .write()
+                .await
+                .insert(session_id.to_string(), Arc::clone(&session));
+        }
+
+        let registry = self.clone();
+        let sid = session_id.to_string();
+        tokio::spawn(async move {
+            let mut rx = fake_rx;
+            while rx.recv().await.is_some() {}
+            registry.sessions.write().await.remove(&sid);
+        });
+        summary
+    }
+
     /// Override last_activity on a session to simulate being idle for `elapsed`.
     #[cfg(test)]
     pub async fn set_last_activity_for_test(&self, session_id: &str, elapsed: Duration) {
@@ -1172,6 +1225,17 @@ fn internal_message(message: String) -> ToolError {
         message,
     }
 }
+
+fn session_command_error(message: String) -> ToolError {
+    if message.contains("queue saturated") {
+        return ToolError::Sdk {
+            sdk_kind: "queue_saturated".to_string(),
+            message,
+        };
+    }
+    internal_message(message)
+}
+
 fn not_found(message: &str) -> ToolError {
     ToolError::Sdk {
         sdk_kind: "not_found".to_string(),
@@ -1330,6 +1394,21 @@ mod tests {
             registry.shutting_down.load(Ordering::SeqCst),
             "shutting_down flag set"
         );
+    }
+
+    #[tokio::test]
+    async fn prompt_session_returns_queue_saturated_when_command_queue_is_full() {
+        let registry = test_registry();
+        registry
+            .inject_saturated_fake_session("saturated-sess", "alice")
+            .await;
+
+        let err = registry
+            .prompt_session("saturated-sess", "hello", "alice")
+            .await
+            .expect_err("full command queue must be rejected");
+
+        assert_eq!(err.kind(), "queue_saturated");
     }
 
     #[tokio::test]
