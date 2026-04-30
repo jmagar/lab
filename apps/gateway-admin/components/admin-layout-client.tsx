@@ -21,6 +21,30 @@ import {
   type ChatConfig,
 } from '@/components/floating-chat-popover'
 
+export type ChatLayoutState = {
+  open: boolean
+  config: ChatConfig
+}
+
+export function resolvePersistedChatLayoutState(): ChatLayoutState {
+  try {
+    const persisted = readPersistedState()
+    return {
+      open: Boolean(persisted.open),
+      config: persisted.config ?? DEFAULT_CONFIG,
+    }
+  } catch {
+    return {
+      open: false,
+      config: DEFAULT_CONFIG,
+    }
+  }
+}
+
+export function shouldAutoBootstrapChat(open: boolean, isOnChatPage: boolean) {
+  return open || isOnChatPage
+}
+
 export function AdminLayoutClient({
   children,
 }: {
@@ -31,16 +55,10 @@ export function AdminLayoutClient({
   const [persistedStateLoaded, setPersistedStateLoaded] = React.useState(false)
 
   React.useEffect(() => {
-    try {
-      const persisted = readPersistedState()
-      setOpen(Boolean(persisted.open))
-      setConfig(persisted.config ?? DEFAULT_CONFIG)
-    } catch {
-      setOpen(false)
-      setConfig(DEFAULT_CONFIG)
-    } finally {
-      setPersistedStateLoaded(true)
-    }
+    const persisted = resolvePersistedChatLayoutState()
+    setOpen(persisted.open)
+    setConfig(persisted.config)
+    setPersistedStateLoaded(true)
   }, [])
 
   // openModals ref — shared between FAB and CommandPalette
@@ -52,7 +70,7 @@ export function AdminLayoutClient({
   // Only auto-bootstrap a session when the chat surface is actually visible.
   // Without this gate the provider would mint an empty session on every admin
   // page load, leaving orphan sessions + SSE streams on the backend.
-  const autoBootstrap = open || isOnChatPage
+  const autoBootstrap = shouldAutoBootstrapChat(open, isOnChatPage)
 
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
 
