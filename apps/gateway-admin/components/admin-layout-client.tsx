@@ -8,6 +8,7 @@
  */
 
 import * as React from 'react'
+import { usePathname } from 'next/navigation'
 import { ChatSessionProvider } from '@/lib/chat/chat-session-provider'
 import { FloatingChatFab } from '@/components/floating-chat-fab'
 import { FloatingChatPopover } from '@/components/floating-chat-popover'
@@ -44,6 +45,14 @@ export function AdminLayoutClient({
   // openModals ref — shared between FAB and CommandPalette
   const openModals = React.useRef<Set<string>>(new Set())
 
+  const pathname = usePathname()
+  const isOnChatPage = pathname === '/chat'
+
+  // Only auto-bootstrap a session when the chat surface is actually visible.
+  // Without this gate the provider would mint an empty session on every admin
+  // page load, leaving orphan sessions + SSE streams on the backend.
+  const autoBootstrap = open || isOnChatPage
+
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
 
   React.useEffect(() => {
@@ -67,7 +76,7 @@ export function AdminLayoutClient({
   }, [])
 
   return (
-    <ChatSessionProvider isMobileViewport={isMobileViewport}>
+    <ChatSessionProvider isMobileViewport={isMobileViewport} autoBootstrap={autoBootstrap}>
       <PageContextSync />
       {children}
       <FloatingChatFab

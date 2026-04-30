@@ -143,6 +143,13 @@ export type ChatSessionProviderProps = {
   children: React.ReactNode
   isMobileViewport?: boolean
   onSessionPanelClose?: () => void
+  /**
+   * When true, the provider will auto-create an initial session if none exists.
+   * Defaults to false so visiting admin pages with the chat closed does not
+   * create empty sessions on the backend. Set to true when the chat surface is
+   * actually visible (popover open or `/chat` route).
+   */
+  autoBootstrap?: boolean
 }
 
 // ---- Main provider ----
@@ -151,6 +158,7 @@ export function ChatSessionProvider({
   children,
   isMobileViewport = false,
   onSessionPanelClose,
+  autoBootstrap = false,
 }: ChatSessionProviderProps) {
   // ---- State ----
   const [runs, setRuns] = React.useState<ACPRun[]>([])
@@ -385,8 +393,12 @@ export function ChatSessionProvider({
   }, [providers, selectedProviderId])
 
   // Auto-bootstrap first session — after sessions have been loaded so we don't race with refreshSessions.
+  // Gated on `autoBootstrap`: the provider mounts on every admin page, but we only want to mint a
+  // session when the user has actually surfaced the chat (popover open or /chat route). Otherwise
+  // every dashboard view would silently create an empty session + SSE stream on the backend.
   // NOTE(phase-2): wire AbortController once createSession accepts a signal.
   React.useEffect(() => {
+    if (!autoBootstrap) return
     if (!sessionsLoaded) return
     if (!shouldAutoCreateInitialRun(Boolean(providerHealth?.ready), runs.length, selectedRunId)) return
 
@@ -397,7 +409,7 @@ export function ChatSessionProvider({
         // providerHealth.message carries the failure detail
       }
     })()
-  }, [createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded])
+  }, [autoBootstrap, createSession, providerHealth?.ready, runs.length, selectedRunId, sessionsLoaded])
 
   // Update run status from session events (bail-out setter for re-render efficiency)
   React.useEffect(() => {
