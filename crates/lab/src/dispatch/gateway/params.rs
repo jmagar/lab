@@ -37,6 +37,8 @@ impl From<GatewayRuntimeOwnerParams> for UpstreamRuntimeOwner {
 pub struct GatewayNameParams {
     pub name: String,
     #[serde(default)]
+    pub allow_stdio: bool,
+    #[serde(default)]
     pub origin: Option<String>,
     #[serde(default)]
     pub owner: Option<GatewayRuntimeOwnerParams>,
@@ -77,6 +79,8 @@ pub struct GatewayTestParams {
     pub name: Option<String>,
     #[serde(default)]
     pub spec: Option<UpstreamConfig>,
+    #[serde(default)]
+    pub allow_stdio: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -84,6 +88,8 @@ pub struct GatewayAddParams {
     pub spec: UpstreamConfig,
     #[serde(default)]
     pub bearer_token_value: Option<String>,
+    #[serde(default)]
+    pub allow_stdio: bool,
     #[serde(default)]
     pub origin: Option<String>,
     #[serde(default)]
@@ -144,6 +150,8 @@ pub struct GatewayUpdateParams {
     #[serde(default)]
     pub bearer_token_value: Option<String>,
     #[serde(default)]
+    pub allow_stdio: bool,
+    #[serde(default)]
     pub origin: Option<String>,
     #[serde(default)]
     pub owner: Option<GatewayRuntimeOwnerParams>,
@@ -166,6 +174,8 @@ pub struct GatewayStatusParams {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GatewayMcpToggleParams {
     pub name: String,
+    #[serde(default)]
+    pub allow_stdio: bool,
     #[serde(default)]
     pub cleanup: bool,
     #[serde(default)]

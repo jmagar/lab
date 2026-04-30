@@ -53,6 +53,11 @@ args = ["--port", "5000"]
 proxy_resources = false
 ```
 
+Stdio upstreams execute a local child process on the host running `lab`.
+Gateway admin actions that test or reconcile enabled stdio definitions require
+an explicit `allow_stdio: true` acknowledgement in addition to any destructive
+confirmation. See [GATEWAY.md](./GATEWAY.md#stdio-gateway-safety).
+
 ### Config Fields
 
 | Field | Type | Required | Description |

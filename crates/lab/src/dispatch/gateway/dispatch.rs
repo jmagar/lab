@@ -178,8 +178,8 @@ pub async fn dispatch_with_manager(
         "gateway.test" => {
             let params: GatewayTestParams = parse_params(params_value)?;
             match (params.name.as_deref(), params.spec.as_ref()) {
-                (Some(name), None) => to_json(manager.test(Err(name)).await?),
-                (None, Some(spec)) => to_json(manager.test(Ok(spec)).await?),
+                (Some(name), None) => to_json(manager.test(Err(name), params.allow_stdio).await?),
+                (None, Some(spec)) => to_json(manager.test(Ok(spec), params.allow_stdio).await?),
                 (Some(_), Some(_)) => Err(ToolError::InvalidParam {
                     message: "gateway.test accepts either `name` or `spec`, not both".to_string(),
                     param: "name".to_string(),
@@ -197,6 +197,7 @@ pub async fn dispatch_with_manager(
                     .add(
                         params.spec,
                         params.bearer_token_value,
+                        params.allow_stdio,
                         params.origin.as_deref(),
                         params.owner.map(Into::into),
                     )
@@ -211,6 +212,7 @@ pub async fn dispatch_with_manager(
                         &params.name,
                         params.patch,
                         params.bearer_token_value,
+                        params.allow_stdio,
                         params.origin.as_deref(),
                         params.owner.map(Into::into),
                     )
@@ -302,6 +304,7 @@ pub async fn dispatch_with_manager(
                             ..GatewayUpdatePatch::default()
                         },
                         None,
+                        params.allow_stdio,
                         params.origin.as_deref(),
                         params.owner.clone().map(Into::into),
                     )
@@ -319,6 +322,7 @@ pub async fn dispatch_with_manager(
                         ..GatewayUpdatePatch::default()
                     },
                     None,
+                    params.allow_stdio,
                     params.origin.as_deref(),
                     params.owner.clone().map(Into::into),
                 )
@@ -959,10 +963,23 @@ mod tests {
             dispatch_with_manager(&manager, "gateway.test", json!({"name": "fixture-http"}))
                 .await
                 .expect("named test");
-        let proposed = dispatch_with_manager(
+        let proposed_without_ack = dispatch_with_manager(
             &manager,
             "gateway.test",
             json!({"spec": {
+                "name": "fixture-stdio",
+                "command": "echo",
+                "args": ["hello"]
+            }}),
+        )
+        .await
+        .expect_err("stdio spec requires explicit allow_stdio acknowledgement");
+        assert_eq!(proposed_without_ack.kind(), "invalid_param");
+
+        let proposed = dispatch_with_manager(
+            &manager,
+            "gateway.test",
+            json!({"allow_stdio": true, "spec": {
                 "name": "fixture-stdio",
                 "command": "echo",
                 "args": ["hello"]
@@ -1017,6 +1034,51 @@ mod tests {
             .await
             .expect("reload");
         assert!(reloaded.get("tools_changed").is_some());
+    }
+
+    #[tokio::test]
+    async fn gateway_add_rejects_enabled_stdio_without_explicit_ack() {
+        let manager = test_manager();
+
+        let err = dispatch_with_manager(
+            &manager,
+            "gateway.add",
+            json!({"spec": {
+                "name": "fixture-stdio",
+                "command": "echo",
+                "args": ["hello"]
+            }}),
+        )
+        .await
+        .expect_err("stdio add should require acknowledgement");
+
+        assert_eq!(err.kind(), "invalid_param");
+    }
+
+    #[tokio::test]
+    async fn gateway_update_rejects_enabled_stdio_without_explicit_ack() {
+        let manager = test_manager();
+        dispatch_with_manager(
+            &manager,
+            "gateway.add",
+            json!({"allow_stdio": true, "spec": {
+                "name": "fixture-stdio",
+                "command": "echo",
+                "args": ["hello"]
+            }}),
+        )
+        .await
+        .expect("add stdio");
+
+        let err = dispatch_with_manager(
+            &manager,
+            "gateway.update",
+            json!({"name": "fixture-stdio", "patch": {"proxy_resources": true}}),
+        )
+        .await
+        .expect_err("stdio update should require acknowledgement");
+
+        assert_eq!(err.kind(), "invalid_param");
     }
 
     #[tokio::test]

@@ -42,6 +42,26 @@ destructive actions in shared action metadata. HTTP callers must send
 `params.confirm = true`, CLI callers must confirm interactively or use `--yes` / `-y`, and MCP callers
 must go through elicitation when supported.
 
+### Stdio Gateway Safety
+
+Stdio upstreams are privileged because testing or reconciling them starts the
+configured command on the local host running `lab`. The gateway admin surface
+therefore requires an additional explicit acknowledgement before any stdio
+definition is probed or reconciled:
+
+- `gateway.test` with a `spec.command`, or with `name` pointing at a configured
+  stdio gateway, requires `params.allow_stdio = true`
+- `gateway.add` with `spec.command` requires `params.allow_stdio = true`
+- `gateway.update` requires `params.allow_stdio = true` whenever the resulting
+  enabled gateway config uses `command`, even if the patch only changes
+  unrelated fields
+
+This acknowledgement is separate from destructive confirmation. `confirm: true`
+authorizes config mutation; `allow_stdio: true` acknowledges local command
+execution. HTTP and MCP callers should only send it after operator approval.
+
+CLI commands expose the same guard as `--allow-stdio`.
+
 ## Tool Exposure
 
 Gateway config can optionally restrict which discovered upstream tools are republished by `lab`.
@@ -140,7 +160,12 @@ Rules:
 - `url` must use `http://` or `https://`
 - bind-all addresses (`0.0.0.0`, `::`) are rejected
 - RFC1918 and other private-network URLs are allowed
-- stdio gateways are allowed
+- stdio gateways are allowed only as an explicit privileged operator action.
+  Proposed or persisted enabled stdio specs can execute local commands during
+  `gateway.test`, `gateway.add`, and `gateway.update`. Machine callers must
+  pass `allow_stdio: true` in addition to normal destructive confirmation where
+  applicable; without that acknowledgement the request fails with
+  `kind: "invalid_param"` on `allow_stdio`.
 
 ## Reconcile Model
 
@@ -169,6 +194,7 @@ lab gateway list
 lab gateway get remote-lab
 lab gateway test --name remote-lab
 lab gateway add --name remote-lab --url https://lab2.example.com/mcp --bearer-token-env REMOTE_LAB_TOKEN
+lab gateway add --name local-tools --command local-mcp-server --allow-stdio
 lab gateway update remote-lab --proxy-resources true
 lab gateway remove remote-lab
 lab gateway reload
@@ -179,6 +205,7 @@ lab gateway reload
 ```json
 { "tool": "gateway", "input": { "action": "gateway.list", "params": {} } }
 { "tool": "gateway", "input": { "action": "gateway.add", "params": { "confirm": true, "spec": { "name": "remote-lab", "url": "https://lab2.example.com/mcp", "bearer_token_env": "REMOTE_LAB_TOKEN" } } } }
+{ "tool": "gateway", "input": { "action": "gateway.add", "params": { "confirm": true, "allow_stdio": true, "spec": { "name": "local-tools", "command": "local-mcp-server" } } } }
 { "tool": "gateway", "input": { "action": "gateway.reload", "params": { "confirm": true } } }
 ```
 

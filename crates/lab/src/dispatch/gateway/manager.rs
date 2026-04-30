@@ -1036,6 +1036,7 @@ impl GatewayManager {
     pub async fn test(
         &self,
         spec_or_name: Result<&UpstreamConfig, &str>,
+        allow_stdio: bool,
     ) -> Result<GatewayRuntimeView, ToolError> {
         let upstream = match spec_or_name {
             Ok(spec) => spec.clone(),
@@ -1051,6 +1052,7 @@ impl GatewayManager {
                     })?
             }
         };
+        ensure_stdio_admin_ack("gateway.test", &upstream, allow_stdio)?;
 
         let pool = UpstreamPool::new();
         pool.discover_all_with_in_process_peers(&[upstream.clone()], builtin_service_registry())
@@ -1238,6 +1240,7 @@ impl GatewayManager {
         &self,
         mut spec: UpstreamConfig,
         bearer_token_value: Option<String>,
+        allow_stdio: bool,
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
@@ -1262,6 +1265,8 @@ impl GatewayManager {
             validate_bearer_token_env_name(&trimmed)?;
             spec.bearer_token_env = Some(trimmed);
         }
+
+        ensure_stdio_admin_ack("gateway.add", &spec, allow_stdio)?;
 
         if let Some(token_value) = bearer_token_value.as_deref().map(str::trim)
             && !token_value.is_empty()
@@ -1299,6 +1304,7 @@ impl GatewayManager {
         name: &str,
         patch: GatewayUpdatePatch,
         bearer_token_value: Option<String>,
+        allow_stdio: bool,
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
@@ -1356,10 +1362,28 @@ impl GatewayManager {
             };
             patch.bearer_token_env = Some(Some(env_name.clone()));
             update_upstream(&mut cfg, name, patch)?;
+            let updated = cfg
+                .upstream
+                .iter()
+                .find(|u| u.name == updated_name)
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!("gateway `{updated_name}` not found after update"),
+                })?;
+            ensure_stdio_admin_ack("gateway.update", updated, allow_stdio)?;
             self.persist_gateway_bearer_token(&env_name, token_value)
                 .await?;
         } else {
             update_upstream(&mut cfg, name, patch)?;
+            let updated = cfg
+                .upstream
+                .iter()
+                .find(|u| u.name == updated_name)
+                .ok_or_else(|| ToolError::Sdk {
+                    sdk_kind: "not_found".to_string(),
+                    message: format!("gateway `{updated_name}` not found after update"),
+                })?;
+            ensure_stdio_admin_ack("gateway.update", updated, allow_stdio)?;
         }
         self.persist_config(cfg).await?;
         let diff = self.reload_with_origin_unlocked(origin, owner).await?;
@@ -2508,6 +2532,25 @@ fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
             let args = redact_stdio_args(&upstream.args);
             format_redacted_gateway_command(command, &args)
         })
+    })
+}
+
+fn ensure_stdio_admin_ack(
+    action: &str,
+    upstream: &UpstreamConfig,
+    allow_stdio: bool,
+) -> Result<(), ToolError> {
+    if upstream.command.is_none() || !upstream.enabled || allow_stdio {
+        return Ok(());
+    }
+
+    Err(ToolError::InvalidParam {
+        message: format!(
+            "{action} would execute local command `{}` for stdio gateway `{}`; resend with `allow_stdio: true` only after operator approval",
+            upstream.command.as_deref().unwrap_or("<unknown>"),
+            upstream.name
+        ),
+        param: "allow_stdio".to_string(),
     })
 }
 
@@ -3829,6 +3872,7 @@ mod tests {
                     tool_search: ToolSearchConfig::default(),
                 },
                 Some("ghp_secret".to_string()),
+                false,
                 None,
                 None,
             )
@@ -3856,8 +3900,8 @@ mod tests {
         let first = manager.clone();
         let second = manager.clone();
         let (first_result, second_result) = tokio::join!(
-            first.add(fixture_stdio_upstream("alpha"), None, None, None),
-            second.add(fixture_stdio_upstream("bravo"), None, None, None),
+            first.add(fixture_stdio_upstream("alpha"), None, true, None, None),
+            second.add(fixture_stdio_upstream("bravo"), None, true, None, None),
         );
 
         first_result.expect("add alpha");
