@@ -32,7 +32,8 @@ url.workspace          = true
 
 [dev-dependencies]
 rand.workspace = true
-tempfile = "3.10"
+tempfile       = "3.10"
+tracing-subscriber.workspace = true
 wiremock.workspace = true
 
 [lints]

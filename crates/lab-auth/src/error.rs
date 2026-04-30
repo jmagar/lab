@@ -4,6 +4,9 @@ use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use thiserror::Error;
 
+#[derive(Clone, Copy, Debug)]
+pub struct AuthErrorKind(pub &'static str);
+
 #[derive(Debug, Error)]
 pub enum AuthError {
     #[error("{0}")]
@@ -82,6 +85,9 @@ impl IntoResponse for AuthError {
             "message": self.to_string(),
         }));
         let mut response = (status, body).into_response();
+        response
+            .extensions_mut()
+            .insert(AuthErrorKind(self.kind()));
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));

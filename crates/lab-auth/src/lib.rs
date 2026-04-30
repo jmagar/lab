@@ -11,3 +11,6 @@ pub mod state;
 pub mod token;
 pub mod types;
 pub mod util;
+
+#[cfg(test)]
+pub mod test_support;
