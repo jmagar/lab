@@ -6,6 +6,13 @@ All notable changes to this project will be documented in this file.
 
 | Commit | Change |
 |--------|--------|
+| `e2ade2b9` | docs(BD-lab-j04j.16): refresh ACP docs against landed first-class state |
+| `f8e88fda` | feat(BD-lab-j04j.11): structured AcpProviderEntry args/cwd/env |
+| `90b16a48` | feat(BD-lab-j04j.10): bound ACP event channel to 1024 with await-on-send |
+| `0838775d` | docs(BD-lab-j04j.19): document provider prompt idle timeout |
+| `e2d8b6c0` | feat(BD-lab-j04j.18): replace page-context allowlist with predicate sanitizer |
+| `20c0a2b7` | feat(BD-lab-j04j.15): cap ACP SSE backfill at SQL layer |
+| `cf2c7e5b` | feat: gate stdio gateway specs behind allow_stdio admin ack |
 | `0221b23f` | docs: expand product and marketplace surface |
 | `4a8a2d53` | docs: expand product feature overview |
 | `3215a9ba` | docs: describe product feature surface |
@@ -15,12 +22,18 @@ All notable changes to this project will be documented in this file.
 
 ### Highlights
 
-- **Tool search config (gateway-admin)** — `ToolSearchConfig` + `ToolSearchConfigInput` types, `getToolSearchConfig`/`setToolSearchConfig` API methods, settings page UI, test coverage
-- **MCP server install modal (lab-zxx5.8)** — gateway selection during install flow
-- **Marketplace + product docs** — expanded product feature surface, marketplace surface, feature overview
+- **ACP review remediation (lab-j04j) — epic closed** — 18 of 19 child beads landed; runtime/security hardening across SSE backfill, event channel bounding, provider config, page-context sanitizer, idle-timeout docs. Bridge\* compat removal (.12) deferred pending coordinated frontend wire-format change.
+- **ACP SSE backfill SQL cap (.15)** — `load_events_since_capped` on `AcpPersistence` trait + SQLite subquery (`ORDER BY seq DESC LIMIT N`, re-sorted ASC) preserves "last N events" backfill contract without materialising the full event range. Previous in-Rust truncation was a memory waste at high event rates.
+- **ACP event channel bounded (.10)** — per-session `UnboundedSender<AcpEvent>` from runtime → registry hub becomes `mpsc::Sender<AcpEvent>` at capacity 1024 with await-on-send. Back-pressures the provider's stdio reader on persistence stalls instead of growing memory unboundedly. Five sync `emit_*`/`push_session_update` helpers become async; `std::Mutex` guard scopes restructured to avoid spanning `.await`.
+- **Structured AcpProviderEntry (.11)** — `command + args + cwd + env` schema with serde defaults; legacy entries fall back to whitespace-split `command` for one-time read fidelity. Re-installing a provider migrates the on-disk entry. Marketplace install paths (binary/npx/uvx) build args as `Vec<String>` rather than concatenating into a single string.
+- **Page-context sanitizer (.18)** — predicate-based `is_safe_page_context_char` replaces the 62-element char allowlist; deny-list bypass detection adds a separator-stripped joined-form check; 23 tests covering control chars, unicode rejection, separator-bypass attempts, and length boundaries.
+- **Stdio gateway admin ack** — `gateway.test`/`add`/`update` require explicit `allow_stdio: true` when the upstream spec uses stdio. Stdio specs spawn local subprocesses, so admin operations against them are gated through `ensure_stdio_admin_ack` to prevent silent process launches via remote dispatch. CLI mirrors with `--allow-stdio` flags; catalog publishes `allow_stdio` as a documented param.
+- **Provider prompt idle timeout (.19)** — operator-facing section in `docs/acp/README.md` documenting the 5 s default, `LAB_ACP_PROMPT_IDLE_TIMEOUT_MS` override, and the observable firing behavior (`session_state` Completed + `provider_info` `idle_completion`).
+- **ACP docs match landed first-class state (.16)** — README inventories the landed pieces (lab-apis::acp module, dispatch/acp/, registry registration, HTTP routes), enumerates landed protections, and lists remaining gaps (Bridge\* compat, typed CLI shim, provider workspace jail) without claiming deferred work.
 
 ### Version bumps
 
+- Rust workspace: `0.11.1 → 0.12.0`
 - gateway-admin: `0.5.1 → 0.6.0`
 
 ---
