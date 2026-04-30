@@ -8,6 +8,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use dashmap::DashMap;
 use lab_apis::deploy::DeployError;
@@ -40,11 +41,19 @@ impl HostLockRegistry {
             .clone();
         let host = host.to_string();
         Box::pin(async move {
+            let wait_started = Instant::now();
+            tracing::debug!(
+                surface = "dispatch", service = "deploy.lock", action = "lock.wait",
+                host = %host, timeout_ms = timeout.as_millis(),
+                "waiting for deploy host lock",
+            );
             match tokio::time::timeout(timeout, mutex.lock_owned()).await {
                 Ok(guard) => {
                     tracing::debug!(
                         surface = "dispatch", service = "deploy.lock", action = "lock.acquired",
-                        host = %host, timeout_ms = timeout.as_millis(),
+                        host = %host,
+                        timeout_ms = timeout.as_millis(),
+                        wait_ms = wait_started.elapsed().as_millis(),
                         "deploy host lock acquired",
                     );
                     Ok(guard)
@@ -52,7 +61,10 @@ impl HostLockRegistry {
                 Err(_) => {
                     tracing::warn!(
                         surface = "dispatch", service = "deploy.lock", action = "lock.conflict",
-                        host = %host, timeout_ms = timeout.as_millis(),
+                        host = %host,
+                        timeout_ms = timeout.as_millis(),
+                        wait_ms = wait_started.elapsed().as_millis(),
+                        kind = "conflict",
                         "deploy host lock contention timeout — another deploy is in progress",
                     );
                     Err(DeployError::Conflict { host })

@@ -41,6 +41,7 @@
 //! first open. Subsequent opens do not change permissions.
 
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use r2d2::Pool;
@@ -71,6 +72,10 @@ const FIELDS_MAX_BYTES: usize = 4 * 1024; // 4 KB
 /// Default TTL in days when not set in config.
 pub const DEFAULT_RETENTION_DAYS: u32 = 30;
 
+fn should_log_counter(count: u64) -> bool {
+    count <= 10 || count.is_power_of_two()
+}
+
 // ── SqliteNodeLogStore ────────────────────────────────────────────────────────
 
 /// Durable SQLite-backed store for node log events.
@@ -85,6 +90,10 @@ pub struct SqliteNodeLogStore {
     read_pool: Pool<SqliteConnectionManager>,
     /// Channel to the background writer task.
     event_tx: mpsc::Sender<NodeLogEvent>,
+    /// Best-effort visibility for events dropped before SQLite persistence.
+    dropped_events: Arc<AtomicU64>,
+    /// Count of ingest sends that observed a saturated or near-saturated channel.
+    saturation_events: Arc<AtomicU64>,
     /// Dedicated writer connection shared with the background task (Arc for test access).
     #[cfg_attr(not(test), allow(dead_code))]
     writer_conn: Arc<Mutex<Connection>>,
@@ -97,6 +106,7 @@ impl std::fmt::Debug for SqliteNodeLogStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SqliteNodeLogStore")
             .field("event_tx_capacity", &self.event_tx.capacity())
+            .field("event_tx_max_capacity", &self.event_tx.max_capacity())
             .finish_non_exhaustive()
     }
 }
@@ -129,11 +139,27 @@ impl SqliteNodeLogStore {
         reject_db_path_traversal(&db_path)?;
 
         let path = db_path.clone();
+        let path_display = db_path.display().to_string();
+        tracing::info!(
+            surface = "node",
+            service = "log_store",
+            action = "sqlite.open.start",
+            path = %path_display,
+            retention_days,
+            "opening node log SQLite database",
+        );
 
         let (write_pool, read_pool, writer_task_conn) =
             tokio::task::spawn_blocking(move || -> Result<_, String> {
                 if let Some(parent) = path.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| format!("create_dir_all: {e}"))?;
+                    tracing::debug!(
+                        surface = "node",
+                        service = "log_store",
+                        action = "sqlite.open.parent_ready",
+                        parent = %parent.display(),
+                        "node log store parent directory ready",
+                    );
                 }
 
                 // Create the file with 0600 perms on first open (Unix only).
@@ -157,6 +183,15 @@ impl SqliteNodeLogStore {
                     .connection_timeout(std::time::Duration::from_secs(5))
                     .build(write_manager)
                     .map_err(|e| format!("build write pool: {e}"))?;
+                tracing::debug!(
+                    surface = "node",
+                    service = "log_store",
+                    action = "sqlite.pool.open",
+                    pool = "write",
+                    max_size = 1_u32,
+                    journal_mode = "WAL",
+                    "node log SQLite write pool opened",
+                );
 
                 let read_manager =
                     SqliteConnectionManager::file(&path).with_init(node_log_pragma_init(true));
@@ -165,6 +200,16 @@ impl SqliteNodeLogStore {
                     .connection_timeout(std::time::Duration::from_secs(5))
                     .build(read_manager)
                     .map_err(|e| format!("build read pool: {e}"))?;
+                tracing::debug!(
+                    surface = "node",
+                    service = "log_store",
+                    action = "sqlite.pool.open",
+                    pool = "read",
+                    max_size = 4_u32,
+                    journal_mode = "WAL",
+                    query_only = true,
+                    "node log SQLite read pool opened",
+                );
 
                 // Dedicated single-owner writer connection for the hot-path batch inserts.
                 let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
@@ -172,6 +217,13 @@ impl SqliteNodeLogStore {
                     .map_err(|e| format!("open writer conn: {e}"))?;
                 node_log_pragma_init(false)(&mut tc)
                     .map_err(|e| format!("writer conn pragmas: {e}"))?;
+                tracing::debug!(
+                    surface = "node",
+                    service = "log_store",
+                    action = "sqlite.writer.open",
+                    journal_mode = "WAL",
+                    "node log SQLite writer connection opened",
+                );
 
                 Ok((write_pool, read_pool, tc))
             })
@@ -188,10 +240,22 @@ impl SqliteNodeLogStore {
             retention_days,
         ));
 
+        tracing::info!(
+            surface = "node",
+            service = "log_store",
+            action = "sqlite.open",
+            path = %path_display,
+            channel_capacity = event_tx.max_capacity(),
+            retention_days,
+            "node log SQLite database opened",
+        );
+
         Ok(Self {
             write_pool,
             read_pool,
             event_tx,
+            dropped_events: Arc::new(AtomicU64::new(0)),
+            saturation_events: Arc::new(AtomicU64::new(0)),
             writer_conn,
             retention_days,
         })
@@ -212,22 +276,54 @@ impl SqliteNodeLogStore {
         let fields_str =
             serde_json::to_string(&event.fields).map_err(|e| format!("serialize fields: {e}"))?;
         if fields_str.len() > FIELDS_MAX_BYTES {
+            let total_dropped = self.dropped_events.fetch_add(1, Ordering::Relaxed) + 1;
             tracing::warn!(
                 surface = "node",
                 service = "log_store",
                 action = "ingest",
+                kind = "payload_too_large",
                 node_id = %event.node_id,
                 fields_bytes = fields_str.len(),
                 limit_bytes = FIELDS_MAX_BYTES,
+                total_dropped,
                 "node log event fields exceed 4 KB limit; event dropped",
             );
             return Ok(());
         }
 
-        self.event_tx
-            .send(event)
-            .await
-            .map_err(|_| "node log writer task channel closed".to_string())
+        let remaining = self.event_tx.capacity();
+        let max_capacity = self.event_tx.max_capacity();
+        let saturated = remaining == 0;
+        let near_saturation = remaining <= (max_capacity / 16).max(1);
+        if saturated || near_saturation {
+            let saturation_events = self.saturation_events.fetch_add(1, Ordering::Relaxed) + 1;
+            if should_log_counter(saturation_events) {
+                tracing::warn!(
+                    surface = "node",
+                    service = "log_store",
+                    action = "ingest.channel_saturation",
+                    node_id = %event.node_id,
+                    queue_capacity = max_capacity,
+                    queue_remaining = remaining,
+                    send_will_await_capacity = saturated,
+                    saturation_events,
+                    "node log writer channel saturated; ingest send may block",
+                );
+            }
+        }
+
+        self.event_tx.send(event).await.map_err(|_| {
+            let total_dropped = self.dropped_events.fetch_add(1, Ordering::Relaxed) + 1;
+            tracing::warn!(
+                surface = "node",
+                service = "log_store",
+                action = "ingest.drop",
+                kind = "internal_error",
+                total_dropped,
+                "node log writer task channel closed; event dropped",
+            );
+            "node log writer task channel closed".to_string()
+        })
     }
 
     /// Search log events for a node.
@@ -276,6 +372,7 @@ async fn writer_task(
     retention_days: u32,
 ) {
     let mut batch: Vec<NodeLogEvent> = Vec::with_capacity(BATCH_SIZE);
+    let mut flushed_events: u64 = 0;
     let mut retention_ticker = tokio::time::interval(RETENTION_INTERVAL);
     // Skip the first tick (fires immediately on creation).
     retention_ticker.tick().await;
@@ -301,7 +398,14 @@ async fn writer_task(
                         }
                         Ok(None) => {
                             // Channel closed — flush remaining and exit.
-                            flush_batch(&conn, &mut batch).await;
+                            flushed_events += flush_batch(&conn, &mut batch).await as u64;
+                            tracing::warn!(
+                                surface = "node",
+                                service = "log_store",
+                                action = "writer.exit",
+                                flushed_events,
+                                "node log writer task exited; all senders dropped",
+                            );
                             return;
                         }
                         Err(_timeout) => {
@@ -313,7 +417,7 @@ async fn writer_task(
                 _ = retention_ticker.tick() => {
                     // Run retention inline, using the same dedicated connection.
                     // Flush pending batch first so retention sees all recent events.
-                    flush_batch(&conn, &mut batch).await;
+                    flushed_events += flush_batch(&conn, &mut batch).await as u64;
                     run_retention(&conn, retention_days).await;
                     break 'collect;
                 }
@@ -321,14 +425,14 @@ async fn writer_task(
         }
 
         if !batch.is_empty() {
-            flush_batch(&conn, &mut batch).await;
+            flushed_events += flush_batch(&conn, &mut batch).await as u64;
         }
     }
 }
 
-async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<NodeLogEvent>) {
+async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<NodeLogEvent>) -> usize {
     if batch.is_empty() {
-        return;
+        return 0;
     }
     let events = std::mem::take(batch);
     let count = events.len();
@@ -341,25 +445,31 @@ async fn flush_batch(conn: &Arc<Mutex<Connection>>, batch: &mut Vec<NodeLogEvent
     })
     .await;
     match result {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) => tracing::error!(
-            surface = "node",
-            service = "log_store",
-            action = "flush_batch",
-            kind = "internal_error",
-            events = count,
-            error,
-            "node log batch insert failed",
-        ),
-        Err(join_err) => tracing::error!(
-            surface = "node",
-            service = "log_store",
-            action = "flush_batch",
-            kind = "internal_error",
-            events = count,
-            error = %join_err,
-            "node log flush task panicked",
-        ),
+        Ok(Ok(())) => count,
+        Ok(Err(error)) => {
+            tracing::error!(
+                surface = "node",
+                service = "log_store",
+                action = "flush_batch",
+                kind = "internal_error",
+                events = count,
+                error,
+                "node log batch insert failed",
+            );
+            0
+        }
+        Err(join_err) => {
+            tracing::error!(
+                surface = "node",
+                service = "log_store",
+                action = "flush_batch",
+                kind = "internal_error",
+                events = count,
+                error = %join_err,
+                "node log flush task panicked",
+            );
+            0
+        }
     }
 }
 
@@ -449,6 +559,14 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     }
 
     let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    tracing::debug!(
+        surface = "node",
+        service = "log_store",
+        action = "sqlite.migrate.start",
+        from_version = version,
+        auto_vacuum = av,
+        "checking node log SQLite migrations",
+    );
     if version < 1 {
         // FACT: auto_vacuum and page_size must be set here, before execute_batch.
         // Connection-level pragma hooks cannot set them after the first DB write.
@@ -456,6 +574,22 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.pragma_update(None, "page_size", 8192_i64)?;
         conn.execute_batch(SCHEMA_SQL)?;
         conn.pragma_update(None, "user_version", 1)?;
+        tracing::info!(
+            surface = "node",
+            service = "log_store",
+            action = "sqlite.migrate.apply",
+            from_version = version,
+            to_version = 1,
+            "applied node log SQLite migration",
+        );
+    } else {
+        tracing::debug!(
+            surface = "node",
+            service = "log_store",
+            action = "sqlite.migrate.skip",
+            version,
+            "node log SQLite schema already current",
+        );
     }
     Ok(())
 }

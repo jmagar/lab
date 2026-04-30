@@ -43,6 +43,9 @@ use crate::oauth::upstream::refresh::RefreshLocks;
 use crate::oauth::upstream::store::{SqliteCredentialStore, SqliteStateStore};
 use crate::oauth::upstream::types::{BeginAuthorization, OauthError};
 
+const TOKEN_EXPIRY_WARNING_SECS: i64 = 300;
+const PROACTIVE_REFRESH_WINDOW_SECS: i64 = 30;
+
 /// Upstream OAuth manager for a single upstream MCP server.
 ///
 /// Cheap to clone — all mutable state is behind `Arc`.
@@ -333,23 +336,101 @@ impl UpstreamOauthManager {
         &self,
         subject: &str,
     ) -> Result<AuthClient<reqwest::Client>, OauthError> {
+        let started = std::time::Instant::now();
         let lock = self.locks.acquire(&self.upstream.name, subject);
         let _guard = lock.lock().await;
 
-        let mut manager = self.configured_authorization_manager(subject).await?;
-        let initialized = manager
-            .initialize_from_store()
+        let mut manager = self
+            .configured_authorization_manager(subject)
             .await
-            .map_err(|e| OauthError::Internal(format!("initialize from store: {e}")))?;
+            .map_err(|e| {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    provider = %self.oauth_provider_label(),
+                    subject,
+                    scope = %self.oauth_scope_label(),
+                    kind = e.kind(),
+                    elapsed_ms = started.elapsed().as_millis(),
+                    fallback = "reauthorization_required",
+                    "upstream oauth: failed to build auth client manager"
+                );
+                e
+            })?;
+        let initialized = manager.initialize_from_store().await.map_err(|e| {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                kind = "internal_error",
+                elapsed_ms = started.elapsed().as_millis(),
+                fallback = "reauthorization_required",
+                "upstream oauth: failed to initialize auth client from credential store"
+            );
+            OauthError::Internal(format!("initialize from store: {e}"))
+        })?;
 
         if !initialized {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                kind = "oauth_needs_reauth",
+                elapsed_ms = started.elapsed().as_millis(),
+                fallback = "reauthorization_required",
+                "upstream oauth: no stored credentials for auth client"
+            );
             return Err(OauthError::NeedsReauth(format!(
                 "no stored credentials for upstream '{}' subject '{subject}'",
                 self.upstream.name
             )));
         }
 
-        manager.get_access_token().await.map_err(map_auth_error)?;
+        let credential_row = self.credential_row(subject).await?;
+        let refresh_state = credential_row
+            .as_ref()
+            .and_then(|row| TokenRefreshState::from_row(row, now_unix().ok()?));
+        if let Some(state) = refresh_state.as_ref() {
+            self.log_expiring_token(subject, state, started.elapsed().as_millis());
+            self.log_refresh_attempt(subject, state, started.elapsed().as_millis());
+        }
+
+        manager.get_access_token().await.map_err(|e| {
+            let mapped = map_auth_error(e);
+            if refresh_state
+                .as_ref()
+                .is_some_and(TokenRefreshState::refresh_due)
+            {
+                tracing::warn!(
+                    upstream = %self.upstream.name,
+                    provider = %self.oauth_provider_label(),
+                    subject,
+                    scope = %self.oauth_scope_label(),
+                    kind = mapped.kind(),
+                    elapsed_ms = started.elapsed().as_millis(),
+                    fallback = "reauthorization_required",
+                    "upstream oauth: token refresh failed"
+                );
+            }
+            mapped
+        })?;
+
+        if refresh_state
+            .as_ref()
+            .is_some_and(TokenRefreshState::refresh_due)
+        {
+            tracing::info!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                elapsed_ms = started.elapsed().as_millis(),
+                fallback = "none",
+                "upstream oauth: token refresh succeeded"
+            );
+        }
+
         Ok(AuthClient::new(reqwest::Client::new(), manager))
     }
 
@@ -423,6 +504,65 @@ impl UpstreamOauthManager {
             .oauth
             .as_ref()
             .ok_or_else(|| OauthError::Internal("upstream has no oauth config".to_string()))
+    }
+
+    fn oauth_scope_label(&self) -> String {
+        self.upstream
+            .oauth
+            .as_ref()
+            .and_then(|cfg| cfg.scopes.as_ref())
+            .filter(|scopes| !scopes.is_empty())
+            .map(|scopes| scopes.join(" "))
+            .unwrap_or_else(|| "<none>".to_string())
+    }
+
+    fn oauth_provider_label(&self) -> String {
+        self.upstream.name.clone()
+    }
+
+    fn log_expiring_token(&self, subject: &str, state: &TokenRefreshState, elapsed_ms: u128) {
+        if state.seconds_until_expiry <= TOKEN_EXPIRY_WARNING_SECS {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                seconds_until_expiry = state.seconds_until_expiry,
+                refresh_token_present = state.refresh_token_present,
+                elapsed_ms,
+                "upstream oauth: access token nearing expiry"
+            );
+        }
+    }
+
+    fn log_refresh_attempt(&self, subject: &str, state: &TokenRefreshState, elapsed_ms: u128) {
+        if !state.refresh_due() {
+            return;
+        }
+
+        if state.refresh_token_present {
+            tracing::info!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                seconds_until_expiry = state.seconds_until_expiry,
+                elapsed_ms,
+                "upstream oauth: token refresh attempt"
+            );
+        } else {
+            tracing::warn!(
+                upstream = %self.upstream.name,
+                provider = %self.oauth_provider_label(),
+                subject,
+                scope = %self.oauth_scope_label(),
+                seconds_until_expiry = state.seconds_until_expiry,
+                kind = "oauth_needs_reauth",
+                elapsed_ms,
+                fallback = "reauthorization_required",
+                "upstream oauth: access token expired or near expiry without refresh token"
+            );
+        }
     }
 
     fn upstream_url(&self) -> Result<Arc<String>, OauthError> {
@@ -659,6 +799,34 @@ fn extract_state_param(url: &str) -> Option<String> {
         .query_pairs()
         .find(|(k, _)| k == "state")
         .map(|(_, v)| v.into_owned())
+}
+
+struct TokenRefreshState {
+    seconds_until_expiry: i64,
+    refresh_token_present: bool,
+}
+
+impl TokenRefreshState {
+    fn from_row(row: &UpstreamOauthCredentialRow, now: i64) -> Option<Self> {
+        if row.access_token_expires_at <= 0 {
+            return None;
+        }
+        Some(Self {
+            seconds_until_expiry: row.access_token_expires_at.saturating_sub(now),
+            refresh_token_present: row.refresh_token_present,
+        })
+    }
+
+    fn refresh_due(&self) -> bool {
+        self.seconds_until_expiry <= PROACTIVE_REFRESH_WINDOW_SECS
+    }
+}
+
+fn now_unix() -> Result<i64, OauthError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| OauthError::Internal(format!("system clock error: {error}")))
+        .map(|duration| duration.as_secs() as i64)
 }
 
 fn map_auth_error(e: rmcp::transport::AuthError) -> OauthError {

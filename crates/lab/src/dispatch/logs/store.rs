@@ -35,10 +35,29 @@ pub struct LogStore {
 impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
         let path_display = path.display().to_string();
+        tracing::info!(
+            target: "lab::dispatch::logs",
+            surface = "logs",
+            service = "store",
+            action = "sqlite.open.start",
+            path = %path_display,
+            max_age_days = retention.max_age_days,
+            max_bytes = retention.max_bytes,
+            "opening log store SQLite database",
+        );
         let (write_conn, read_conn) = tokio::task::spawn_blocking(
             move || -> Result<(Connection, Connection), rusqlite::Error> {
                 if let Some(parent) = path.parent() {
-                    std::fs::create_dir_all(parent).ok();
+                    if std::fs::create_dir_all(parent).is_ok() {
+                        tracing::debug!(
+                            target: "lab::dispatch::logs",
+                            surface = "logs",
+                            service = "store",
+                            action = "sqlite.open.parent_ready",
+                            parent = %parent.display(),
+                            "log store parent directory ready",
+                        );
+                    }
                 }
                 let rw_flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
 
@@ -49,6 +68,18 @@ impl LogStore {
                 wc.pragma_update(None, "synchronous", "NORMAL")?;
                 wc.pragma_update(None, "temp_store", "MEMORY")?;
                 wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
+                tracing::debug!(
+                    target: "lab::dispatch::logs",
+                    surface = "logs",
+                    service = "store",
+                    action = "sqlite.pragmas",
+                    connection = "write",
+                    journal_mode = "WAL",
+                    synchronous = "NORMAL",
+                    temp_store = "MEMORY",
+                    mmap_size = 134_217_728_i64,
+                    "log store SQLite write pragmas applied",
+                );
                 migrate(&wc)?;
 
                 // Read connection — opened after schema is applied.
@@ -58,6 +89,18 @@ impl LogStore {
                 rc.pragma_update(None, "temp_store", "MEMORY")?;
                 rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
                 rc.pragma_update(None, "query_only", "true")?;
+                tracing::debug!(
+                    target: "lab::dispatch::logs",
+                    surface = "logs",
+                    service = "store",
+                    action = "sqlite.pragmas",
+                    connection = "read",
+                    journal_mode = "WAL",
+                    temp_store = "MEMORY",
+                    mmap_size = 134_217_728_i64,
+                    query_only = true,
+                    "log store SQLite read pragmas applied",
+                );
 
                 Ok((wc, rc))
             },
@@ -72,9 +115,10 @@ impl LogStore {
             retention,
         };
         tracing::info!(
+            target: "lab::dispatch::logs",
             surface = "logs", service = "store", action = "open",
             path = %path_display,
-            "log store SQLite opened (WAL mode)",
+            "log store SQLite opened",
         );
         Ok(store)
     }
@@ -169,9 +213,35 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
 /// - Future columns: `if version < 2 { conn.execute_batch("ALTER TABLE ...")?; ... }`
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    tracing::debug!(
+        target: "lab::dispatch::logs",
+        surface = "logs",
+        service = "store",
+        action = "sqlite.migrate.start",
+        from_version = version,
+        "checking log store SQLite migrations",
+    );
     if version < 1 {
         conn.execute_batch(include_str!("store_schema.sql"))?;
         conn.pragma_update(None, "user_version", 1)?;
+        tracing::info!(
+            target: "lab::dispatch::logs",
+            surface = "logs",
+            service = "store",
+            action = "sqlite.migrate.apply",
+            from_version = version,
+            to_version = 1,
+            "applied log store SQLite migration",
+        );
+    } else {
+        tracing::debug!(
+            target: "lab::dispatch::logs",
+            surface = "logs",
+            service = "store",
+            action = "sqlite.migrate.skip",
+            version,
+            "log store SQLite schema already current",
+        );
     }
     // Future migrations:
     // if version < 2 {

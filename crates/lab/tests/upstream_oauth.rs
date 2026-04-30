@@ -5,6 +5,9 @@
 //! of our outbound OAuth client — specifically the `resource` indicator on
 //! authorize, issuer binding, S256 enforcement, and CIMD registration.
 
+use std::io;
+use std::sync::{Arc, Mutex};
+
 use base64::Engine;
 use lab::config::{
     UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration,
@@ -16,9 +19,41 @@ use lab::oauth::upstream::types::OauthError;
 use lab_auth::sqlite::SqliteStore;
 use serde_json::json;
 use tempfile::TempDir;
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use url::Url;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+static TRACING_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Clone, Default)]
+struct SharedBuf(Arc<Mutex<Vec<u8>>>);
+
+impl<'a> MakeWriter<'a> for SharedBuf {
+    type Writer = SharedWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        SharedWriter(Arc::clone(&self.0))
+    }
+}
+
+struct SharedWriter(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for SharedWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn captured_logs(buf: &SharedBuf) -> String {
+    String::from_utf8(buf.0.lock().unwrap().clone()).unwrap()
+}
 
 // ---------- harness ----------
 
@@ -99,12 +134,16 @@ impl Harness {
     }
 
     async fn mount_token_endpoint(&self) {
+        self.mount_token_endpoint_with_expires(3600).await;
+    }
+
+    async fn mount_token_endpoint_with_expires(&self, expires_in: u64) {
         Mock::given(method("POST"))
             .and(path("/token"))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!({
                 "access_token": "access-xyz",
                 "token_type": "Bearer",
-                "expires_in": 3600,
+                "expires_in": expires_in,
                 "refresh_token": "refresh-xyz",
                 "scope": "read"
             })))
@@ -338,4 +377,58 @@ async fn subject_lookup_survives_restart_for_saved_state() {
         .await
         .expect("lookup");
     assert_eq!(subject.as_deref(), Some("alice"));
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn build_auth_client_logs_near_expiry_refresh_lifecycle_without_secrets() {
+    let _tracing_lock = TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let buf = SharedBuf::default();
+    let subscriber = tracing_subscriber::registry()
+        .with(EnvFilter::new("lab=info"))
+        .with(
+            fmt::layer()
+                .json()
+                .with_writer(buf.clone())
+                .with_ansi(false)
+                .without_time(),
+        );
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    let h = Harness::new().await;
+    h.mount_no_resource_metadata().await;
+    h.mount_metadata(Some(&h.as_url()), Some(&["S256"]), None)
+        .await;
+    h.mount_token_endpoint_with_expires(10).await;
+    let m = h.manager(h.upstream_cfg(preregistered()));
+
+    let begin = m.begin_authorization("alice").await.expect("begin");
+    let authorize_url = Url::parse(&begin.authorization_url).unwrap();
+    let state = authorize_url
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .map(|(_, v)| v.into_owned())
+        .expect("state");
+    m.complete_authorization_callback("alice", "fake-code", &state)
+        .await
+        .expect("exchange");
+
+    let _client = m.build_auth_client("alice").await.expect("auth client");
+
+    drop(_guard);
+    let logs = captured_logs(&buf);
+    assert!(logs.contains("upstream oauth: access token nearing expiry"));
+    assert!(logs.contains("upstream oauth: token refresh attempt"));
+    assert!(logs.contains("upstream oauth: token refresh succeeded"));
+    assert!(logs.contains("\"provider\":\"test\""));
+    assert!(logs.contains("\"scope\":\"read\""));
+    assert!(!logs.contains("access-xyz"), "access token leaked: {logs}");
+    assert!(
+        !logs.contains("refresh-xyz"),
+        "refresh token leaked: {logs}"
+    );
+    assert!(
+        !logs.contains("fake-code"),
+        "authorization code leaked: {logs}"
+    );
+    assert!(!logs.contains(&state), "csrf state leaked: {logs}");
 }

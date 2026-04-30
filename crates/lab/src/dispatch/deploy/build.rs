@@ -4,7 +4,7 @@ use lab_apis::deploy::DeployError;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 /// Artifact produced by a successful local build.
 #[derive(Debug, Clone)]
@@ -18,19 +18,24 @@ pub struct BuildOutcome {
 /// Run `cargo build --release --all-features --manifest-path <workspace>/crates/lab/Cargo.toml`
 /// and hash the output.
 pub async fn build_release() -> Result<BuildOutcome, DeployError> {
+    let build_started = Instant::now();
+    let target_triple = detect_host_triple();
+    let profile = "release";
+    let required_free_bytes = 1_500_000_000;
+    tracing::info!(
+        surface = "dispatch", service = "deploy.build", action = "build.start",
+        target_triple = %target_triple,
+        profile,
+        required_free_bytes,
+        "starting local release build",
+    );
     let free = tokio::task::spawn_blocking(estimate_free_bytes)
         .await
         .map_err(|e| DeployError::BuildFailed {
             reason: format!("disk-space check join: {e}"),
         })??;
-    check_disk_space(free, 1_500_000_000)?;
-    tracing::info!(
-        surface = "dispatch", service = "deploy.build", action = "build.start",
-        free_bytes = free,
-        "starting local release build",
-    );
+    check_disk_space(free, required_free_bytes)?;
     let path = expected_artifact_path("lab");
-    let target_triple = detect_host_triple();
     let rebuild_needed = tokio::task::spawn_blocking({
         let path = path.clone();
         move || rebuild_needed(&path)
@@ -41,6 +46,7 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     })??;
     let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     if rebuild_needed {
+        let cargo_started = Instant::now();
         let output = tokio::process::Command::new("cargo")
             .args(["build", "--release", "--all-features", "--manifest-path"])
             .arg(&manifest_path)
@@ -49,14 +55,30 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             .map_err(|e| DeployError::BuildFailed {
                 reason: format!("spawn cargo: {e}"),
             })?;
+        let cargo_elapsed_ms = cargo_started.elapsed().as_millis();
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let tail: Vec<&str> = stderr.lines().rev().take(10).collect();
             let tail = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+            tracing::warn!(
+                surface = "dispatch", service = "deploy.build", action = "build.finish",
+                target_triple = %target_triple,
+                profile,
+                elapsed_ms = build_started.elapsed().as_millis(),
+                cargo_elapsed_ms,
+                kind = "build_failed",
+                "local release build failed",
+            );
             return Err(DeployError::BuildFailed { reason: tail });
         }
     } else {
-        tracing::info!(artifact = %path.display(), "deploy.build.reuse_existing_release");
+        tracing::info!(
+            surface = "dispatch", service = "deploy.build", action = "build.reuse",
+            target_triple = %target_triple,
+            profile,
+            artifact = %path.display(),
+            "deploy.build.reuse_existing_release",
+        );
     }
     // Stat + sha256 + host-triple detection are all blocking I/O or subprocess
     // calls; run them inside spawn_blocking to avoid stalling the async runtime.
@@ -83,6 +105,8 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     };
     tracing::info!(
         surface = "dispatch", service = "deploy.build", action = "build.finish",
+        profile,
+        elapsed_ms = build_started.elapsed().as_millis(),
         size_bytes = outcome.size_bytes,
         sha256 = %sha256,
         target_triple = %target_triple,

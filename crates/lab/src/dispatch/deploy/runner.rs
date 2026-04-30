@@ -35,6 +35,7 @@ use std::future::Future;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use super::host_io::SshHostIo;
 // Re-export HostIo so existing callers (including tests/deploy_runner.rs)
@@ -298,7 +299,33 @@ impl DefaultRunner {
         // --- async: only owned / Arc values, no &self ---
         Box::pin(
             async move {
-                let build_outcome = Arc::new(build::build_release().await?);
+                let runner_started = Instant::now();
+                tracing::info!(
+                    surface = "dispatch",
+                    service = "deploy",
+                    action = "runner.start",
+                    operation = "run",
+                    target_count = canary_jobs.len() + rest_jobs.len(),
+                    max_parallel,
+                    canary_count = canary_jobs.len(),
+                    "deploy runner startup",
+                );
+                let build_outcome = match build::build_release().await {
+                    Ok(outcome) => Arc::new(outcome),
+                    Err(err) => {
+                        tracing::warn!(
+                            surface = "dispatch",
+                            service = "deploy",
+                            action = "runner.shutdown",
+                            operation = "run",
+                            elapsed_ms = runner_started.elapsed().as_millis(),
+                            kind = err.kind(),
+                            ok = false,
+                            "deploy runner shutdown",
+                        );
+                        return Err(err.into());
+                    }
+                };
                 tracing::info!(
                     artifact_sha256 = %build_outcome.sha256,
                     size_bytes = build_outcome.size_bytes,
@@ -323,7 +350,19 @@ impl DefaultRunner {
                         for host in &rest {
                             all_results.push(aborted_result(host));
                         }
-                        return Ok(summarize(run_id, build_outcome.sha256.clone(), all_results));
+                        let summary = summarize(run_id, build_outcome.sha256.clone(), all_results);
+                        tracing::info!(
+                            surface = "dispatch",
+                            service = "deploy",
+                            action = "runner.shutdown",
+                            operation = "run",
+                            elapsed_ms = runner_started.elapsed().as_millis(),
+                            succeeded = summary.succeeded,
+                            failed = summary.failed,
+                            ok = summary.ok,
+                            "deploy runner shutdown",
+                        );
+                        return Ok(summary);
                     }
                 }
 
@@ -340,7 +379,19 @@ impl DefaultRunner {
                     all_results.extend(rest_results);
                 }
 
-                Ok(summarize(run_id, build_outcome.sha256.clone(), all_results))
+                let summary = summarize(run_id, build_outcome.sha256.clone(), all_results);
+                tracing::info!(
+                    surface = "dispatch",
+                    service = "deploy",
+                    action = "runner.shutdown",
+                    operation = "run",
+                    elapsed_ms = runner_started.elapsed().as_millis(),
+                    succeeded = summary.succeeded,
+                    failed = summary.failed,
+                    ok = summary.ok,
+                    "deploy runner shutdown",
+                );
+                Ok(summary)
             }
             .instrument(span),
         )
@@ -385,6 +436,17 @@ impl DefaultRunner {
         Box::pin(
             async move {
                 use futures::stream::{self, StreamExt};
+
+                let runner_started = Instant::now();
+                tracing::info!(
+                    surface = "dispatch",
+                    service = "deploy",
+                    action = "runner.start",
+                    operation = "rollback",
+                    target_count = host_data.len(),
+                    max_parallel,
+                    "deploy runner startup",
+                );
 
                 let results = stream::iter(host_data)
                     .map(|data| {
@@ -432,7 +494,19 @@ impl DefaultRunner {
                     .collect::<Vec<_>>()
                     .await;
 
-                Ok(summarize(run_id, String::new(), results))
+                let summary = summarize(run_id, String::new(), results);
+                tracing::info!(
+                    surface = "dispatch",
+                    service = "deploy",
+                    action = "runner.shutdown",
+                    operation = "rollback",
+                    elapsed_ms = runner_started.elapsed().as_millis(),
+                    succeeded = summary.succeeded,
+                    failed = summary.failed,
+                    ok = summary.ok,
+                    "deploy runner shutdown",
+                );
+                Ok(summary)
             }
             .instrument(span),
         )
@@ -728,13 +802,11 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
     build: Arc<BuildOutcome>,
     _master_url: Option<String>,
 ) -> DeployHostResult {
-    use std::time::Instant;
-
     let mut timings: std::collections::BTreeMap<String, u128> = std::collections::BTreeMap::new();
     let mut transferred_bytes: Option<u64> = None;
 
     // Preflight
-    let t = Instant::now();
+    let t = stage_enter(&host, "preflight");
     let pre = match preflight(
         io.clone(),
         remote_path.clone(),
@@ -744,23 +816,40 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
     .await
     {
         Ok(p) => {
-            timings.insert("preflight".into(), t.elapsed().as_millis());
+            let elapsed_ms = t.elapsed().as_millis();
+            timings.insert("preflight".into(), elapsed_ms);
+            stage_exit(&host, "preflight", elapsed_ms, true, None);
             p
         }
         Err(e) => {
-            timings.insert("preflight".into(), t.elapsed().as_millis());
+            let elapsed_ms = t.elapsed().as_millis();
+            timings.insert("preflight".into(), elapsed_ms);
+            stage_exit(&host, "preflight", elapsed_ms, false, Some(e.kind()));
             return host_err(&host, DeployStage::Preflight, e, timings, false);
         }
     };
     let skipped_transfer = pre.skip_transfer;
+    if skipped_transfer {
+        tracing::info!(
+            surface = "dispatch",
+            service = "deploy",
+            action = "stage.skip",
+            host = %host,
+            stage = "transfer",
+            reason = "remote_sha256_match",
+            "deploy stage skipped",
+        );
+    }
 
     // Transfer + install (conditional).
     if !pre.skip_transfer {
-        let t = Instant::now();
+        let t = stage_enter(&host, "transfer");
         let reader = match tokio::fs::File::open(&build.path).await {
             Ok(f) => f,
             Err(e) => {
-                timings.insert("transfer".into(), t.elapsed().as_millis());
+                let elapsed_ms = t.elapsed().as_millis();
+                timings.insert("transfer".into(), elapsed_ms);
+                stage_exit(&host, "transfer", elapsed_ms, false, Some("build_failed"));
                 return host_err(
                     &host,
                     DeployStage::Transfer,
@@ -781,11 +870,15 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
         .await
         {
             Ok(o) => {
-                timings.insert("transfer".into(), t.elapsed().as_millis());
+                let elapsed_ms = t.elapsed().as_millis();
+                timings.insert("transfer".into(), elapsed_ms);
+                stage_exit(&host, "transfer", elapsed_ms, true, None);
                 o
             }
             Err(e) => {
-                timings.insert("transfer".into(), t.elapsed().as_millis());
+                let elapsed_ms = t.elapsed().as_millis();
+                timings.insert("transfer".into(), elapsed_ms);
+                stage_exit(&host, "transfer", elapsed_ms, false, Some(e.kind()));
                 return host_err(&host, DeployStage::Install, e, timings, false);
             }
         };
@@ -793,22 +886,30 @@ pub async fn run_host_pipeline<I: HostIo + 'static>(
     }
 
     // Restart
-    let t = Instant::now();
+    let t = stage_enter(&host, "restart");
     if let Err(e) = restart(io.clone(), unit, scope).await {
-        timings.insert("restart".into(), t.elapsed().as_millis());
+        let elapsed_ms = t.elapsed().as_millis();
+        timings.insert("restart".into(), elapsed_ms);
+        stage_exit(&host, "restart", elapsed_ms, false, Some(e.kind()));
         // skipped_transfer carries the actual preflight outcome: if transfer
         // was already skipped before restart failed, report that faithfully.
         return host_err(&host, DeployStage::Restart, e, timings, skipped_transfer);
     }
-    timings.insert("restart".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("restart".into(), elapsed_ms);
+    stage_exit(&host, "restart", elapsed_ms, true, None);
 
     // Verify
-    let t = Instant::now();
+    let t = stage_enter(&host, "verify");
     if let Err(e) = verify(io.clone(), remote_path.clone()).await {
-        timings.insert("verify".into(), t.elapsed().as_millis());
+        let elapsed_ms = t.elapsed().as_millis();
+        timings.insert("verify".into(), elapsed_ms);
+        stage_exit(&host, "verify", elapsed_ms, false, Some(e.kind()));
         return host_err(&host, DeployStage::Verify, e, timings, skipped_transfer);
     }
-    timings.insert("verify".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("verify".into(), elapsed_ms);
+    stage_exit(&host, "verify", elapsed_ms, true, None);
 
     DeployHostResult {
         host,
@@ -829,7 +930,6 @@ async fn rollback_one_host<I: HostIo + 'static>(
     scope: Option<ServiceScope>,
 ) -> DeployHostResult {
     let mut timings: std::collections::BTreeMap<String, u128> = std::collections::BTreeMap::new();
-    use std::time::Instant;
 
     // Validate remote_path against the allowlist before any shell use.
     if let Err(e) = params::validate_remote_path(&remote_path) {
@@ -857,7 +957,7 @@ async fn rollback_one_host<I: HostIo + 'static>(
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_else(|| "lab".to_string());
 
-    let t = Instant::now();
+    let t = stage_enter(&host, "rollback.find");
     // shell_quote parent and binary so any (theoretically allowlisted)
     // special characters in the path do not break the shell command.
     let sq_parent = shell_quote(&parent);
@@ -867,10 +967,23 @@ async fn rollback_one_host<I: HostIo + 'static>(
     let cmd = format!("ls -1 {pattern} 2>/dev/null | sort | tail -n1");
     let (code, stdout, stderr) = match io.run_argv(&["sh", "-c", &cmd]).await {
         Ok(v) => v,
-        Err(e) => return host_err(&host, DeployStage::Resolve, e, timings, false),
+        Err(e) => {
+            let elapsed_ms = t.elapsed().as_millis();
+            timings.insert("rollback.find".into(), elapsed_ms);
+            stage_exit(&host, "rollback.find", elapsed_ms, false, Some(e.kind()));
+            return host_err(&host, DeployStage::Resolve, e, timings, false);
+        }
     };
     if code != 0 || stdout.trim().is_empty() {
-        timings.insert("rollback.find".into(), t.elapsed().as_millis());
+        let elapsed_ms = t.elapsed().as_millis();
+        timings.insert("rollback.find".into(), elapsed_ms);
+        stage_exit(
+            &host,
+            "rollback.find",
+            elapsed_ms,
+            false,
+            Some("validation_failed"),
+        );
         return host_err(
             &host,
             DeployStage::Resolve,
@@ -883,15 +996,30 @@ async fn rollback_one_host<I: HostIo + 'static>(
         );
     }
     let backup = stdout.trim().to_string();
-    timings.insert("rollback.find".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("rollback.find".into(), elapsed_ms);
+    stage_exit(&host, "rollback.find", elapsed_ms, true, None);
 
-    let t = Instant::now();
+    let t = stage_enter(&host, "rollback.restore");
     let (code, _stdout, stderr) = match io.run_argv(&["mv", "--", &backup, &remote_path]).await {
         Ok(v) => v,
-        Err(e) => return host_err(&host, DeployStage::Install, e, timings, false),
+        Err(e) => {
+            let elapsed_ms = t.elapsed().as_millis();
+            timings.insert("rollback.restore".into(), elapsed_ms);
+            stage_exit(&host, "rollback.restore", elapsed_ms, false, Some(e.kind()));
+            return host_err(&host, DeployStage::Install, e, timings, false);
+        }
     };
-    timings.insert("rollback.restore".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("rollback.restore".into(), elapsed_ms);
     if code != 0 {
+        stage_exit(
+            &host,
+            "rollback.restore",
+            elapsed_ms,
+            false,
+            Some("install_failed"),
+        );
         return host_err(
             &host,
             DeployStage::Install,
@@ -903,20 +1031,29 @@ async fn rollback_one_host<I: HostIo + 'static>(
             false,
         );
     }
+    stage_exit(&host, "rollback.restore", elapsed_ms, true, None);
 
-    let t = Instant::now();
+    let t = stage_enter(&host, "rollback.restart");
     if let Err(e) = restart(io.clone(), unit, scope).await {
-        timings.insert("rollback.restart".into(), t.elapsed().as_millis());
+        let elapsed_ms = t.elapsed().as_millis();
+        timings.insert("rollback.restart".into(), elapsed_ms);
+        stage_exit(&host, "rollback.restart", elapsed_ms, false, Some(e.kind()));
         return host_err(&host, DeployStage::Restart, e, timings, false);
     }
-    timings.insert("rollback.restart".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("rollback.restart".into(), elapsed_ms);
+    stage_exit(&host, "rollback.restart", elapsed_ms, true, None);
 
-    let t = Instant::now();
+    let t = stage_enter(&host, "rollback.verify");
     if let Err(e) = verify(io, remote_path).await {
-        timings.insert("rollback.verify".into(), t.elapsed().as_millis());
+        let elapsed_ms = t.elapsed().as_millis();
+        timings.insert("rollback.verify".into(), elapsed_ms);
+        stage_exit(&host, "rollback.verify", elapsed_ms, false, Some(e.kind()));
         return host_err(&host, DeployStage::Verify, e, timings, false);
     }
-    timings.insert("rollback.verify".into(), t.elapsed().as_millis());
+    let elapsed_ms = t.elapsed().as_millis();
+    timings.insert("rollback.verify".into(), elapsed_ms);
+    stage_exit(&host, "rollback.verify", elapsed_ms, true, None);
 
     DeployHostResult {
         host,
@@ -926,6 +1063,50 @@ async fn rollback_one_host<I: HostIo + 'static>(
         transferred_bytes: None,
         error_kind: None,
         stage_timings_ms: timings,
+    }
+}
+
+fn stage_enter(host: &str, stage: &'static str) -> Instant {
+    tracing::info!(
+        surface = "dispatch",
+        service = "deploy",
+        action = "stage.enter",
+        host = %host,
+        stage,
+        "deploy stage enter",
+    );
+    Instant::now()
+}
+
+fn stage_exit(
+    host: &str,
+    stage: &'static str,
+    elapsed_ms: u128,
+    succeeded: bool,
+    kind: Option<&str>,
+) {
+    match kind {
+        Some(kind) => tracing::warn!(
+            surface = "dispatch",
+            service = "deploy",
+            action = "stage.exit",
+            host = %host,
+            stage,
+            elapsed_ms,
+            succeeded,
+            kind,
+            "deploy stage exit",
+        ),
+        None => tracing::info!(
+            surface = "dispatch",
+            service = "deploy",
+            action = "stage.exit",
+            host = %host,
+            stage,
+            elapsed_ms,
+            succeeded,
+            "deploy stage exit",
+        ),
     }
 }
 

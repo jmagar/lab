@@ -22,6 +22,7 @@ pub(super) fn now_ms() -> i64 {
 /// accepted-event totals would be redundant with the store row count.
 pub struct IngestCounters {
     dropped: AtomicU64,
+    saturated: AtomicU64,
 }
 
 impl IngestCounters {
@@ -29,6 +30,7 @@ impl IngestCounters {
     pub fn new() -> Self {
         Self {
             dropped: AtomicU64::new(0),
+            saturated: AtomicU64::new(0),
         }
     }
 
@@ -37,8 +39,12 @@ impl IngestCounters {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    pub fn record_drop(&self) {
-        self.dropped.fetch_add(1, Ordering::Relaxed);
+    fn record_drop(&self) -> u64 {
+        self.dropped.fetch_add(1, Ordering::Relaxed) + 1
+    }
+
+    fn record_saturation(&self) -> u64 {
+        self.saturated.fetch_add(1, Ordering::Relaxed) + 1
     }
 }
 
@@ -84,12 +90,17 @@ impl IngestHandle {
         match tx.try_send(raw) {
             Ok(()) => Ok(()),
             Err(mpsc::error::TrySendError::Full(_)) => {
-                self.counters.record_drop();
+                let total_dropped = self.counters.record_drop();
+                let saturation_events = self.counters.record_saturation();
                 tracing::warn!(
                     target: "lab::dispatch::logs",
                     surface = "logs", service = "ingest", action = "event.drop",
-                    total_dropped = self.counters.dropped(),
-                    "log ingest queue full — event dropped",
+                    kind = "rate_limited",
+                    queue_capacity = tx.max_capacity(),
+                    queue_remaining = tx.capacity(),
+                    total_dropped,
+                    saturation_events,
+                    "log ingest queue full; event dropped",
                 );
                 Err(ToolError::Sdk {
                     sdk_kind: "rate_limited".to_string(),
@@ -97,6 +108,15 @@ impl IngestHandle {
                 })
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
+                let total_dropped = self.counters.record_drop();
+                tracing::warn!(
+                    target: "lab::dispatch::logs",
+                    surface = "logs", service = "ingest", action = "event.drop",
+                    kind = "internal_error",
+                    queue_capacity = tx.max_capacity(),
+                    total_dropped,
+                    "log ingest channel closed; event dropped",
+                );
                 Err(ToolError::internal_message("log ingest channel closed"))
             }
         }
@@ -125,6 +145,7 @@ pub fn spawn_writer(
     };
 
     tokio::spawn(async move {
+        let mut processed_events: u64 = 0;
         while let Some(raw) = rx.recv().await {
             let event = canonicalize(raw);
             if let Err(err) = store.insert(&event).await {
@@ -135,12 +156,14 @@ pub fn spawn_writer(
                 );
                 continue;
             }
+            processed_events += 1;
             hub.publish(event);
         }
         tracing::warn!(
             target: "lab::dispatch::logs",
             surface = "logs", service = "ingest", action = "writer.exit",
-            "log ingest writer task exited — all senders dropped; log ingest offline",
+            processed_events,
+            "log ingest writer task exited; all senders dropped; log ingest offline",
         );
     });
 
