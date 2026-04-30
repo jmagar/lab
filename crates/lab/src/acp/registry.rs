@@ -156,8 +156,11 @@ impl AcpSessionRegistry {
     }
 
     fn check_principal(session: &Session, principal: &str) -> Result<(), ToolError> {
-        if session.principal.is_empty() {
-            return Ok(());
+        if principal.trim().is_empty() || session.principal.trim().is_empty() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "auth_failed".to_string(),
+                message: "authenticated ACP session owner required".to_string(),
+            });
         }
         if session.principal != principal {
             return Err(ToolError::Sdk {
@@ -176,11 +179,14 @@ impl AcpSessionRegistry {
     }
 
     pub async fn list_sessions(&self, principal: &str) -> Vec<AcpSessionSummary> {
+        if principal.trim().is_empty() {
+            return Vec::new();
+        }
         let sessions_snapshot: Vec<Arc<Session>> = {
             let guard = self.sessions.read().await;
             guard
                 .values()
-                .filter(|s| s.principal.is_empty() || s.principal == principal)
+                .filter(|s| !s.principal.trim().is_empty() && s.principal == principal)
                 .cloned()
                 .collect()
         };

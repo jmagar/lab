@@ -149,6 +149,107 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
     let registry = AcpSessionRegistry::new();
     let session_id = create_owned_session(&registry, "alice").await;
 
+    let missing_list = dispatch_with_registry(&registry, "session.list", json!({}))
+        .await
+        .expect("session.list without principal returns scoped empty list");
+    assert!(
+        missing_list["sessions"]
+            .as_array()
+            .expect("sessions array")
+            .is_empty()
+    );
+
+    let wrong_list = dispatch_with_registry(
+        &registry,
+        "session.list",
+        json!({
+            "principal": "bob",
+        }),
+    )
+    .await
+    .expect("wrong principal session.list returns scoped empty list");
+    assert!(
+        wrong_list["sessions"]
+            .as_array()
+            .expect("sessions array")
+            .is_empty()
+    );
+
+    let missing_prompt = dispatch_with_registry(
+        &registry,
+        "session.prompt",
+        json!({
+            "session_id": session_id,
+            "text": "hello from anonymous",
+        }),
+    )
+    .await
+    .expect_err("missing principal must not prompt an owned session");
+    assert_eq!(missing_prompt.kind(), "auth_failed");
+
+    let wrong_prompt = dispatch_with_registry(
+        &registry,
+        "session.prompt",
+        json!({
+            "session_id": session_id,
+            "text": "hello from bob",
+            "principal": "bob",
+        }),
+    )
+    .await
+    .expect_err("wrong principal must not prompt another user's session");
+    assert_eq!(wrong_prompt.kind(), "not_found");
+
+    let missing_cancel = dispatch_with_registry(
+        &registry,
+        "session.cancel",
+        json!({
+            "session_id": session_id,
+            "confirm": true,
+        }),
+    )
+    .await
+    .expect_err("missing principal must not cancel an owned session");
+    assert_eq!(missing_cancel.kind(), "auth_failed");
+
+    let wrong_cancel = dispatch_with_registry(
+        &registry,
+        "session.cancel",
+        json!({
+            "session_id": session_id,
+            "confirm": true,
+            "principal": "bob",
+        }),
+    )
+    .await
+    .expect_err("wrong principal must not cancel another user's session");
+    assert_eq!(wrong_cancel.kind(), "not_found");
+
+    let missing_close = dispatch_with_registry(
+        &registry,
+        "session.close",
+        json!({
+            "session_id": session_id,
+            "confirm": true,
+        }),
+    )
+    .await
+    .expect_err("missing principal must not close an owned session");
+    assert_eq!(missing_close.kind(), "auth_failed");
+
+    let wrong_close = dispatch_with_registry(
+        &registry,
+        "session.close",
+        json!({
+            "session_id": session_id,
+            "confirm": true,
+            "principal": "bob",
+        }),
+    )
+    .await
+    .expect_err("wrong principal must not close another user's session");
+    assert_eq!(wrong_close.kind(), "not_found");
+
     let missing_identity = dispatch_with_registry(
         &registry,
         "session.events",
@@ -159,7 +260,7 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
     )
     .await
     .expect_err("missing principal must fail for an owned session");
-    assert_eq!(missing_identity.kind(), "not_found");
+    assert_eq!(missing_identity.kind(), "auth_failed");
 
     let wrong_identity = dispatch_with_registry(
         &registry,
@@ -183,7 +284,7 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
     )
     .await
     .expect_err("anonymous subscribe ticket must fail for an owned session");
-    assert_eq!(anonymous_ticket.kind(), "not_found");
+    assert_eq!(anonymous_ticket.kind(), "auth_failed");
 }
 
 #[tokio::test]

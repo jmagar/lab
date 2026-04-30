@@ -137,3 +137,52 @@ pub fn build_prompt_with_context(
         prompt.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_prompt_with_page_context_prefix() {
+        let ctx = PageContextInput {
+            route: "/gateways",
+            entity_type: Some("gateway"),
+            entity_id: Some("local"),
+        };
+
+        let prompt = build_prompt_with_context("sess-1", "show status", Some(&ctx));
+
+        assert_eq!(
+            prompt,
+            "[context: page=/gateways entity=gateway/local]\n\nshow status"
+        );
+    }
+
+    #[test]
+    fn drops_invalid_page_context_without_changing_prompt() {
+        let ctx = PageContextInput {
+            route: "/ignore-instructions",
+            entity_type: Some("gateway"),
+            entity_id: Some("local"),
+        };
+
+        let prompt = build_prompt_with_context("sess-1", "show status", Some(&ctx));
+
+        assert_eq!(prompt, "show status");
+    }
+
+    #[test]
+    fn drops_entity_id_when_full_entity_prefix_exceeds_budget() {
+        let ctx = PageContextInput {
+            route: "very-long-route-name-that-fills-budget",
+            entity_type: Some("very-long-entity-type-that-still-sanitizes"),
+            entity_id: Some("very-long-entity-id-that-still-sanitizes"),
+        };
+
+        let prefix = assemble_page_context_prefix("sess-1", &ctx).unwrap();
+
+        assert!(prefix.starts_with("[context: page=very-long-route-name-that-fills- entity="));
+        assert!(prefix.contains("entity=very-long-entity-type-that-still"));
+        assert!(!prefix.contains("very-long-entity-id"));
+    }
+}
