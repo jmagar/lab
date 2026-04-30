@@ -32,9 +32,12 @@
 //!
 //! `PermissionOutcome` events have their `granted` field signed with
 //! HMAC-SHA256 before storage. The key is read from `LAB_ACP_HMAC_SECRET`
-//! (auto-generated on first use and persisted to `~/.lab/.env`). This
-//! prevents DB-write bypass attacks where an attacker could flip a `false`
-//! grant to `true` in the raw SQLite file.
+//! when set. If the env var is absent, Lab generates an ephemeral per-process
+//! fallback key that is not persisted and therefore rotates on restart. Set
+//! `LAB_ACP_HMAC_SECRET` in `~/.lab/.env` when permission-outcome signatures
+//! must verify across process restarts. This prevents DB-write bypass attacks
+//! where an attacker could flip a `false` grant to `true` in the raw SQLite
+//! file for events signed by the active key.
 //!
 //! # Payload redaction
 //!
@@ -820,16 +823,63 @@ fn load_or_generate_hmac_key() -> Vec<u8> {
          Set LAB_ACP_HMAC_SECRET in ~/.lab/.env for persistent, \
          cryptographically-random protection."
     );
-    // Derive a 32-byte key from process ID + monotonic time via SHA-256.
-    // NOT cryptographically random — unique per process instance only.
-    use sha2::Digest;
     let pid = std::process::id();
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let input = format!("lab-acp-hmac-ephemeral:{pid}:{now}");
+    generate_ephemeral_hmac_key(pid, now)
+}
+
+fn generate_ephemeral_hmac_key(pid: u32, now_nanos: u128) -> Vec<u8> {
+    // Derive a 32-byte key from process ID + timestamp via SHA-256.
+    // NOT cryptographically random — unique per process instance only.
+    use sha2::Digest;
+    let input = format!("lab-acp-hmac-ephemeral:{pid}:{now_nanos}");
     Sha256::digest(input.as_bytes()).to_vec()
+}
+
+#[cfg(test)]
+mod hmac_tests {
+    use super::*;
+
+    #[test]
+    fn generated_fallback_hmac_key_is_ephemeral_seeded_and_32_bytes() {
+        let first = generate_ephemeral_hmac_key(42, 100);
+        let same_seed = generate_ephemeral_hmac_key(42, 100);
+        let later_start = generate_ephemeral_hmac_key(42, 101);
+
+        assert_eq!(first.len(), 32);
+        assert_eq!(first, same_seed);
+        assert_ne!(
+            first, later_start,
+            "fallback HMAC key intentionally rotates when the process-start seed changes"
+        );
+    }
+
+    #[test]
+    fn permission_outcome_hmac_rejects_wrong_key_after_restart() {
+        let event = AcpEvent::PermissionOutcome {
+            id: "evt-1".to_string(),
+            session_id: "sess-1".to_string(),
+            seq: 7,
+            created_at: "2026-04-30T00:00:00Z".to_string(),
+            request_id: "perm-1".to_string(),
+            granted: true,
+        };
+
+        let first_key = generate_ephemeral_hmac_key(42, 100);
+        let restarted_key = generate_ephemeral_hmac_key(42, 101);
+        let payload = redact_event_payload(&event, &first_key).expect("serialize payload");
+        let value: Value = serde_json::from_str(&payload).expect("payload json");
+
+        verify_permission_outcome_payload(&value, &first_key).expect("first key verifies");
+        assert_eq!(
+            verify_permission_outcome_payload(&value, &restarted_key),
+            Err("permission outcome hmac mismatch".to_string()),
+            "ephemeral fallback signatures do not verify after fallback key rotation"
+        );
+    }
 }
 
 // ── Payload redaction ─────────────────────────────────────────────────────────
