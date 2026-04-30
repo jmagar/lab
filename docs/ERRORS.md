@@ -74,6 +74,21 @@ Dispatch layers may add the following kinds on top of SDK errors:
 `no_remote_transport` and `ssrf_blocked` use `ToolError::Sdk { sdk_kind, message }`. HTTP status: 422.
 `sync_in_progress` uses `ToolError::Sdk { sdk_kind, message }`. HTTP status: 503.
 
+### Stash-specific kinds
+
+The following kinds are emitted by the `stash` dispatch service.
+
+- `conflict` — advisory lock timed out waiting for exclusive access to a component (re-uses the global `conflict` kind; HTTP 409).
+- `unsupported_provider` — provider kind is not implemented, or a remote gateway deploy was requested for a provider that only supports direct filesystem sync. HTTP 422.
+- `unsupported_component_kind` — a requested operation is not valid for the component's `kind` (e.g. requesting binary execution for a `skill`). HTTP 422.
+- `sync_failed` — provider push or pull failed due to an I/O error on the provider's remote root. HTTP 502.
+- `workspace_too_large` — the component workspace exceeds `MAX_WORKSPACE_SIZE` (200 MiB) before a save or import. HTTP 413.
+- `file_too_large` — a single file inside the workspace exceeds `MAX_FILE_SIZE` (50 MiB). HTTP 413.
+- `path_traversal` — a path escapes the target root (re-uses global `path_traversal_rejected`; emitted during import and export). HTTP 422.
+- `symlink_rejected` — a symlink was encountered during a workspace walk (re-uses global `symlink_rejected`; emitted during save, import, and export). HTTP 422.
+- `export_target_not_empty` — the output directory for `component.export` is non-empty and `force` is not set. HTTP 409.
+- `ambiguous_kind` — component kind could not be auto-detected from the source path and no `kind` override was provided. HTTP 422.
+
 ### Marketplace artifact update kinds
 
 - `git_not_available` — `artifact.update.check` could not spawn `git`. Install git on the controller host to use update checking. HTTP 500.

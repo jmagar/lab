@@ -18,6 +18,7 @@ use xxhash_rust::xxh3::xxh3_64;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::marketplace::client;
+use crate::dispatch::path_safety;
 
 const STASH_META_FILE: &str = ".stash.json";
 const STASH_LOCK_FILE: &str = ".stash.lock";
@@ -153,7 +154,7 @@ pub fn write_stash_meta(stash_dir: &Path, meta: &StashMeta) -> Result<(), ToolEr
 
 pub fn read_base_snapshot(stash_dir: &Path, rel_path: &str) -> Result<Option<String>, ToolError> {
     let path = base_snapshot_path(stash_dir, rel_path)?;
-    match reject_symlink(&path) {
+    match path_safety::reject_symlink(&path) {
         Ok(()) => {}
         Err(error) if error.kind() == "not_found" => return Ok(None),
         Err(error) => return Err(error),
@@ -177,7 +178,7 @@ pub fn write_base_snapshot(
     let mut file = match OpenOptions::new().write(true).create_new(true).open(&dest) {
         Ok(file) => file,
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-            reject_symlink(&dest)?;
+            path_safety::reject_symlink(&dest)?;
             OpenOptions::new()
                 .write(true)
                 .truncate(true)
@@ -256,7 +257,7 @@ pub fn check_drift(
     if !base_path.exists() {
         return Ok(DriftStatus::BaseMissing);
     }
-    reject_symlink(&base_path)?;
+    path_safety::reject_symlink(&base_path)?;
 
     let working_path = stash_dir.join(rel_path);
     let metadata = match std::fs::metadata(&working_path) {
@@ -296,7 +297,7 @@ pub fn compute_base_hash(stash_dir: &Path, rel_path: &str) -> Result<String, Too
             message: "base snapshot is missing".into(),
         });
     }
-    reject_symlink(&path)?;
+    path_safety::reject_symlink(&path)?;
     hash_file(&path)
 }
 
@@ -343,25 +344,6 @@ fn collect_base_snapshots(
         };
         validate_rel_path(relative)?;
         out.insert(relative.to_string());
-    }
-    Ok(())
-}
-
-fn reject_symlink(path: &Path) -> Result<(), ToolError> {
-    let metadata = match std::fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(ToolError::Sdk {
-                sdk_kind: "not_found".into(),
-                message: "path is missing".into(),
-            });
-        }
-        Err(error) => return Err(client::io_internal(error)),
-    };
-    if metadata.file_type().is_symlink() {
-        return Err(ToolError::internal_message(
-            "refusing to operate on symlinked stash path",
-        ));
     }
     Ok(())
 }
@@ -552,7 +534,7 @@ mod tests {
 
         let err = write_base_snapshot(dir.path(), "agents/foo.md", "replacement")
             .expect_err("symlink must reject");
-        assert_eq!(err.kind(), "internal_error");
+        assert_eq!(err.kind(), "symlink_rejected");
         assert_eq!(
             std::fs::read_to_string(target).expect("read target"),
             "outside"

@@ -312,6 +312,19 @@ pub fn build_default_registry() -> ToolRegistry {
         });
     }
 
+    // stash is always-on (no feature flag). Manages versioned component snapshots.
+    {
+        let meta = lab_apis::stash::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+            status: "available",
+            actions: crate::dispatch::stash::catalog::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::stash::dispatch::dispatch),
+        });
+    }
+
     register_service!(
         reg,
         "radarr",

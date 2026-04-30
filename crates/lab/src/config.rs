@@ -183,6 +183,10 @@ pub struct ResolvedDeviceRuntime {
 }
 
 impl LabConfig {
+    pub fn normalize_legacy_tool_search(&mut self) {
+        self.normalize_legacy_tool_search_with_root_presence(false);
+    }
+
     pub fn normalize_legacy_tool_search_with_root_presence(
         &mut self,
         root_tool_search_present: bool,
@@ -1899,7 +1903,7 @@ max_tools = 750
         )
         .expect("legacy upstream tool_search parses");
 
-        cfg.normalize_legacy_tool_search_with_root_presence(false);
+        cfg.normalize_legacy_tool_search();
 
         assert!(cfg.tool_search.enabled);
         assert_eq!(cfg.tool_search.top_k_default, 15);

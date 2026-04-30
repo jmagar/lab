@@ -376,6 +376,7 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
             .nest("/extract", services::extract::routes(state.clone()))
             .nest("/marketplace", services::marketplace::routes(state.clone()))
             .nest("/doctor", services::doctor::routes(state.clone()))
+            .nest("/stash", services::stash::routes(state.clone()))
             .nest(
                 "/auth/allowed-emails",
                 services::auth_admin::routes(state.clone()),
