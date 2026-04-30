@@ -3,7 +3,7 @@ services:
     image: lab:dev
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.fast
     restart: unless-stopped
 
     ports:

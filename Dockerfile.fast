@@ -1,0 +1,11 @@
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin lab
+RUN mkdir -p /home/lab/.config/lab /home/lab/.local/state/lab /home/lab/.local/share/lab && chown -R lab:lab /home/lab
+COPY dist/lab /usr/local/bin/lab
+RUN chmod +x /usr/local/bin/lab
+USER lab
+WORKDIR /home/lab
+EXPOSE 8765
+ENTRYPOINT ["/usr/local/bin/lab"]
+CMD ["serve"]

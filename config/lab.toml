@@ -35,7 +35,7 @@ format = "json"
 #
 #   disabled — no authentication. Only safe when port is NOT exposed externally
 #              (e.g. 127.0.0.1 binding in docker-compose.override.yml).
-mode = "token"
+mode = "bearer"
 
 # Optional: explicit path for the OAuth SQLite store.
 # Defaults to ~/.local/share/lab/auth.db (inside the lab-data volume).
