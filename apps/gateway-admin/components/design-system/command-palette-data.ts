@@ -9,6 +9,7 @@ export type CommandPaletteGroupKey =
 export type CommandPaletteIconKey =
   | 'gateway'
   | 'logs'
+  | 'marketplace'
   | 'settings'
   | 'registry'
   | 'reload'
