@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 | Commit | Change |
 |--------|--------|
-| _pending_ | chore(release): v0.12.1 — binary build fix |
+| `5a00e40c` | chore(release): v0.12.1 — binary build fix |
 | `bcc59e4f` | fix: declare observability module in main.rs and add stash to router parity test |
 
 ### Highlights
