@@ -49,7 +49,7 @@ Never add business-logic middleware here. Auth/rate-limit belong in their own la
 | `auth_failed` | 401 |
 | `not_found` | 404 |
 | `rate_limited` | 429 (+ `Retry-After` header when available) |
-| `validation_failed`, `missing_param`, `invalid_param` | 422 |
+| `validation_failed`, `missing_param`, `invalid_param`, `confirmation_required` | 422 |
 | `unknown_action`, `unknown_instance` | 400 |
 | `network_error`, `server_error` | 502 |
 | `decode_error`, `internal_error` | 500 |
@@ -62,7 +62,7 @@ Actions marked `ActionSpec.destructive == true` require confirmation via:
 
 - `"confirm": true` in the JSON request `params` object (boolean, not string).
 
-Without this, the gate returns `400` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
+Without this, the gate returns `422` with `kind: "confirmation_required"`. This is the HTTP equivalent of the MCP elicitation flow and the CLI `-y` flag.
 
 The gate is enforced in `services/helpers.rs::handle_action()`.
 
