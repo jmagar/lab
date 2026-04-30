@@ -55,6 +55,8 @@ pub struct UpstreamCachedSummary {
 const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
 /// Per-service timeout for in-process peer registration and capability probing.
 const IN_PROCESS_DISCOVERY_TIMEOUT: Duration = Duration::from_secs(15);
+/// Per-request timeout for upstream tool/resource/prompt RPCs.
+const DEFAULT_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Default maximum response size from upstream servers (10 MB).
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 10 * 1024 * 1024;
@@ -113,6 +115,9 @@ fn configured_bearer_token_from_dotenv_path(env_name: &str, path: &Path) -> Opti
 fn normalize_bearer_token(token: &str) -> Option<String> {
     let token = token.trim();
     if token.is_empty() {
+        return None;
+    }
+    if token.eq_ignore_ascii_case("bearer") {
         return None;
     }
     let raw = if token
@@ -255,6 +260,129 @@ fn capability_name(capability: UpstreamCapability) -> &'static str {
         UpstreamCapability::Prompts => "prompts",
         UpstreamCapability::Resources => "resources",
     }
+}
+
+#[derive(Clone, Copy)]
+struct UpstreamRequestLog<'a> {
+    upstream: &'a str,
+    capability: &'static str,
+    operation: &'static str,
+    subject_scoped: bool,
+    transport: Option<&'static str>,
+    item_kind: Option<&'static str>,
+    item: Option<&'a str>,
+}
+
+impl<'a> UpstreamRequestLog<'a> {
+    fn tool(upstream: &'a str, tool: &'a str, subject_scoped: bool) -> Self {
+        Self {
+            upstream,
+            capability: "tools",
+            operation: "tool.call",
+            subject_scoped,
+            transport: None,
+            item_kind: Some("tool"),
+            item: Some(tool),
+        }
+    }
+
+    fn resource(upstream: &'a str, resource_uri: &'a str, subject_scoped: bool) -> Self {
+        Self {
+            upstream,
+            capability: "resources",
+            operation: "resource.read",
+            subject_scoped,
+            transport: None,
+            item_kind: Some("resource_uri"),
+            item: Some(resource_uri),
+        }
+    }
+
+    fn prompt(upstream: &'a str, prompt: &'a str, subject_scoped: bool) -> Self {
+        Self {
+            upstream,
+            capability: "prompts",
+            operation: "prompt.get",
+            subject_scoped,
+            transport: None,
+            item_kind: Some("prompt"),
+            item: Some(prompt),
+        }
+    }
+
+    fn with_transport(mut self, transport: &'static str) -> Self {
+        self.transport = Some(transport);
+        self
+    }
+}
+
+fn log_upstream_request_start(event: UpstreamRequestLog<'_>) {
+    tracing::debug!(
+        surface = "dispatch",
+        service = "upstream.pool",
+        action = "upstream.request",
+        event = "start",
+        upstream = %event.upstream,
+        capability = event.capability,
+        operation = event.operation,
+        subject_scoped = event.subject_scoped,
+        transport = event.transport,
+        item_kind = event.item_kind,
+        item = event.item,
+        "upstream.request.start"
+    );
+}
+
+fn log_upstream_request_finish(
+    event: UpstreamRequestLog<'_>,
+    elapsed_ms: u128,
+    response_bytes: Option<usize>,
+) {
+    tracing::info!(
+        surface = "dispatch",
+        service = "upstream.pool",
+        action = "upstream.request",
+        event = "finish",
+        upstream = %event.upstream,
+        capability = event.capability,
+        operation = event.operation,
+        subject_scoped = event.subject_scoped,
+        transport = event.transport,
+        item_kind = event.item_kind,
+        item = event.item,
+        elapsed_ms,
+        response_bytes,
+        "upstream.request.finish"
+    );
+}
+
+fn log_upstream_request_error(
+    event: UpstreamRequestLog<'_>,
+    elapsed_ms: u128,
+    kind: &'static str,
+    error: Option<&dyn std::fmt::Display>,
+    response_bytes: Option<usize>,
+    max_bytes: Option<usize>,
+) {
+    tracing::warn!(
+        surface = "dispatch",
+        service = "upstream.pool",
+        action = "upstream.request",
+        event = "error",
+        upstream = %event.upstream,
+        capability = event.capability,
+        operation = event.operation,
+        subject_scoped = event.subject_scoped,
+        transport = event.transport,
+        item_kind = event.item_kind,
+        item = event.item,
+        elapsed_ms,
+        kind,
+        error = error.map(tracing::field::display),
+        response_bytes,
+        max_bytes,
+        "upstream.request.error"
+    );
 }
 
 async fn discover_capability_counts(
@@ -429,6 +557,8 @@ pub struct UpstreamPool {
     runtime_origin: Option<String>,
     /// Structured owner metadata stamped onto spawned stdio upstreams.
     runtime_owner: Option<UpstreamRuntimeOwner>,
+    /// Maximum time to wait for an upstream tool/resource/prompt response.
+    request_timeout: Duration,
 }
 
 /// A live connection to an upstream MCP server.
@@ -474,6 +604,7 @@ impl UpstreamPool {
             probe_tasks: Arc::new(RwLock::new(HashMap::new())),
             runtime_origin: None,
             runtime_owner: None,
+            request_timeout: DEFAULT_REQUEST_TIMEOUT,
         }
     }
 
@@ -496,6 +627,12 @@ impl UpstreamPool {
     #[must_use]
     pub fn with_runtime_owner(mut self, owner: Option<UpstreamRuntimeOwner>) -> Self {
         self.runtime_owner = owner;
+        self
+    }
+
+    #[cfg(test)]
+    fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
         self
     }
 
@@ -1417,15 +1554,9 @@ impl UpstreamPool {
     ) -> Result<CallToolResult, String> {
         let start = Instant::now();
         let tool_name = params.name.to_string();
-        tracing::debug!(
-            upstream = %config.name,
-            capability = "tools",
-            operation = "tool.call",
-            tool = %tool_name,
-            subject_scoped = true,
-            transport = upstream_transport(config),
-            "upstream.request.start"
-        );
+        let event = UpstreamRequestLog::tool(&config.name, &tool_name, true)
+            .with_transport(upstream_transport(config));
+        log_upstream_request_start(event);
         let (conn, _) = match connect_upstream(
             config,
             Some(subject),
@@ -1444,23 +1575,19 @@ impl UpstreamPool {
                 )
                 .await;
                 let elapsed_ms = start.elapsed().as_millis();
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "tools",
-                    operation = "tool.call",
-                    tool = %tool_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
+                log_upstream_request_error(
+                    event,
                     elapsed_ms,
-                    kind = "upstream_connect_error",
-                    error = %error,
-                    "upstream.request.error"
+                    "upstream_connect_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 return Err(error.to_string());
             }
         };
-        match conn.peer.call_tool(params).await {
-            Ok(result) => {
+        match tokio::time::timeout(self.request_timeout, conn.peer.call_tool(params)).await {
+            Ok(Ok(result)) => {
                 let response_size = estimate_response_size(&result);
                 let max_bytes = max_response_bytes();
                 if response_size > max_bytes {
@@ -1471,18 +1598,13 @@ impl UpstreamPool {
                     )
                     .await;
                     let elapsed_ms = start.elapsed().as_millis();
-                    tracing::warn!(
-                        upstream = %config.name,
-                        capability = "tools",
-                        operation = "tool.call",
-                        tool = %tool_name,
-                        subject_scoped = true,
-                        transport = upstream_transport(config),
+                    log_upstream_request_error(
+                        event,
                         elapsed_ms,
-                        kind = "response_too_large",
-                        response_bytes = response_size,
-                        max_bytes,
-                        "upstream.request.error"
+                        "response_too_large",
+                        None,
+                        Some(response_size),
+                        Some(max_bytes),
                     );
                     return Err(format!(
                         "upstream response too large ({response_size} bytes, max {max_bytes})"
@@ -1491,20 +1613,10 @@ impl UpstreamPool {
                 self.record_success_for(&config.name, UpstreamCapability::Tools)
                     .await;
                 let elapsed_ms = start.elapsed().as_millis();
-                tracing::info!(
-                    upstream = %config.name,
-                    capability = "tools",
-                    operation = "tool.call",
-                    tool = %tool_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms,
-                    response_bytes = response_size,
-                    "upstream.request.finish"
-                );
+                log_upstream_request_finish(event, elapsed_ms, Some(response_size));
                 Ok(result)
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 self.record_failure_for(
                     &config.name,
                     UpstreamCapability::Tools,
@@ -1512,19 +1624,26 @@ impl UpstreamPool {
                 )
                 .await;
                 let elapsed_ms = start.elapsed().as_millis();
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "tools",
-                    operation = "tool.call",
-                    tool = %tool_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
+                log_upstream_request_error(
+                    event,
                     elapsed_ms,
-                    kind = "upstream_error",
-                    error = %error,
-                    "upstream.request.error"
+                    "upstream_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 Err(format!("upstream call failed: {error}"))
+            }
+            Err(_) => {
+                let message = format!(
+                    "upstream call timed out after {}ms",
+                    self.request_timeout.as_millis()
+                );
+                self.record_failure_for(&config.name, UpstreamCapability::Tools, message.clone())
+                    .await;
+                let elapsed_ms = start.elapsed().as_millis();
+                log_upstream_request_error(event, elapsed_ms, "timeout", None, None, None);
+                Err(message)
             }
         }
     }
@@ -1683,6 +1802,26 @@ impl UpstreamPool {
             .collect()
     }
 
+    async fn cached_prompt_owner(
+        &self,
+        prompt_name: &str,
+        require_routable: bool,
+    ) -> Option<String> {
+        let catalog = self.catalog.read().await;
+        let mut entries = catalog.values().collect::<Vec<_>>();
+        entries.sort_unstable_by(|left, right| left.name.cmp(&right.name));
+        entries.into_iter().find_map(|entry| {
+            if require_routable && !entry.prompt_health.is_routable() {
+                return None;
+            }
+            entry
+                .prompt_names
+                .iter()
+                .any(|name| name == prompt_name)
+                .then(|| entry.name.to_string())
+        })
+    }
+
     /// Return the current tool health for one upstream.
     pub async fn upstream_tool_health(&self, upstream_name: &str) -> Option<UpstreamHealth> {
         let catalog = self.catalog.read().await;
@@ -1705,32 +1844,34 @@ impl UpstreamPool {
     ) -> Option<Result<CallToolResult, String>> {
         let start = Instant::now();
         let tool_name = params.name.to_string();
+        let event = UpstreamRequestLog::tool(upstream_name, &tool_name, false);
         let peer = self
             .acquire_peer(upstream_name, UpstreamCapability::Tools, "tool.call")
             .await?;
-        tracing::debug!(
-            upstream = %upstream_name,
-            capability = "tools",
-            operation = "tool.call",
-            tool = %tool_name,
-            subject_scoped = false,
-            "upstream.request.start"
-        );
-        let result = peer.call_tool(params).await.map_err(|e| {
-            let elapsed_ms = start.elapsed().as_millis();
-            tracing::warn!(
-                upstream = %upstream_name,
-                capability = "tools",
-                operation = "tool.call",
-                tool = %tool_name,
-                subject_scoped = false,
-                elapsed_ms,
-                kind = "upstream_error",
-                error = %e,
-                "upstream.request.error"
-            );
-            format!("upstream call failed: {e}")
-        });
+        log_upstream_request_start(event);
+        let result = match tokio::time::timeout(self.request_timeout, peer.call_tool(params)).await
+        {
+            Ok(result) => result.map_err(|e| {
+                let elapsed_ms = start.elapsed().as_millis();
+                log_upstream_request_error(
+                    event,
+                    elapsed_ms,
+                    "upstream_error",
+                    Some(&e),
+                    None,
+                    None,
+                );
+                format!("upstream call failed: {e}")
+            }),
+            Err(_) => {
+                let elapsed_ms = start.elapsed().as_millis();
+                log_upstream_request_error(event, elapsed_ms, "timeout", None, None, None);
+                Err(format!(
+                    "upstream call timed out after {}ms",
+                    self.request_timeout.as_millis()
+                ))
+            }
+        };
 
         // Enforce response size cap.
         if let Ok(ref r) = result {
@@ -1738,33 +1879,20 @@ impl UpstreamPool {
             let max_bytes = max_response_bytes();
             if response_size > max_bytes {
                 let elapsed_ms = start.elapsed().as_millis();
-                tracing::warn!(
-                    upstream = %upstream_name,
-                    capability = "tools",
-                    operation = "tool.call",
-                    tool = %tool_name,
-                    subject_scoped = false,
+                log_upstream_request_error(
+                    event,
                     elapsed_ms,
-                    kind = "response_too_large",
-                    response_bytes = response_size,
-                    max_bytes,
-                    "upstream.request.error"
+                    "response_too_large",
+                    None,
+                    Some(response_size),
+                    Some(max_bytes),
                 );
                 return Some(Err(format!(
                     "upstream response too large ({response_size} bytes, max {max_bytes})"
                 )));
             }
             let elapsed_ms = start.elapsed().as_millis();
-            tracing::info!(
-                upstream = %upstream_name,
-                capability = "tools",
-                operation = "tool.call",
-                tool = %tool_name,
-                subject_scoped = false,
-                elapsed_ms,
-                response_bytes = response_size,
-                "upstream.request.finish"
-            );
+            log_upstream_request_finish(event, elapsed_ms, Some(response_size));
         }
 
         Some(result)
@@ -2099,43 +2227,57 @@ impl UpstreamPool {
             )
             .await?;
 
-        tracing::debug!(
-            upstream = %upstream_name,
-            capability = "resources",
-            operation = "resource.read",
-            resource_uri = redact_resource_uri_for_logging(uri),
-            subject_scoped = false,
-            "upstream.request.start"
-        );
+        let redacted_uri = redact_resource_uri_for_logging(uri);
+        let event = UpstreamRequestLog::resource(upstream_name, redacted_uri, false);
+        log_upstream_request_start(event);
 
         let params = rmcp::model::ReadResourceRequestParams::new(original_uri);
 
-        let result = match peer.read_resource(params).await {
-            Ok(result) => {
-                let normalized = normalize_resource_result_uri(result, uri);
-                Ok(normalized)
-            }
-            Err(e) => {
-                self.record_failure_for(
-                    upstream_name,
-                    UpstreamCapability::Resources,
-                    format!("upstream resource read failed: {e}"),
-                )
-                .await;
-                tracing::warn!(
-                    upstream = %upstream_name,
-                    capability = "resources",
-                    operation = "resource.read",
-                    resource_uri = redact_resource_uri_for_logging(uri),
-                    subject_scoped = false,
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_error",
-                    error = %e,
-                    "upstream.request.error"
-                );
-                Err(format!("upstream resource read failed: {e}"))
-            }
-        };
+        let result =
+            match tokio::time::timeout(self.request_timeout, peer.read_resource(params)).await {
+                Ok(Ok(result)) => {
+                    let normalized = normalize_resource_result_uri(result, uri);
+                    Ok(normalized)
+                }
+                Ok(Err(e)) => {
+                    self.record_failure_for(
+                        upstream_name,
+                        UpstreamCapability::Resources,
+                        format!("upstream resource read failed: {e}"),
+                    )
+                    .await;
+                    log_upstream_request_error(
+                        event,
+                        start.elapsed().as_millis(),
+                        "upstream_error",
+                        Some(&e),
+                        None,
+                        None,
+                    );
+                    Err(format!("upstream resource read failed: {e}"))
+                }
+                Err(_) => {
+                    let message = format!(
+                        "upstream resource read timed out after {}ms",
+                        self.request_timeout.as_millis()
+                    );
+                    self.record_failure_for(
+                        upstream_name,
+                        UpstreamCapability::Resources,
+                        message.clone(),
+                    )
+                    .await;
+                    log_upstream_request_error(
+                        event,
+                        start.elapsed().as_millis(),
+                        "timeout",
+                        None,
+                        None,
+                        None,
+                    );
+                    Err(message)
+                }
+            };
 
         // Enforce the same response size cap as call_tool (post-hoc).
         if let Ok(ref r) = result {
@@ -2150,17 +2292,13 @@ impl UpstreamPool {
                     ),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %upstream_name,
-                    capability = "resources",
-                    operation = "resource.read",
-                    resource_uri = redact_resource_uri_for_logging(uri),
-                    subject_scoped = false,
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "response_too_large",
-                    response_bytes = response_size,
-                    max_bytes,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "response_too_large",
+                    None,
+                    Some(response_size),
+                    Some(max_bytes),
                 );
                 return Some(Err(format!(
                     "upstream resource response too large ({response_size} bytes, max {max_bytes})"
@@ -2168,16 +2306,7 @@ impl UpstreamPool {
             }
             self.record_success_for(upstream_name, UpstreamCapability::Resources)
                 .await;
-            tracing::info!(
-                upstream = %upstream_name,
-                capability = "resources",
-                operation = "resource.read",
-                resource_uri = redact_resource_uri_for_logging(uri),
-                subject_scoped = false,
-                elapsed_ms = start.elapsed().as_millis(),
-                response_bytes = response_size,
-                "upstream.request.finish"
-            );
+            log_upstream_request_finish(event, start.elapsed().as_millis(), Some(response_size));
         }
 
         Some(result)
@@ -2194,15 +2323,10 @@ impl UpstreamPool {
         let original_uri = uri
             .strip_prefix(&prefix)
             .ok_or_else(|| "resource uri does not match upstream".to_string())?;
-        tracing::debug!(
-            upstream = %config.name,
-            capability = "resources",
-            operation = "resource.read",
-            resource_uri = redact_resource_uri_for_logging(uri),
-            subject_scoped = true,
-            transport = upstream_transport(config),
-            "upstream.request.start"
-        );
+        let redacted_uri = redact_resource_uri_for_logging(uri);
+        let event = UpstreamRequestLog::resource(&config.name, redacted_uri, true)
+            .with_transport(upstream_transport(config));
+        log_upstream_request_start(event);
         let (conn, _) = match connect_upstream(
             config,
             Some(subject),
@@ -2220,27 +2344,25 @@ impl UpstreamPool {
                     format!("upstream resource connect failed: {error}"),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "resources",
-                    operation = "resource.read",
-                    resource_uri = redact_resource_uri_for_logging(uri),
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_connect_error",
-                    error = %error,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "upstream_connect_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 return Err(error.to_string());
             }
         };
-        match conn
-            .peer
-            .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri))
-            .await
+        match tokio::time::timeout(
+            self.request_timeout,
+            conn.peer
+                .read_resource(rmcp::model::ReadResourceRequestParams::new(original_uri)),
+        )
+        .await
         {
-            Ok(result) => {
+            Ok(Ok(result)) => {
                 // Size check before recording success so an oversized response
                 // does not advance the circuit breaker's healthy counter.
                 let response_size = serde_json::to_string(&result).map_or(0, |s| s.len());
@@ -2254,18 +2376,13 @@ impl UpstreamPool {
                         ),
                     )
                     .await;
-                    tracing::warn!(
-                        upstream = %config.name,
-                        capability = "resources",
-                        operation = "resource.read",
-                        resource_uri = redact_resource_uri_for_logging(uri),
-                        subject_scoped = true,
-                        transport = upstream_transport(config),
-                        elapsed_ms = start.elapsed().as_millis(),
-                        kind = "response_too_large",
-                        response_bytes = response_size,
-                        max_bytes,
-                        "upstream.request.error"
+                    log_upstream_request_error(
+                        event,
+                        start.elapsed().as_millis(),
+                        "response_too_large",
+                        None,
+                        Some(response_size),
+                        Some(max_bytes),
                     );
                     return Err(format!(
                         "upstream resource response too large ({response_size} bytes, max {max_bytes})"
@@ -2274,39 +2391,50 @@ impl UpstreamPool {
                 self.record_success_for(&config.name, UpstreamCapability::Resources)
                     .await;
                 let normalized = normalize_resource_result_uri(result, uri);
-                tracing::info!(
-                    upstream = %config.name,
-                    capability = "resources",
-                    operation = "resource.read",
-                    resource_uri = redact_resource_uri_for_logging(uri),
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    response_bytes = response_size,
-                    "upstream.request.finish"
+                log_upstream_request_finish(
+                    event,
+                    start.elapsed().as_millis(),
+                    Some(response_size),
                 );
                 Ok(normalized)
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 self.record_failure_for(
                     &config.name,
                     UpstreamCapability::Resources,
                     format!("upstream resource read failed: {error}"),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "resources",
-                    operation = "resource.read",
-                    resource_uri = redact_resource_uri_for_logging(uri),
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_error",
-                    error = %error,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "upstream_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 Err(format!("upstream resource read failed: {error}"))
+            }
+            Err(_) => {
+                let message = format!(
+                    "upstream resource read timed out after {}ms",
+                    self.request_timeout.as_millis()
+                );
+                self.record_failure_for(
+                    &config.name,
+                    UpstreamCapability::Resources,
+                    message.clone(),
+                )
+                .await;
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "timeout",
+                    None,
+                    None,
+                    None,
+                );
+                Err(message)
             }
         }
     }
@@ -2358,7 +2486,6 @@ impl UpstreamPool {
                         let mut catalog = self.catalog.write().await;
                         if let Some(entry) = catalog.get_mut(&name) {
                             entry.prompt_count = 0;
-                            entry.prompt_names.clear();
                         }
                     }
                     tracing::warn!(
@@ -2457,8 +2584,16 @@ impl UpstreamPool {
     /// Prefer `prompt_ownership_map()` when resolving ownership for multiple
     /// prompts to avoid an N+1 RPC pattern.
     pub async fn find_prompt_owner(&self, prompt_name: &str) -> Option<String> {
+        if let Some(owner) = self.cached_prompt_owner(prompt_name, true).await {
+            return Some(owner);
+        }
+
         let (_, owners) = self.collect_upstream_prompts(&[]).await;
-        owners.get(prompt_name).cloned()
+        if let Some(owner) = owners.get(prompt_name) {
+            return Some(owner.clone());
+        }
+
+        self.cached_prompt_owner(prompt_name, false).await
     }
 
     pub async fn subject_scoped_prompt_owner(
@@ -2512,53 +2647,57 @@ impl UpstreamPool {
     ) -> Option<Result<GetPromptResult, String>> {
         let start = Instant::now();
         let prompt_name = params.name.to_string();
+        let event = UpstreamRequestLog::prompt(upstream_name, &prompt_name, false);
         let peer = self
             .acquire_peer(upstream_name, UpstreamCapability::Prompts, "prompt.get")
             .await?;
 
-        tracing::debug!(
-            upstream = %upstream_name,
-            capability = "prompts",
-            operation = "prompt.get",
-            prompt = %prompt_name,
-            subject_scoped = false,
-            "upstream.request.start"
-        );
+        log_upstream_request_start(event);
 
-        match peer.get_prompt(params).await {
-            Ok(result) => {
+        match tokio::time::timeout(self.request_timeout, peer.get_prompt(params)).await {
+            Ok(Ok(result)) => {
                 self.record_success_for(upstream_name, UpstreamCapability::Prompts)
                     .await;
-                tracing::info!(
-                    upstream = %upstream_name,
-                    capability = "prompts",
-                    operation = "prompt.get",
-                    prompt = %prompt_name,
-                    subject_scoped = false,
-                    elapsed_ms = start.elapsed().as_millis(),
-                    "upstream.request.finish"
-                );
+                log_upstream_request_finish(event, start.elapsed().as_millis(), None);
                 Some(Ok(result))
             }
-            Err(e) => {
+            Ok(Err(e)) => {
                 self.record_failure_for(
                     upstream_name,
                     UpstreamCapability::Prompts,
                     format!("upstream prompt get failed: {e}"),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %upstream_name,
-                    capability = "prompts",
-                    operation = "prompt.get",
-                    prompt = %prompt_name,
-                    subject_scoped = false,
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_error",
-                    error = %e,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "upstream_error",
+                    Some(&e),
+                    None,
+                    None,
                 );
                 Some(Err(format!("upstream prompt get failed: {e}")))
+            }
+            Err(_) => {
+                let message = format!(
+                    "upstream prompt get timed out after {}ms",
+                    self.request_timeout.as_millis()
+                );
+                self.record_failure_for(
+                    upstream_name,
+                    UpstreamCapability::Prompts,
+                    message.clone(),
+                )
+                .await;
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "timeout",
+                    None,
+                    None,
+                    None,
+                );
+                Some(Err(message))
             }
         }
     }
@@ -2571,15 +2710,9 @@ impl UpstreamPool {
     ) -> Result<GetPromptResult, String> {
         let start = Instant::now();
         let prompt_name = params.name.to_string();
-        tracing::debug!(
-            upstream = %config.name,
-            capability = "prompts",
-            operation = "prompt.get",
-            prompt = %prompt_name,
-            subject_scoped = true,
-            transport = upstream_transport(config),
-            "upstream.request.start"
-        );
+        let event = UpstreamRequestLog::prompt(&config.name, &prompt_name, true)
+            .with_transport(upstream_transport(config));
+        log_upstream_request_start(event);
         let (conn, _) = match connect_upstream(
             config,
             Some(subject),
@@ -2597,57 +2730,57 @@ impl UpstreamPool {
                     format!("upstream prompt connect failed: {error}"),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "prompts",
-                    operation = "prompt.get",
-                    prompt = %prompt_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_connect_error",
-                    error = %error,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "upstream_connect_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 return Err(error.to_string());
             }
         };
-        match conn.peer.get_prompt(params).await {
-            Ok(result) => {
+        match tokio::time::timeout(self.request_timeout, conn.peer.get_prompt(params)).await {
+            Ok(Ok(result)) => {
                 self.record_success_for(&config.name, UpstreamCapability::Prompts)
                     .await;
-                tracing::info!(
-                    upstream = %config.name,
-                    capability = "prompts",
-                    operation = "prompt.get",
-                    prompt = %prompt_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    "upstream.request.finish"
-                );
+                log_upstream_request_finish(event, start.elapsed().as_millis(), None);
                 Ok(result)
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 self.record_failure_for(
                     &config.name,
                     UpstreamCapability::Prompts,
                     format!("upstream prompt get failed: {error}"),
                 )
                 .await;
-                tracing::warn!(
-                    upstream = %config.name,
-                    capability = "prompts",
-                    operation = "prompt.get",
-                    prompt = %prompt_name,
-                    subject_scoped = true,
-                    transport = upstream_transport(config),
-                    elapsed_ms = start.elapsed().as_millis(),
-                    kind = "upstream_error",
-                    error = %error,
-                    "upstream.request.error"
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "upstream_error",
+                    Some(&error),
+                    None,
+                    None,
                 );
                 Err(format!("upstream prompt get failed: {error}"))
+            }
+            Err(_) => {
+                let message = format!(
+                    "upstream prompt get timed out after {}ms",
+                    self.request_timeout.as_millis()
+                );
+                self.record_failure_for(&config.name, UpstreamCapability::Prompts, message.clone())
+                    .await;
+                log_upstream_request_error(
+                    event,
+                    start.elapsed().as_millis(),
+                    "timeout",
+                    None,
+                    None,
+                    None,
+                );
+                Err(message)
             }
         }
     }
@@ -2895,7 +3028,10 @@ async fn connect_http_upstream(
         }
     }
 
-    let worker = StreamableHttpClientWorker::new(reqwest::Client::new(), transport_config);
+    let client = reqwest::Client::builder()
+        .timeout(DEFAULT_REQUEST_TIMEOUT)
+        .build()?;
+    let worker = StreamableHttpClientWorker::new(client, transport_config);
     let service: rmcp::service::RunningService<RoleClient, ()> = ().serve(worker).await?;
     let peer = service.peer().clone();
     let tools = peer.list_all_tools().await?;
@@ -3196,11 +3332,14 @@ mod tests {
     use crate::config::{UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration};
     use crate::mcp::server::LabMcpServer;
     use rmcp::model::{
-        AnnotateAble, ErrorData, ListPromptsResult, ListResourcesResult, PaginatedRequestParams,
-        RawResource, ServerCapabilities, ServerInfo,
+        AnnotateAble, ErrorData, ListPromptsResult, ListResourcesResult, ListToolsResult,
+        PaginatedRequestParams, PromptMessage, PromptMessageRole, RawResource,
+        ReadResourceRequestParams, ServerCapabilities, ServerInfo,
     };
     use rmcp::service::RequestContext;
     use rmcp::{RoleServer, ServerHandler};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use tracing_subscriber::layer::SubscriberExt;
 
     fn test_upstream_config() -> UpstreamConfig {
         UpstreamConfig {
@@ -3264,6 +3403,64 @@ mod tests {
             normalize_bearer_token("Bearer raw-token"),
             Some("raw-token".to_string())
         );
+    }
+
+    #[test]
+    fn upstream_request_log_helpers_emit_documented_fields_and_inherit_request_id() {
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let buf = crate::test_support::SharedBuf::default();
+        let subscriber = tracing_subscriber::registry()
+            .with(tracing_subscriber::EnvFilter::new("lab=debug"))
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .json()
+                    .with_current_span(true)
+                    .with_writer(buf.clone())
+                    .with_ansi(false)
+                    .without_time(),
+            );
+        let _guard = tracing::subscriber::set_default(subscriber);
+
+        let span = tracing::info_span!(
+            "dispatch",
+            surface = "api",
+            service = "gateway",
+            action = "call_tool",
+            request_id = "req-123"
+        );
+        let _entered = span.enter();
+
+        let event = UpstreamRequestLog::tool("github", "search_repos", false);
+        log_upstream_request_start(event);
+        log_upstream_request_finish(event, 7, Some(128));
+        log_upstream_request_error(event, 9, "upstream_error", Some(&"boom"), None, None);
+
+        drop(_entered);
+        drop(_guard);
+
+        let logs = crate::test_support::captured_logs(&buf);
+        for expected in [
+            "\"request_id\":\"req-123\"",
+            "\"surface\":\"dispatch\"",
+            "\"service\":\"upstream.pool\"",
+            "\"action\":\"upstream.request\"",
+            "\"upstream\":\"github\"",
+            "\"capability\":\"tools\"",
+            "\"operation\":\"tool.call\"",
+            "\"event\":\"start\"",
+            "\"event\":\"finish\"",
+            "\"event\":\"error\"",
+            "\"elapsed_ms\":\"7\"",
+            "\"elapsed_ms\":\"9\"",
+            "\"kind\":\"upstream_error\"",
+        ] {
+            assert!(
+                logs.contains(expected),
+                "missing upstream request log field `{expected}` in:\n{logs}"
+            );
+        }
     }
 
     #[test]
@@ -3556,7 +3753,12 @@ mod tests {
         assert_eq!(pool.upstream_count().await, 0);
     }
 
-    struct StaticCatalogServer;
+    #[derive(Clone, Default)]
+    struct StaticCatalogServer {
+        list_prompts_count: Arc<AtomicUsize>,
+        get_prompt_count: Arc<AtomicUsize>,
+        fail_list_prompts: Arc<AtomicBool>,
+    }
 
     impl ServerHandler for StaticCatalogServer {
         fn get_info(&self) -> ServerInfo {
@@ -3588,17 +3790,44 @@ mod tests {
             _request: Option<PaginatedRequestParams>,
             _context: RequestContext<RoleServer>,
         ) -> Result<ListPromptsResult, ErrorData> {
+            self.list_prompts_count.fetch_add(1, Ordering::SeqCst);
+            if self.fail_list_prompts.load(Ordering::SeqCst) {
+                return Err(ErrorData::internal_error(
+                    "prompt listing failed for test",
+                    None,
+                ));
+            }
+
             Ok(ListPromptsResult::with_all_items(vec![
                 Prompt::new("upstream.prompt.one", Some("first prompt"), None),
                 Prompt::new("upstream.prompt.two", Some("second prompt"), None),
             ]))
         }
+
+        async fn get_prompt(
+            &self,
+            request: GetPromptRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<GetPromptResult, ErrorData> {
+            self.get_prompt_count.fetch_add(1, Ordering::SeqCst);
+            Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+                PromptMessageRole::User,
+                format!("proxied {}", request.name),
+            )]))
+        }
     }
 
     async fn static_catalog_pool(upstream_name: &str) -> Arc<UpstreamPool> {
+        static_catalog_pool_with_server(upstream_name, StaticCatalogServer::default()).await
+    }
+
+    async fn static_catalog_pool_with_server(
+        upstream_name: &str,
+        server: StaticCatalogServer,
+    ) -> Arc<UpstreamPool> {
         let (server_transport, client_transport) = tokio::io::duplex(IN_PROCESS_PEER_BUFFER_BYTES);
         let server_task = tokio::spawn(async move {
-            let running = StaticCatalogServer
+            let running = server
                 .serve(server_transport)
                 .await
                 .expect("static catalog server starts");
@@ -3648,6 +3877,149 @@ mod tests {
             .push(upstream_name.to_string());
 
         pool
+    }
+
+    struct SlowResponseServer;
+
+    impl ServerHandler for SlowResponseServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(
+                ServerCapabilities::builder()
+                    .enable_tools()
+                    .enable_resources()
+                    .enable_prompts()
+                    .build(),
+            )
+        }
+
+        async fn list_tools(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListToolsResult, ErrorData> {
+            Ok(ListToolsResult::with_all_items(Vec::new()))
+        }
+
+        async fn call_tool(
+            &self,
+            _request: CallToolRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<CallToolResult, ErrorData> {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            Ok(CallToolResult::success(Vec::new()))
+        }
+
+        async fn read_resource(
+            &self,
+            _request: ReadResourceRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ReadResourceResult, ErrorData> {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            Ok(ReadResourceResult::new(Vec::new()))
+        }
+
+        async fn get_prompt(
+            &self,
+            _request: GetPromptRequestParams,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<GetPromptResult, ErrorData> {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            Ok(GetPromptResult::new(Vec::new()))
+        }
+    }
+
+    async fn slow_response_pool(upstream_name: &str) -> Arc<UpstreamPool> {
+        let (server_transport, client_transport) = tokio::io::duplex(IN_PROCESS_PEER_BUFFER_BYTES);
+        let server_task = tokio::spawn(async move {
+            let running = SlowResponseServer
+                .serve(server_transport)
+                .await
+                .expect("slow response server starts");
+            running.waiting().await.expect("slow response server runs");
+        });
+        let client_service: rmcp::service::RunningService<RoleClient, ()> = ()
+            .serve(client_transport)
+            .await
+            .expect("slow response client starts");
+        let peer = client_service.peer().clone();
+
+        let pool = Arc::new(UpstreamPool::new().with_request_timeout(Duration::from_millis(25)));
+        let upstream_name_arc: Arc<str> = Arc::from(upstream_name);
+        pool.catalog.write().await.insert(
+            upstream_name.to_string(),
+            UpstreamEntry {
+                name: Arc::clone(&upstream_name_arc),
+                tools: HashMap::new(),
+                exposure_policy: ToolExposurePolicy::All,
+                prompt_count: 1,
+                resource_count: 1,
+                prompt_names: vec!["slow.prompt".to_string()],
+                resource_uris: vec!["file:///tmp/slow".to_string()],
+                tool_health: UpstreamHealth::Healthy,
+                prompt_health: UpstreamHealth::Healthy,
+                resource_health: UpstreamHealth::Healthy,
+                tool_unhealthy_since: None,
+                prompt_unhealthy_since: None,
+                resource_unhealthy_since: None,
+                tool_last_error: None,
+                prompt_last_error: None,
+                resource_last_error: None,
+            },
+        );
+        pool.connections.write().await.insert(
+            upstream_name.to_string(),
+            UpstreamConnection {
+                _client_service: client_service,
+                _server_task: Some(server_task),
+                peer,
+                runtime: UpstreamRuntimeMetadata::default(),
+            },
+        );
+        pool.resource_upstreams
+            .write()
+            .await
+            .push(upstream_name.to_string());
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn call_tool_times_out_slow_upstream_response() {
+        let pool = slow_response_pool("slow").await;
+
+        let result = pool
+            .call_tool("slow", CallToolRequestParams::new("slow.tool"))
+            .await
+            .expect("upstream is connected")
+            .expect_err("slow tool call should time out");
+
+        assert!(result.contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn read_resource_times_out_slow_upstream_response() {
+        let pool = slow_response_pool("slow").await;
+
+        let result = pool
+            .read_upstream_resource("lab://upstream/slow/file:///tmp/slow")
+            .await
+            .expect("resource upstream is enabled")
+            .expect_err("slow resource read should time out");
+
+        assert!(result.contains("timed out"));
+    }
+
+    #[tokio::test]
+    async fn get_prompt_times_out_slow_upstream_response() {
+        let pool = slow_response_pool("slow").await;
+
+        let result = pool
+            .get_prompt("slow", GetPromptRequestParams::new("slow.prompt"))
+            .await
+            .expect("upstream is connected")
+            .expect_err("slow prompt get should time out");
+
+        assert!(result.contains("timed out"));
     }
 
     #[tokio::test]
@@ -3741,6 +4113,64 @@ mod tests {
         let snapshot = server.snapshot_catalog().await;
         assert!(snapshot.prompts.contains("upstream.prompt.one"));
         assert!(snapshot.prompts.contains("upstream.prompt.two"));
+    }
+
+    #[tokio::test]
+    async fn prompt_owner_lookup_uses_cache_without_listing_upstreams() {
+        let server = StaticCatalogServer::default();
+        let list_prompts_count = Arc::clone(&server.list_prompts_count);
+        let get_prompt_count = Arc::clone(&server.get_prompt_count);
+        let pool = static_catalog_pool_with_server("static", server).await;
+
+        let prompts = pool.list_upstream_prompts(&[]).await;
+        assert_eq!(prompts.len(), 2);
+        assert_eq!(list_prompts_count.load(Ordering::SeqCst), 1);
+
+        let owner = pool.find_prompt_owner("upstream.prompt.one").await;
+        assert_eq!(owner.as_deref(), Some("static"));
+        assert_eq!(list_prompts_count.load(Ordering::SeqCst), 1);
+
+        let result = pool
+            .get_prompt("static", GetPromptRequestParams::new("upstream.prompt.one"))
+            .await
+            .expect("upstream remains connected")
+            .expect("prompt get succeeds");
+        assert_eq!(result.messages.len(), 1);
+        assert_eq!(get_prompt_count.load(Ordering::SeqCst), 1);
+        assert_eq!(list_prompts_count.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn prompt_owner_lookup_falls_back_to_stale_cache_after_listing_miss() {
+        let server = StaticCatalogServer::default();
+        let list_prompts_count = Arc::clone(&server.list_prompts_count);
+        let fail_list_prompts = Arc::clone(&server.fail_list_prompts);
+        let pool = static_catalog_pool_with_server("static", server).await;
+
+        let prompts = pool.list_upstream_prompts(&[]).await;
+        assert_eq!(prompts.len(), 2);
+        assert_eq!(list_prompts_count.load(Ordering::SeqCst), 1);
+
+        for _ in 0..types::CIRCUIT_BREAKER_THRESHOLD {
+            pool.record_failure_for(
+                "static",
+                UpstreamCapability::Prompts,
+                "prompt listing failed for test",
+            )
+            .await;
+        }
+        fail_list_prompts.store(true, Ordering::SeqCst);
+
+        let owner = pool.find_prompt_owner("upstream.prompt.one").await;
+        assert_eq!(owner.as_deref(), Some("static"));
+        assert_eq!(list_prompts_count.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            pool.cached_upstream_prompt_names(&[]).await,
+            vec![
+                "upstream.prompt.one".to_string(),
+                "upstream.prompt.two".to_string()
+            ]
+        );
     }
 
     #[tokio::test]
@@ -4195,6 +4625,10 @@ mod tests {
             "cancelled_probe_count",
             "kind = \"upstream_pool_empty\"",
             "kind = \"upstream_not_connected\"",
+            "fn log_upstream_request_start",
+            "fn log_upstream_request_finish",
+            "fn log_upstream_request_error",
+            "action = \"upstream.request\"",
         ] {
             assert!(
                 source.contains(expected),
