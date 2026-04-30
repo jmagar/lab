@@ -19,6 +19,7 @@ pub mod extract;
 pub mod gateway;
 pub mod logs;
 pub mod marketplace;
+pub mod stash;
 
 #[cfg(feature = "radarr")]
 pub mod radarr;

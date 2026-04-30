@@ -1,0 +1,50 @@
+//! Stash root resolution for dispatch.
+//!
+//! Stash stores component directories under a root path derived as follows:
+//! 1. Read `[workspace].root` from `config.toml` (CWD → `~/.lab/` → `~/.config/lab/`).
+//! 2. Append `"stash"` to get the stash root.
+//! 3. Fall back to `~/.lab/stash` if no workspace root is configured.
+//!
+//! The resolved root is cached in a process-global `OnceLock` — resolution
+//! happens on first call and is never re-read from disk.
+
+use std::path::PathBuf;
+use std::sync::OnceLock;
+
+use crate::dispatch::error::ToolError;
+
+/// Structured error for callers when the stash root cannot be resolved.
+pub fn not_configured_error() -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: "workspace_not_configured".to_string(),
+        message: "stash root could not be resolved — set [workspace].root in config.toml or ensure ~/.lab/stash is writable".to_string(),
+    }
+}
+
+/// Resolve the stash root directory without caching.
+///
+/// Exposed for startup-time pre-warming (`cli::serve`). Use
+/// `require_stash_root()` in dispatch paths.
+pub fn resolve_stash_root() -> Option<PathBuf> {
+    // Prefer workspace.root from config.toml + "stash" subdirectory.
+    if let Ok(cfg) = crate::config::load_toml(&crate::config::toml_candidates()) {
+        if let Ok(root) = crate::config::workspace_root_path(&cfg) {
+            return Some(root.join("stash"));
+        }
+    }
+    // Fall back to ~/.lab/stash using HOME env var.
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .map(|h| h.join(".lab").join("stash"))
+}
+
+static STASH_ROOT: OnceLock<Option<PathBuf>> = OnceLock::new();
+
+/// Return the cached stash root path, or a structured `workspace_not_configured`
+/// error if the root cannot be determined.
+///
+/// The first call resolves and caches; subsequent calls return the cached value.
+pub fn require_stash_root() -> Result<&'static PathBuf, ToolError> {
+    let cached = STASH_ROOT.get_or_init(resolve_stash_root);
+    cached.as_ref().ok_or_else(not_configured_error)
+}
