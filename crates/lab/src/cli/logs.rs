@@ -179,6 +179,7 @@ fn build_search_query(args: LocalSearchArgs) -> LogQuery {
         correlation_id: args.correlation_id,
         source_node_ids: vec![],
         source_kinds: vec![],
+        actor_key: None,
         limit: args.limit,
     }
 }

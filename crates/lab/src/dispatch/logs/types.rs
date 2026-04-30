@@ -175,6 +175,8 @@ pub struct LogEvent {
     #[serde(default)]
     pub source_device_id: Option<String>,
     #[serde(default)]
+    pub actor_key: Option<String>,
+    #[serde(default)]
     pub ingest_path: Option<String>,
     #[serde(default)]
     pub upstream_event_id: Option<String>,
@@ -205,6 +207,7 @@ impl LogEvent {
             source_kind: Some("local".to_string()),
             source_node_id: Some("node-local".to_string()),
             source_device_id: Some("device-local".to_string()),
+            actor_key: Some("actor-fixture".to_string()),
             ingest_path: Some("tracing".to_string()),
             upstream_event_id: None,
         }
@@ -249,6 +252,8 @@ pub struct RawLogEvent {
     #[serde(default)]
     pub source_device_id: Option<String>,
     #[serde(default)]
+    pub actor_key: Option<String>,
+    #[serde(default)]
     pub ingest_path: Option<String>,
     #[serde(default)]
     pub upstream_event_id: Option<String>,
@@ -282,6 +287,8 @@ pub struct LogQuery {
     pub source_node_ids: Vec<String>,
     #[serde(default)]
     pub source_kinds: Vec<String>,
+    #[serde(default)]
+    pub actor_key: Option<String>,
     #[serde(default)]
     pub limit: Option<usize>,
 }

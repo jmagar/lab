@@ -326,6 +326,7 @@ fn default_raw_event() -> RawLogEvent {
         source_kind: None,
         source_node_id: None,
         source_device_id: None,
+        actor_key: None,
         ingest_path: None,
         upstream_event_id: None,
     }

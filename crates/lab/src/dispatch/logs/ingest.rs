@@ -215,6 +215,7 @@ fn canonicalize(mut raw: RawLogEvent) -> LogEvent {
         source_kind: raw.source_kind,
         source_node_id: raw.source_node_id,
         source_device_id: raw.source_device_id,
+        actor_key: raw.actor_key,
         ingest_path: raw.ingest_path.or_else(|| Some("tracing".to_string())),
         upstream_event_id: raw.upstream_event_id,
     }
@@ -337,6 +338,7 @@ where
             source_kind: None,
             source_node_id: None,
             source_device_id: None,
+            actor_key: None,
             ingest_path: Some("tracing".to_string()),
             upstream_event_id: None,
         };

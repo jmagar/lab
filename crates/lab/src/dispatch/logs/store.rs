@@ -21,7 +21,7 @@ use crate::dispatch::error::ToolError;
 const SELECT_COLS: &str = "event_id, ts, level, subsystem, surface, action, message,
      request_id, session_id, correlation_id, trace_id, span_id,
      instance, auth_flow, outcome_kind, fields_json,
-     source_kind, source_node_id, source_device_id, ingest_path, upstream_event_id";
+     source_kind, source_node_id, source_device_id, actor_key, ingest_path, upstream_event_id";
 
 pub struct LogStore {
     /// Exclusive connection for writes (INSERT, DELETE, VACUUM).
@@ -210,9 +210,9 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
 /// Rules:
 /// - Only bump `user_version` **after** the DDL succeeds.
 /// - Keep version numbers consecutive and never reuse them.
-/// - Future columns: `if version < 2 { conn.execute_batch("ALTER TABLE ...")?; ... }`
+/// - Historical rows remain nullable unless a migration explicitly backfills.
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    let version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
+    let mut version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     tracing::debug!(
         target: "lab::dispatch::logs",
         surface = "logs",
@@ -233,6 +233,20 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             to_version = 1,
             "applied log store SQLite migration",
         );
+        version = 1;
+    }
+    if version < 2 {
+        migrate_actor_key(conn)?;
+        conn.pragma_update(None, "user_version", 2)?;
+        tracing::info!(
+            target: "lab::dispatch::logs",
+            surface = "logs",
+            service = "store",
+            action = "sqlite.migrate.apply",
+            from_version = version,
+            to_version = 2,
+            "applied log store SQLite migration",
+        );
     } else {
         tracing::debug!(
             target: "lab::dispatch::logs",
@@ -243,12 +257,32 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             "log store SQLite schema already current",
         );
     }
-    // Future migrations:
-    // if version < 2 {
-    //     conn.execute_batch("ALTER TABLE log_events ADD COLUMN new_col TEXT;")?;
-    //     conn.pragma_update(None, "user_version", 2)?;
-    // }
     Ok(())
+}
+
+fn migrate_actor_key(conn: &Connection) -> rusqlite::Result<()> {
+    if !column_exists(conn, "log_events", "actor_key")? {
+        // Historical rows intentionally keep actor_key NULL. Actor identity is
+        // only populated for rows inserted after upstream plumbing supplies it.
+        conn.execute_batch("ALTER TABLE log_events ADD COLUMN actor_key TEXT;")?;
+    }
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_log_events_actor_key_ts
+            ON log_events(actor_key, ts DESC)
+            WHERE actor_key IS NOT NULL;",
+    )?;
+    Ok(())
+}
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    for name in columns {
+        if name? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 // ── Insert ────────────────────────────────────────────────────────────────────
@@ -259,8 +293,8 @@ fn insert_event(conn: &Connection, event: &LogEvent) -> Result<(), rusqlite::Err
             event_id, ts, level, subsystem, surface, action, message,
             request_id, session_id, correlation_id, trace_id, span_id,
             instance, auth_flow, outcome_kind, fields_json,
-            source_kind, source_node_id, source_device_id, ingest_path, upstream_event_id
-        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+            source_kind, source_node_id, source_device_id, actor_key, ingest_path, upstream_event_id
+        ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
         params![
             event.event_id,
             event.ts,
@@ -281,6 +315,7 @@ fn insert_event(conn: &Connection, event: &LogEvent) -> Result<(), rusqlite::Err
             event.source_kind,
             event.source_node_id,
             event.source_device_id,
+            event.actor_key,
             event.ingest_path,
             event.upstream_event_id,
         ],
@@ -348,6 +383,10 @@ fn run_search(conn: &Connection, q: &LogQuery) -> Result<LogSearchResult, rusqli
         "source_kind",
         q.source_kinds.iter().cloned(),
     );
+    if let Some(actor_key) = &q.actor_key {
+        sql.push_str(" AND actor_key = ?");
+        args.push(actor_key.clone().into());
+    }
     if let Some(text) = &q.text {
         sql.push_str(
             " AND (message LIKE ? ESCAPE '\\' OR IFNULL(request_id,'') LIKE ? ESCAPE '\\' OR IFNULL(session_id,'') LIKE ? ESCAPE '\\' OR IFNULL(correlation_id,'') LIKE ? ESCAPE '\\')",
@@ -428,6 +467,7 @@ fn row_to_event(row: &rusqlite::Row<'_>) -> Result<LogEvent, rusqlite::Error> {
         source_kind: row.get("source_kind")?,
         source_node_id: row.get("source_node_id")?,
         source_device_id: row.get("source_device_id")?,
+        actor_key: row.get("actor_key")?,
         ingest_path: row.get("ingest_path")?,
         upstream_event_id: row.get("upstream_event_id")?,
     })
@@ -547,4 +587,104 @@ fn run_maintenance(conn: &Connection, retention: LogRetention) -> Result<(), rus
     // Checkpoint the WAL to reclaim pages and keep the WAL file small.
     conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn column_names(conn: &Connection) -> Vec<String> {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(log_events)")
+            .expect("prepare table_info");
+        stmt.query_map([], |row| row.get::<_, String>(1))
+            .expect("query table_info")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect columns")
+    }
+
+    fn index_sql(conn: &Connection, index_name: &str) -> String {
+        conn.query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?1",
+            params![index_name],
+            |row| row.get(0),
+        )
+        .expect("index sql")
+    }
+
+    #[test]
+    fn fresh_schema_includes_actor_key_and_partial_index() {
+        let conn = Connection::open_in_memory().expect("open db");
+
+        migrate(&conn).expect("migrate");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("user_version");
+        assert_eq!(version, 2);
+        assert!(column_names(&conn).iter().any(|name| name == "actor_key"));
+
+        let sql = index_sql(&conn, "idx_log_events_actor_key_ts");
+        assert!(sql.contains("actor_key, ts DESC"));
+        assert!(sql.contains("WHERE actor_key IS NOT NULL"));
+    }
+
+    #[test]
+    fn v1_database_migrates_actor_key_without_backfilling_history() {
+        let conn = Connection::open_in_memory().expect("open db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE log_events (
+                event_id          TEXT PRIMARY KEY,
+                ts                INTEGER NOT NULL,
+                level             TEXT NOT NULL,
+                subsystem         TEXT NOT NULL,
+                surface           TEXT NOT NULL,
+                action            TEXT,
+                message           TEXT NOT NULL,
+                request_id        TEXT,
+                session_id        TEXT,
+                correlation_id    TEXT,
+                trace_id          TEXT,
+                span_id           TEXT,
+                instance          TEXT,
+                auth_flow         TEXT,
+                outcome_kind      TEXT,
+                fields_json       TEXT NOT NULL DEFAULT '{}',
+                source_kind       TEXT,
+                source_node_id    TEXT,
+                source_device_id  TEXT,
+                ingest_path       TEXT,
+                upstream_event_id TEXT
+            );
+            INSERT INTO log_events (
+                event_id, ts, level, subsystem, surface, message, fields_json
+            ) VALUES (
+                'evt-history', 123, 'info', 'core_runtime', 'core_runtime', 'old row', '{}'
+            );
+            PRAGMA user_version = 1;
+            "#,
+        )
+        .expect("create v1 db");
+
+        migrate(&conn).expect("migrate");
+
+        let version: i32 = conn
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .expect("user_version");
+        assert_eq!(version, 2);
+        assert!(column_names(&conn).iter().any(|name| name == "actor_key"));
+
+        let actor_key: Option<String> = conn
+            .query_row(
+                "SELECT actor_key FROM log_events WHERE event_id = 'evt-history'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("historical actor_key");
+        assert_eq!(actor_key, None);
+
+        let sql = index_sql(&conn, "idx_log_events_actor_key_ts");
+        assert!(sql.contains("WHERE actor_key IS NOT NULL"));
+    }
 }

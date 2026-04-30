@@ -114,6 +114,31 @@ product surface, including:
 Those routes must not silently bypass the normal dispatch schema just because
 they are not mounted under `/v1/{service}`.
 
+### Actor Correlation
+
+Operator-facing events that have an authenticated subject must use `actor_key`
+for activity scoping instead of persisting or exposing the raw subject. The
+actor key is:
+
+- `HMAC-SHA256(subject, LAB_ACTOR_KEY_SECRET)`
+- hex encoded as 64 lowercase characters
+- stable for one installation as long as `LAB_ACTOR_KEY_SECRET` is preserved
+- intentionally not portable across installations with different secrets
+
+`LAB_ACTOR_KEY_SECRET` is a secret value stored in `~/.lab/.env`. If absent,
+`lab` generates it on first use. Empty or anonymous subjects have no
+`actor_key`; `mine_only` style activity queries must exclude those rows rather
+than inventing a sentinel actor.
+
+Compute `actor_key` once when binding an authenticated session, then clone that
+bound value into later events. Do not derive it inside tracing subscriber
+callbacks or per-log-event hot paths.
+
+The raw subject remains a credential-adjacent identifier and must not be stored
+in persisted log fields or returned to the Activity UI. A short redacted display
+tag is allowed only for human diagnostics and must not be used for
+authorization or filtering.
+
 ### Local Log Ingest Boundary
 
 The local-master `logs` subsystem is a shared observability consumer, not a replacement for dispatch logging.

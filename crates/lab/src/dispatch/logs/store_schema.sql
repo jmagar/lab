@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS log_events (
     source_kind       TEXT,
     source_node_id    TEXT,
     source_device_id  TEXT,
+    actor_key         TEXT,
     ingest_path       TEXT,
     upstream_event_id TEXT
 );
@@ -29,3 +30,6 @@ CREATE INDEX IF NOT EXISTS idx_log_events_request_id ON log_events(request_id);
 CREATE INDEX IF NOT EXISTS idx_log_events_session_id    ON log_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_log_events_source_node   ON log_events(source_node_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_log_events_source_kind   ON log_events(source_kind, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_log_events_actor_key_ts
+    ON log_events(actor_key, ts DESC)
+    WHERE actor_key IS NOT NULL;

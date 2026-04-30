@@ -17,6 +17,8 @@ pub mod mcp;
 pub mod node;
 #[allow(unreachable_pub)]
 pub mod oauth;
+#[allow(unreachable_pub)]
+pub mod observability;
 pub mod output;
 #[allow(unreachable_pub)]
 pub mod process;
