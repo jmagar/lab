@@ -492,6 +492,84 @@ impl AcpSessionRegistry {
         Ok(())
     }
 
+    pub async fn approve_permission(
+        &self,
+        session_id: &str,
+        principal: &str,
+        request_id: &str,
+        option_id: &str,
+    ) -> Result<(), ToolError> {
+        let session = self.get_session_arc(session_id).await?;
+        if principal.trim().is_empty() || session.principal.is_empty() {
+            return Err(ToolError::Sdk {
+                sdk_kind: "auth_failed".to_string(),
+                message: "authenticated session owner required to approve permission".to_string(),
+            });
+        }
+        Self::check_principal(&session, principal)?;
+        let runtime = {
+            session
+                .handle
+                .lock()
+                .await
+                .clone()
+                .ok_or_else(|| internal("ACP runtime unavailable"))?
+        };
+        runtime
+            .approve_permission(request_id, option_id)
+            .await
+            .map_err(|message| ToolError::InvalidParam {
+                message,
+                param: "request_id".to_string(),
+            })?;
+        tracing::info!(
+            surface = "acp",
+            service = "registry",
+            action = "permission.approve",
+            session_id = %session_id,
+            request_id,
+            option_id,
+            principal,
+            "ACP permission request approved",
+        );
+        Ok(())
+    }
+
+    pub async fn reject_permission(
+        &self,
+        session_id: &str,
+        principal: &str,
+        request_id: &str,
+    ) -> Result<(), ToolError> {
+        let session = self.get_session_arc(session_id).await?;
+        Self::check_principal(&session, principal)?;
+        let runtime = {
+            session
+                .handle
+                .lock()
+                .await
+                .clone()
+                .ok_or_else(|| internal("ACP runtime unavailable"))?
+        };
+        runtime
+            .reject_permission(request_id)
+            .await
+            .map_err(|message| ToolError::InvalidParam {
+                message,
+                param: "request_id".to_string(),
+            })?;
+        tracing::info!(
+            surface = "acp",
+            service = "registry",
+            action = "permission.reject",
+            session_id = %session_id,
+            request_id,
+            principal,
+            "ACP permission request rejected",
+        );
+        Ok(())
+    }
+
     pub async fn close_session(&self, session_id: &str, principal: &str) -> Result<(), ToolError> {
         let session = self.get_session_arc(session_id).await?;
         Self::check_principal(&session, principal)?;
@@ -1015,11 +1093,7 @@ fn session_state_from_event(event: &AcpEvent) -> Option<AcpSessionState> {
     match event {
         AcpEvent::SessionUpdate { state, .. } => Some(state.clone()),
         AcpEvent::PermissionRequest { .. } => Some(AcpSessionState::WaitingForPermission),
-        AcpEvent::PermissionOutcome { granted, .. } => Some(if *granted {
-            AcpSessionState::Running
-        } else {
-            AcpSessionState::Cancelled
-        }),
+        AcpEvent::PermissionOutcome { .. } => Some(AcpSessionState::Running),
         _ => None,
     }
 }

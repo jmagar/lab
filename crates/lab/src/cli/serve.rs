@@ -860,7 +860,9 @@ async fn run_http(
                 );
             } else {
                 tracing::info!(
-                    surface = "api", service = "http", action = "sd_notify.ready",
+                    surface = "api",
+                    service = "http",
+                    action = "sd_notify.ready",
                     "systemd READY=1 sent"
                 );
             }
@@ -907,8 +909,8 @@ async fn run_http(
     #[cfg(unix)]
     {
         use tokio::signal::unix::{SignalKind, signal};
-        let mut sigusr1 = signal(SignalKind::user_defined1())
-            .context("failed to register SIGUSR1 handler")?;
+        let mut sigusr1 =
+            signal(SignalKind::user_defined1()).context("failed to register SIGUSR1 handler")?;
         tokio::select! {
             result = axum::serve(listener, router) => { result?; }
             _ = async {
@@ -963,9 +965,37 @@ async fn run_stdio(
     node_role: crate::config::NodeRole,
     notifier: PeerNotifier,
 ) -> Result<ExitCode> {
-    // LAB_SPAWN_DEPTH guard removed: MCP-only mode never spawns upstream processes,
-    // so the axon↔lab recursion cycle is architecturally impossible.
+    let spawn_depth = resolve_lab_spawn_depth(std::env::var("LAB_SPAWN_DEPTH").ok());
+    // MCP-only mode never spawns upstream processes, so a positive
+    // LAB_SPAWN_DEPTH is logged as lifecycle evidence instead of changing
+    // behavior in this process.
+    if spawn_depth.unwrap_or_default() > 0 {
+        tracing::warn!(
+            surface = "mcp",
+            service = "stdio",
+            action = "recursion_guard.detected",
+            subsystem = "mcp_server",
+            phase = "stdio.recursion_guard",
+            transport = "stdio",
+            spawn_depth,
+            "LAB_SPAWN_DEPTH is set for stdio MCP serve; upstream spawning is disabled in this mode"
+        );
+    } else {
+        tracing::info!(
+            surface = "mcp",
+            service = "stdio",
+            action = "recursion_guard.clear",
+            subsystem = "mcp_server",
+            phase = "stdio.recursion_guard",
+            transport = "stdio",
+            spawn_depth,
+            "stdio MCP recursion guard clear"
+        );
+    }
     tracing::info!(
+        surface = "mcp",
+        service = "stdio",
+        action = "server.start",
         subsystem = "mcp_server",
         phase = "start",
         transport = "stdio",
@@ -980,6 +1010,7 @@ async fn run_stdio(
         services = registry.services().len(),
         "lab serve ready"
     );
+    let service_count = registry.services().len();
     let server = LabMcpServer {
         registry,
         gateway_manager: Some(Arc::clone(&gateway_manager)),
@@ -990,8 +1021,34 @@ async fn run_stdio(
         )),
     };
     let running = server.serve(rmcp::transport::stdio()).await?;
+    tracing::info!(
+        surface = "mcp",
+        service = "stdio",
+        action = "server.ready",
+        subsystem = "mcp_server",
+        phase = "ready",
+        transport = "stdio",
+        services = service_count,
+        "stdio mcp server ready"
+    );
     running.waiting().await?;
+    tracing::info!(
+        surface = "mcp",
+        service = "stdio",
+        action = "server.stop",
+        subsystem = "mcp_server",
+        phase = "stop",
+        transport = "stdio",
+        "stdio mcp server stopped"
+    );
     Ok(ExitCode::SUCCESS)
+}
+
+fn resolve_lab_spawn_depth(env: Option<String>) -> Option<u32> {
+    env.as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse::<u32>().ok())
 }
 
 /// Build the MCP streamable HTTP service from app state.
@@ -1032,6 +1089,9 @@ fn build_mcp_service(
         .with_allowed_hosts(allowed_hosts.clone())
         .with_stateful_mode(stateful);
     tracing::info!(
+        surface = "mcp",
+        service = "lab",
+        action = "server.init",
         subsystem = "mcp_server",
         phase = "http.mount",
         transport = "http",
@@ -1051,6 +1111,18 @@ fn build_mcp_service(
             let reg = Arc::clone(&registry);
             let manager = gateway_manager.clone();
             let peers = Arc::clone(&shared_peers);
+            tracing::info!(
+                surface = "mcp",
+                service = "lab",
+                action = "session.init",
+                subsystem = "mcp_server",
+                phase = "session.init",
+                transport = "http",
+                services = reg.services().len(),
+                gateway_manager_configured = manager.is_some(),
+                node_role = ?node_role,
+                "initializing HTTP MCP session handler"
+            );
             Ok(LabMcpServer {
                 registry: reg,
                 gateway_manager: manager,
@@ -1288,8 +1360,9 @@ mod tests {
 
     use super::{
         McpArgs, PeerNotifier, ServeCommand, Transport, allowed_hosts, bind_addr,
-        build_http_router, is_loopback_host, resolve_port, resolve_session_ttl_secs,
-        resolve_stateful_mode, resolve_transport, resolve_web_ui_auth_disabled, should_run_stdio,
+        build_http_router, is_loopback_host, resolve_lab_spawn_depth, resolve_port,
+        resolve_session_ttl_secs, resolve_stateful_mode, resolve_transport,
+        resolve_web_ui_auth_disabled, should_run_stdio,
     };
     use crate::api::AppState;
     use crate::cli::Cli;
@@ -1404,6 +1477,15 @@ mod tests {
             Some(&ServeCommand::Mcp(McpArgs { stdio: true })),
         ));
         assert!(!should_run_stdio(Transport::Http, None));
+    }
+
+    #[test]
+    fn lab_spawn_depth_resolution_is_logging_only_and_tolerates_bad_env() {
+        assert_eq!(resolve_lab_spawn_depth(Some("2".into())), Some(2));
+        assert_eq!(resolve_lab_spawn_depth(Some(" 3 ".into())), Some(3));
+        assert_eq!(resolve_lab_spawn_depth(Some("".into())), None);
+        assert_eq!(resolve_lab_spawn_depth(Some("not-a-number".into())), None);
+        assert_eq!(resolve_lab_spawn_depth(None), None);
     }
 
     #[test]

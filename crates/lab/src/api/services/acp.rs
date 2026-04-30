@@ -41,6 +41,14 @@ pub fn routes(_state: AppState) -> Router<AppState> {
         .route("/sessions/{session_id}/prompt", post(prompt_session))
         .route("/sessions/{session_id}/cancel", post(cancel_session))
         .route(
+            "/sessions/{session_id}/permissions/{request_id}/approve",
+            post(approve_permission),
+        )
+        .route(
+            "/sessions/{session_id}/permissions/{request_id}/reject",
+            post(reject_permission),
+        )
+        .route(
             "/sessions/{session_id}/subscribe_ticket",
             post(subscribe_ticket),
         )
@@ -187,6 +195,61 @@ async fn cancel_session(
         "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.cancel", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+#[derive(Deserialize)]
+struct ApprovePermissionBody {
+    option_id: String,
+}
+
+async fn approve_permission(
+    State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
+    Path((session_id, request_id)): Path<(String, String)>,
+    Json(body): Json<ApprovePermissionBody>,
+) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
+    if body.option_id.trim().is_empty() {
+        return ToolError::MissingParam {
+            message: "option_id is required".to_string(),
+            param: "option_id".to_string(),
+        }
+        .into_response();
+    }
+    let params = json!({
+        "session_id": session_id,
+        "request_id": request_id,
+        "option_id": body.option_id,
+        "confirm": true,
+        "principal": principal,
+    });
+    match dispatch_with_registry(&state.acp_registry, "session.permission.approve", params).await {
+        Ok(v) => Json(v).into_response(),
+        Err(e) => e.into_response(),
+    }
+}
+
+async fn reject_permission(
+    State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
+    Path((session_id, request_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
+    let params = json!({
+        "session_id": session_id,
+        "request_id": request_id,
+        "principal": principal,
+    });
+    match dispatch_with_registry(&state.acp_registry, "session.permission.reject", params).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
     }

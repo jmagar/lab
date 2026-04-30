@@ -231,6 +231,37 @@ pub async fn dispatch_with_registry(
             to_json(json!({ "ok": true, "session_id": session_id }))
         }
 
+        "session.permission.approve" => {
+            require_confirm(&params, "session.permission.approve")?;
+            let session_id = require_str(&params, "session_id")?;
+            let request_id = require_str(&params, "request_id")?;
+            let option_id = require_str(&params, "option_id")?;
+            let principal = require_str(&params, "principal")?;
+            registry
+                .approve_permission(session_id, principal, request_id, option_id)
+                .await?;
+            to_json(json!({
+                "ok": true,
+                "session_id": session_id,
+                "request_id": request_id,
+                "option_id": option_id,
+            }))
+        }
+
+        "session.permission.reject" => {
+            let session_id = require_str(&params, "session_id")?;
+            let request_id = require_str(&params, "request_id")?;
+            let principal = opt_str(&params, "principal").unwrap_or("");
+            registry
+                .reject_permission(session_id, principal, request_id)
+                .await?;
+            to_json(json!({
+                "ok": true,
+                "session_id": session_id,
+                "request_id": request_id,
+            }))
+        }
+
         "session.close" => {
             require_confirm(&params, "session.close")?;
             let session_id = require_str(&params, "session_id")?;

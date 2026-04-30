@@ -126,6 +126,17 @@ impl EnrollmentStore {
             .clone();
         snapshot.denied.remove(&attempt.node_id);
         write_snapshot_atomically(&self.path, &snapshot).await?;
+        tracing::info!(
+            surface = "node",
+            service = "node.enrollment",
+            action = "enrollment.record_pending",
+            actor = "node",
+            outcome = "success",
+            entity_kind = "node",
+            entity_id = %pending.node_id,
+            token_fingerprint = %pending.token_fingerprint,
+            "node enrollment recorded as pending",
+        );
         Ok(pending)
     }
 
@@ -133,12 +144,36 @@ impl EnrollmentStore {
         let _guard = self.io_lock.lock().await;
         let mut snapshot = self.read_snapshot().await?;
         if let Some(approved) = snapshot.approved.get(node_id) {
+            tracing::info!(
+                surface = "node",
+                service = "node.enrollment",
+                action = "enrollment.approve",
+                actor = "operator",
+                outcome = "already_approved",
+                entity_kind = "node",
+                entity_id = %approved.node_id,
+                token_fingerprint = %approved.token_fingerprint,
+                "node enrollment already approved",
+            );
             return Ok(approved.clone());
         }
-        let pending = snapshot
-            .pending
-            .remove(node_id)
-            .ok_or_else(|| anyhow!("pending enrollment not found for `{node_id}`"))?;
+        let pending = match snapshot.pending.remove(node_id) {
+            Some(pending) => pending,
+            None => {
+                tracing::warn!(
+                    surface = "node",
+                    service = "node.enrollment",
+                    action = "enrollment.approve",
+                    actor = "operator",
+                    outcome = "failure",
+                    kind = "not_found",
+                    entity_kind = "node",
+                    entity_id = %node_id,
+                    "pending node enrollment approval failed",
+                );
+                return Err(anyhow!("pending enrollment not found for `{node_id}`"));
+            }
+        };
         let approved = ApprovedEnrollment {
             node_id: pending.node_id.clone(),
             token: pending.token.clone(),
@@ -151,6 +186,17 @@ impl EnrollmentStore {
             .insert(node_id.to_string(), approved.clone());
         snapshot.denied.remove(node_id);
         write_snapshot_atomically(&self.path, &snapshot).await?;
+        tracing::info!(
+            surface = "node",
+            service = "node.enrollment",
+            action = "enrollment.approve",
+            actor = "operator",
+            outcome = "success",
+            entity_kind = "node",
+            entity_id = %approved.node_id,
+            token_fingerprint = %approved.token_fingerprint,
+            "node enrollment approved",
+        );
         Ok(approved)
     }
 
@@ -158,6 +204,17 @@ impl EnrollmentStore {
         let _guard = self.io_lock.lock().await;
         let mut snapshot = self.read_snapshot().await?;
         if let Some(denied) = snapshot.denied.get(node_id) {
+            tracing::info!(
+                surface = "node",
+                service = "node.enrollment",
+                action = "enrollment.deny",
+                actor = "operator",
+                outcome = "already_denied",
+                entity_kind = "node",
+                entity_id = %denied.node_id,
+                token_fingerprint = %denied.token_fingerprint,
+                "node enrollment already denied",
+            );
             return Ok(denied.clone());
         }
 
@@ -166,6 +223,17 @@ impl EnrollmentStore {
         } else if let Some(approved) = snapshot.approved.remove(node_id) {
             (approved.token, approved.token_fingerprint)
         } else {
+            tracing::warn!(
+                surface = "node",
+                service = "node.enrollment",
+                action = "enrollment.deny",
+                actor = "operator",
+                outcome = "failure",
+                kind = "not_found",
+                entity_kind = "node",
+                entity_id = %node_id,
+                "node enrollment denial failed",
+            );
             return Err(anyhow!("enrollment not found for `{node_id}`"));
         };
 
@@ -178,21 +246,81 @@ impl EnrollmentStore {
         };
         snapshot.denied.insert(node_id.to_string(), denied.clone());
         write_snapshot_atomically(&self.path, &snapshot).await?;
+        tracing::info!(
+            surface = "node",
+            service = "node.enrollment",
+            action = "enrollment.deny",
+            actor = "operator",
+            outcome = "success",
+            entity_kind = "node",
+            entity_id = %denied.node_id,
+            token_fingerprint = %denied.token_fingerprint,
+            "node enrollment denied",
+        );
         Ok(denied)
     }
 
     pub async fn validate(&self, node_id: &str, token: &str) -> Result<EnrollmentDecision> {
         let _guard = self.io_lock.lock().await;
         let snapshot = self.read_snapshot().await?;
+        let token_fingerprint = token_fingerprint(token);
         if let Some(denied) = snapshot.denied.get(node_id) {
+            tracing::warn!(
+                surface = "node",
+                service = "node.enrollment",
+                action = "enrollment.validate",
+                actor = "node",
+                outcome = "denied",
+                kind = "auth_failed",
+                entity_kind = "node",
+                entity_id = %node_id,
+                token_fingerprint = %token_fingerprint,
+                "node enrollment validation denied",
+            );
             return Ok(EnrollmentDecision::Denied(denied.clone()));
         }
         if let Some(approved) = snapshot.approved.get(node_id) {
             if approved.token == token {
+                tracing::info!(
+                    surface = "node",
+                    service = "node.enrollment",
+                    action = "enrollment.validate",
+                    actor = "node",
+                    outcome = "approved",
+                    entity_kind = "node",
+                    entity_id = %node_id,
+                    token_fingerprint = %approved.token_fingerprint,
+                    "node enrollment validation approved",
+                );
                 return Ok(EnrollmentDecision::Approved(approved.clone()));
             }
+            tracing::warn!(
+                surface = "node",
+                service = "node.enrollment",
+                action = "enrollment.validate",
+                actor = "node",
+                outcome = "token_mismatch",
+                kind = "auth_failed",
+                entity_kind = "node",
+                entity_id = %node_id,
+                token_fingerprint = %token_fingerprint,
+                expected_token_fingerprint = %approved.token_fingerprint,
+                "node enrollment validation token mismatch",
+            );
             return Ok(EnrollmentDecision::TokenMismatch(approved.clone()));
         }
+        tracing::warn!(
+            surface = "node",
+            service = "node.enrollment",
+            action = "enrollment.validate",
+            actor = "node",
+            outcome = "pending_required",
+            kind = "auth_failed",
+            entity_kind = "node",
+            entity_id = %node_id,
+            token_fingerprint = %token_fingerprint,
+            "node enrollment validation requires pending enrollment",
+        );
         Ok(EnrollmentDecision::PendingRequired)
     }
 

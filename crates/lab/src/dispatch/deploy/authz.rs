@@ -46,11 +46,36 @@ pub enum McpContext {
 /// into explicitly.
 pub fn require_deploy_token() -> Result<(), ToolError> {
     match env_non_empty("LAB_DEPLOY_TOKEN") {
-        Some(ref v) if !v.trim().is_empty() => Ok(()),
-        _ => Err(ToolError::Sdk {
-            sdk_kind: "auth_failed".into(),
-            message: "LAB_DEPLOY_TOKEN is required for deploy actions".into(),
-        }),
+        Some(ref v) if !v.trim().is_empty() => {
+            tracing::info!(
+                surface = "dispatch",
+                service = "deploy",
+                action = "authz.require_deploy_token",
+                actor = "operator",
+                outcome = "success",
+                entity_kind = "env_var",
+                entity_id = "LAB_DEPLOY_TOKEN",
+                "deploy authorization token gate passed",
+            );
+            Ok(())
+        }
+        _ => {
+            tracing::warn!(
+                surface = "dispatch",
+                service = "deploy",
+                action = "authz.require_deploy_token",
+                actor = "operator",
+                outcome = "rejected",
+                kind = "auth_failed",
+                entity_kind = "env_var",
+                entity_id = "LAB_DEPLOY_TOKEN",
+                "deploy authorization token gate rejected request",
+            );
+            Err(ToolError::Sdk {
+                sdk_kind: "auth_failed".into(),
+                message: "LAB_DEPLOY_TOKEN is required for deploy actions".into(),
+            })
+        }
     }
 }
 
@@ -66,6 +91,18 @@ pub fn reject_headless_bypass(params: &Value, ctx: McpContext) -> Result<(), Too
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if confirm_present && matches!(ctx, McpContext::HeadlessNoElicitation) {
+        tracing::warn!(
+            surface = "dispatch",
+            service = "deploy",
+            action = "authz.reject_headless_bypass",
+            actor = "mcp_client",
+            outcome = "rejected",
+            kind = "auth_failed",
+            entity_kind = "destructive_action",
+            entity_id = "deploy",
+            mcp_context = ?ctx,
+            "deploy destructive action headless confirmation bypass rejected",
+        );
         return Err(ToolError::Sdk {
             sdk_kind: "auth_failed".into(),
             message: "deploy destructive actions require live MCP elicitation; \
@@ -73,6 +110,17 @@ pub fn reject_headless_bypass(params: &Value, ctx: McpContext) -> Result<(), Too
                 .into(),
         });
     }
+    tracing::info!(
+        surface = "dispatch",
+        service = "deploy",
+        action = "authz.reject_headless_bypass",
+        actor = "operator",
+        outcome = "success",
+        entity_kind = "destructive_action",
+        entity_id = "deploy",
+        mcp_context = ?ctx,
+        "deploy destructive action headless bypass gate passed",
+    );
     Ok(())
 }
 

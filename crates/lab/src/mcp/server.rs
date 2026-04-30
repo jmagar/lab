@@ -131,6 +131,17 @@ pub fn verify_upstream_subject_resolution_support() -> anyhow::Result<()> {
 
 impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
+        tracing::info!(
+            surface = "mcp",
+            service = "lab",
+            action = "server.info",
+            subsystem = "mcp_server",
+            phase = "server.info",
+            builtin_service_count = self.registry.services().len(),
+            gateway_manager_configured = self.gateway_manager.is_some(),
+            node_role = ?self.node_role,
+            "advertising MCP server capabilities"
+        );
         ServerInfo::new(
             ServerCapabilities::builder()
                 .enable_tools()
@@ -166,6 +177,9 @@ impl ServerHandler for LabMcpServer {
         let mut peers = self.peers.write().await;
         peers.push(context.peer);
         tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "peer.connect",
             subsystem = "mcp_server",
             phase = "session.initialized",
             peer_count = peers.len(),
@@ -876,6 +890,10 @@ impl ServerHandler for LabMcpServer {
         );
         let schema = Arc::new(action_schema());
         let mut tools = Vec::new();
+        let mut builtin_tool_count = 0usize;
+        let mut upstream_tool_count = 0usize;
+        let mut subject_scoped_tool_count = 0usize;
+        let mut gateway_tool_count = 0usize;
         let (tool_search_enabled, enabled_tool_search_gateways) =
             if let Some(manager) = &self.gateway_manager {
                 (
@@ -888,6 +906,7 @@ impl ServerHandler for LabMcpServer {
         for svc in self.registry.services() {
             if self.service_visible_on_mcp(svc.name).await {
                 tools.push(Tool::new(svc.name, svc.description, Arc::clone(&schema)));
+                builtin_tool_count += 1;
             }
         }
         if tool_search_enabled {
@@ -908,6 +927,7 @@ impl ServerHandler for LabMcpServer {
                 "Search the gateway's proxied upstream tool catalog",
                 tool_search_schema,
             ));
+            gateway_tool_count += 1;
             let tool_invoke_schema = match serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -924,6 +944,7 @@ impl ServerHandler for LabMcpServer {
                 "Invoke one upstream tool discovered through tool_search",
                 tool_invoke_schema,
             ));
+            gateway_tool_count += 1;
         }
 
         // Merge upstream tools (healthy only, filtered for collisions with built-in services).
@@ -946,12 +967,16 @@ impl ServerHandler for LabMcpServer {
                 let tool_name = ut.tool.name.as_ref();
                 if builtin_names.contains(&tool_name) {
                     tracing::debug!(
+                        surface = "mcp",
+                        service = "lab",
+                        action = "tool.register",
                         tool = tool_name,
                         "skipping upstream tool that collides with built-in service"
                     );
                     continue;
                 }
                 tools.push(ut.tool);
+                upstream_tool_count += 1;
             }
             if let Some(subject) = self.request_subject(&context) {
                 for (_upstream_name, upstream_tools) in pool
@@ -966,6 +991,7 @@ impl ServerHandler for LabMcpServer {
                             continue;
                         }
                         tools.push(ut);
+                        subject_scoped_tool_count += 1;
                     }
                 }
             }
@@ -978,6 +1004,11 @@ impl ServerHandler for LabMcpServer {
             action = "list_tools",
             subject,
             elapsed_ms,
+            builtin_tool_count,
+            gateway_tool_count,
+            upstream_tool_count,
+            subject_scoped_tool_count,
+            total_tool_count = tools.len(),
             "tool list ok"
         );
         self.emit_dispatch_notification(
@@ -1762,21 +1793,57 @@ impl LabMcpServer {
 
         let peers = self.peers.read().await.clone();
         let peer_count = peers.len();
+        tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "catalog.notify",
+            subsystem = "mcp_server",
+            phase = "catalog.notify",
+            peer_count,
+            tools_changed = before.tools != after.tools,
+            resources_changed = before.resources != after.resources,
+            prompts_changed = before.prompts != after.prompts,
+            "notifying MCP peers about catalog change"
+        );
         let mut alive = Vec::with_capacity(peers.len());
-        for peer in peers {
+        for (peer_index, peer) in peers.into_iter().enumerate() {
             let mut ok = true;
             if before.tools != after.tools {
                 if peer.notify_tool_list_changed().await.is_err() {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
+                        peer_index,
+                        phase = "tools",
+                        "failed to notify peer about tool catalog change; pruning stale session"
+                    );
                     ok = false;
                 }
             }
             if ok && before.resources != after.resources {
                 if peer.notify_resource_list_changed().await.is_err() {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
+                        peer_index,
+                        phase = "resources",
+                        "failed to notify peer about resource catalog change; pruning stale session"
+                    );
                     ok = false;
                 }
             }
             if ok && before.prompts != after.prompts {
                 if peer.notify_prompt_list_changed().await.is_err() {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
+                        peer_index,
+                        phase = "prompts",
+                        "failed to notify peer about prompt catalog change; pruning stale session"
+                    );
                     ok = false;
                 }
             }
@@ -1790,8 +1857,18 @@ impl LabMcpServer {
         } else {
             Vec::new()
         };
+        let alive_count = alive.len();
         *guard = alive;
         guard.extend(added_since_snapshot);
+        let pruned = peer_count.saturating_sub(alive_count);
+        tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "peer.gc",
+            pruned_count = pruned,
+            active_count = guard.len(),
+            "MCP peer catalog-change notification complete"
+        );
     }
 }
 

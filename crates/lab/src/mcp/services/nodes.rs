@@ -116,13 +116,39 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .get("note")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let approved = store
-                .approve(node_id, note)
-                .await
-                .map_err(|error| ToolError::Sdk {
-                    sdk_kind: "not_found".to_string(),
-                    message: error.to_string(),
-                })?;
+            let approved = match store.approve(node_id, note).await {
+                Ok(approved) => {
+                    tracing::info!(
+                        surface = "mcp",
+                        service = "nodes",
+                        action = "enrollments.approve",
+                        actor = "mcp_client",
+                        outcome = "success",
+                        entity_kind = "node",
+                        entity_id = %approved.node_id,
+                        token_fingerprint = %approved.token_fingerprint,
+                        "node enrollment approved via MCP",
+                    );
+                    approved
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "nodes",
+                        action = "enrollments.approve",
+                        actor = "mcp_client",
+                        outcome = "failure",
+                        kind = "not_found",
+                        entity_kind = "node",
+                        entity_id = %node_id,
+                        "node enrollment approval via MCP failed",
+                    );
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "not_found".to_string(),
+                        message: error.to_string(),
+                    });
+                }
+            };
             serde_json::to_value(approved).map_err(|error| {
                 ToolError::internal_message(format!("serialize approved enrollment: {error}"))
             })
@@ -139,13 +165,39 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
                 .get("reason")
                 .and_then(Value::as_str)
                 .map(str::to_string);
-            let denied = store
-                .deny(node_id, reason)
-                .await
-                .map_err(|error| ToolError::Sdk {
-                    sdk_kind: "not_found".to_string(),
-                    message: error.to_string(),
-                })?;
+            let denied = match store.deny(node_id, reason).await {
+                Ok(denied) => {
+                    tracing::info!(
+                        surface = "mcp",
+                        service = "nodes",
+                        action = "enrollments.deny",
+                        actor = "mcp_client",
+                        outcome = "success",
+                        entity_kind = "node",
+                        entity_id = %denied.node_id,
+                        token_fingerprint = %denied.token_fingerprint,
+                        "node enrollment denied via MCP",
+                    );
+                    denied
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service = "nodes",
+                        action = "enrollments.deny",
+                        actor = "mcp_client",
+                        outcome = "failure",
+                        kind = "not_found",
+                        entity_kind = "node",
+                        entity_id = %node_id,
+                        "node enrollment denial via MCP failed",
+                    );
+                    return Err(ToolError::Sdk {
+                        sdk_kind: "not_found".to_string(),
+                        message: error.to_string(),
+                    });
+                }
+            };
             serde_json::to_value(denied).map_err(|error| {
                 ToolError::internal_message(format!("serialize denied enrollment: {error}"))
             })

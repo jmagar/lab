@@ -133,7 +133,7 @@ pub const ACTIONS: &[ActionSpec] = &[
             ParamSpec {
                 name: "principal",
                 ty: "string",
-                required: false,
+                required: true,
                 description: "Caller principal for ownership verification",
             },
             ParamSpec {
@@ -155,6 +155,70 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: true,
                 description: "Session ID to cancel",
+            },
+            ParamSpec {
+                name: "principal",
+                ty: "string",
+                required: false,
+                description: "Caller principal for ownership verification",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "session.permission.approve",
+        description: "Approve a pending provider permission request [destructive]",
+        destructive: true,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "session_id",
+                ty: "string",
+                required: true,
+                description: "Session ID that owns the permission request",
+            },
+            ParamSpec {
+                name: "request_id",
+                ty: "string",
+                required: true,
+                description: "Pending permission request ID from the permission_request event",
+            },
+            ParamSpec {
+                name: "option_id",
+                ty: "string",
+                required: true,
+                description: "Allow option ID to select for this request",
+            },
+            ParamSpec {
+                name: "principal",
+                ty: "string",
+                required: false,
+                description: "Caller principal for ownership verification",
+            },
+            ParamSpec {
+                name: "confirm",
+                ty: "boolean",
+                required: true,
+                description: "Must be true because approval grants provider access",
+            },
+        ],
+    },
+    ActionSpec {
+        name: "session.permission.reject",
+        description: "Reject a pending provider permission request",
+        destructive: false,
+        returns: "Value",
+        params: &[
+            ParamSpec {
+                name: "session_id",
+                ty: "string",
+                required: true,
+                description: "Session ID that owns the permission request",
+            },
+            ParamSpec {
+                name: "request_id",
+                ty: "string",
+                required: true,
+                description: "Pending permission request ID from the permission_request event",
             },
             ParamSpec {
                 name: "principal",

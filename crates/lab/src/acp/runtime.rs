@@ -2,15 +2,16 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
+use std::{collections::HashMap, fmt};
 
 use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ConfigOptionUpdate, ContentBlock, ContentChunk,
     CreateTerminalRequest, CurrentModeUpdate, FileSystemCapabilities, Implementation,
-    InitializeRequest, KillTerminalRequest, PermissionOptionKind, ProtocolVersion,
-    ReadTextFileRequest, ReleaseTerminalRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SessionInfoUpdate, SessionNotification,
-    SessionUpdate, StopReason, TerminalOutputRequest, WaitForTerminalExitRequest,
-    WriteTextFileRequest,
+    InitializeRequest, KillTerminalRequest, PermissionOption, PermissionOptionKind,
+    ProtocolVersion, ReadTextFileRequest, ReleaseTerminalRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
+    SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason, TerminalOutputRequest,
+    WaitForTerminalExitRequest, WriteTextFileRequest,
 };
 use agent_client_protocol::{
     Agent, ByteStreams, Client, ConnectionTo, Dispatch, JsonRpcMessage, on_receive_request,
@@ -36,6 +37,7 @@ fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Erro
 }
 
 const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
+const DEFAULT_PERMISSION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROVIDER_STDERR_CHARS: usize = 2_048;
 
 fn acp_prompt_idle_timeout() -> Duration {
@@ -45,6 +47,15 @@ fn acp_prompt_idle_timeout() -> Duration {
         .map(Duration::from_millis)
         .filter(|duration| !duration.is_zero())
         .unwrap_or(DEFAULT_PROMPT_IDLE_TIMEOUT)
+}
+
+fn acp_permission_timeout() -> Duration {
+    std::env::var("LAB_ACP_PERMISSION_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .filter(|duration| !duration.is_zero())
+        .unwrap_or(DEFAULT_PERMISSION_TIMEOUT)
 }
 
 fn lab_client_capabilities() -> ClientCapabilities {
@@ -65,6 +76,7 @@ pub struct RuntimeHandle {
     #[allow(dead_code)]
     pub provider_session_id: String,
     command_tx: mpsc::UnboundedSender<SessionCommand>,
+    permissions: Arc<PendingPermissions>,
 }
 
 impl RuntimeHandle {
@@ -75,9 +87,22 @@ impl RuntimeHandle {
     }
 
     pub async fn cancel(&self) -> Result<(), String> {
+        self.permissions.cancel_all();
         self.command_tx
             .send(SessionCommand::Cancel)
             .map_err(|_| "ACP session command channel closed".to_string())
+    }
+
+    pub async fn approve_permission(
+        &self,
+        request_id: &str,
+        option_id: &str,
+    ) -> Result<(), String> {
+        self.permissions.approve(request_id, option_id)
+    }
+
+    pub async fn reject_permission(&self, request_id: &str) -> Result<(), String> {
+        self.permissions.reject(request_id)
     }
 }
 
@@ -152,6 +177,149 @@ struct SessionDispatchProgress {
 }
 
 #[derive(Clone)]
+struct PendingPermissions {
+    entries: Arc<Mutex<HashMap<String, PendingPermissionEntry>>>,
+    timeout: Duration,
+}
+
+struct PendingPermissionEntry {
+    session_id: String,
+    options: Vec<PermissionOption>,
+    decision_tx: oneshot::Sender<PermissionDecision>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PermissionDecision {
+    Approve { option_id: String },
+    Reject,
+    Cancel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PermissionDecisionError {
+    NotPending,
+    InvalidOption,
+    NotAllowOption,
+}
+
+impl fmt::Display for PermissionDecisionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotPending => formatter.write_str("permission request is not pending"),
+            Self::InvalidOption => {
+                formatter.write_str("permission option is not valid for request")
+            }
+            Self::NotAllowOption => formatter.write_str("permission option is not an allow option"),
+        }
+    }
+}
+
+impl PendingPermissions {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            entries: Arc::new(Mutex::new(HashMap::new())),
+            timeout,
+        }
+    }
+
+    fn pending_count(&self) -> usize {
+        self.entries
+            .lock()
+            .map(|entries| entries.len())
+            .unwrap_or_default()
+    }
+
+    fn approve(&self, request_id: &str, option_id: &str) -> Result<(), String> {
+        self.resolve(
+            request_id,
+            PermissionDecision::Approve {
+                option_id: option_id.to_string(),
+            },
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    fn reject(&self, request_id: &str) -> Result<(), String> {
+        self.resolve(request_id, PermissionDecision::Reject)
+            .map_err(|error| error.to_string())
+    }
+
+    fn cancel_all(&self) {
+        let entries = self
+            .entries
+            .lock()
+            .map(|mut entries| entries.drain().map(|(_, entry)| entry).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for entry in entries {
+            drop(entry.decision_tx.send(PermissionDecision::Cancel));
+        }
+    }
+
+    fn cancel_session(&self, session_id: &str) {
+        let entries = self
+            .entries
+            .lock()
+            .map(|mut entries| {
+                let request_ids = entries
+                    .iter()
+                    .filter(|(_, entry)| entry.session_id == session_id)
+                    .map(|(request_id, _)| request_id.clone())
+                    .collect::<Vec<_>>();
+                request_ids
+                    .into_iter()
+                    .filter_map(|request_id| entries.remove(&request_id))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        for entry in entries {
+            drop(entry.decision_tx.send(PermissionDecision::Cancel));
+        }
+    }
+
+    fn resolve(
+        &self,
+        request_id: &str,
+        decision: PermissionDecision,
+    ) -> Result<(), PermissionDecisionError> {
+        let entry = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| PermissionDecisionError::NotPending)?;
+            validate_permission_decision(entries.get(request_id), &decision)?;
+            entries.remove(request_id)
+        }
+        .ok_or(PermissionDecisionError::NotPending)?;
+
+        drop(entry.decision_tx.send(decision));
+        Ok(())
+    }
+}
+
+fn validate_permission_decision(
+    entry: Option<&PendingPermissionEntry>,
+    decision: &PermissionDecision,
+) -> Result<(), PermissionDecisionError> {
+    let Some(entry) = entry else {
+        return Err(PermissionDecisionError::NotPending);
+    };
+    if let PermissionDecision::Approve { option_id } = decision {
+        let option = entry
+            .options
+            .iter()
+            .find(|option| option.option_id.to_string() == *option_id)
+            .ok_or(PermissionDecisionError::InvalidOption)?;
+        if !matches!(
+            option.kind,
+            PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+        ) {
+            return Err(PermissionDecisionError::NotAllowOption);
+        }
+    }
+    Ok(())
+}
+
+#[derive(Clone)]
 struct CodexLaunch {
     command: String,
     args: Vec<String>,
@@ -185,6 +353,8 @@ pub async fn launch_codex_runtime(
 ) -> Result<(RuntimeHandle, StartSessionResult), String> {
     let (started_tx, started_rx) = oneshot::channel();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
+    let permissions = Arc::new(PendingPermissions::new(acp_permission_timeout()));
+    let thread_permissions = Arc::clone(&permissions);
 
     std::thread::Builder::new()
         .name(format!("lab-acp-{session_id}"))
@@ -194,7 +364,17 @@ pub async fn launch_codex_runtime(
                 .build()
                 .expect("failed to build ACP runtime");
             runtime.block_on(async move {
-                drop(run_codex_session(session_id, input, event_tx, started_tx, command_rx).await);
+                drop(
+                    run_codex_session(
+                        session_id,
+                        input,
+                        event_tx,
+                        started_tx,
+                        command_rx,
+                        thread_permissions,
+                    )
+                    .await,
+                );
             });
         })
         .map_err(|error| error.to_string())?;
@@ -207,6 +387,7 @@ pub async fn launch_codex_runtime(
         RuntimeHandle {
             provider_session_id: started.provider_session_id.clone(),
             command_tx,
+            permissions,
         },
         StartSessionResult {
             provider_session_id: started.provider_session_id,
@@ -300,9 +481,8 @@ fn command_available(command: &str) -> bool {
 fn cached_command_lookup(command: &str) -> bool {
     const CACHE_TTL: Duration = Duration::from_secs(10);
 
-    static CACHE: OnceLock<Mutex<std::collections::HashMap<String, (Instant, bool)>>> =
-        OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(std::collections::HashMap::new()));
+    static CACHE: OnceLock<Mutex<HashMap<String, (Instant, bool)>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     if let Ok(map) = cache.lock() {
         if let Some((stored_at, available)) = map.get(command) {
@@ -357,6 +537,192 @@ fn launch_from_provider_entry(provider: &AcpProviderEntry) -> ProviderLaunch {
         id: provider.id.clone(),
         command,
         args,
+    }
+}
+
+async fn handle_permission_request(
+    runtime_session_id: &str,
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    permissions: &PendingPermissions,
+    args: RequestPermissionRequest,
+) -> RequestPermissionResponse {
+    let provider_session_id = args.session_id.to_string();
+    let request_id = args.tool_call.tool_call_id.to_string();
+    let action_summary = args
+        .tool_call
+        .fields
+        .title
+        .clone()
+        .unwrap_or_else(|| "Permission requested".to_string());
+    let options = args.options;
+    let public_options = options
+        .iter()
+        .map(acp_permission_option_from_protocol)
+        .collect::<Vec<_>>();
+    let (decision_tx, decision_rx) = oneshot::channel();
+
+    {
+        let mut entries = match permissions.entries.lock() {
+            Ok(entries) => entries,
+            Err(_) => {
+                emit_permission_outcome(event_tx, runtime_session_id, &request_id, false);
+                return RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled);
+            }
+        };
+        entries.insert(
+            request_id.clone(),
+            PendingPermissionEntry {
+                session_id: provider_session_id.clone(),
+                options: options.clone(),
+                decision_tx,
+            },
+        );
+    }
+
+    drop(event_tx.send(AcpEvent::PermissionRequest {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id: runtime_session_id.to_string(),
+        seq: 0,
+        request_id: request_id.clone(),
+        action_summary,
+        options: public_options,
+    }));
+
+    tracing::info!(
+        surface = "acp",
+        service = "runtime",
+        action = "permission.request",
+        session_id = %runtime_session_id,
+        provider_session_id = %provider_session_id,
+        request_id = %request_id,
+        "ACP provider permission request is pending",
+    );
+
+    let decision = match tokio::time::timeout(permissions.timeout, decision_rx).await {
+        Ok(Ok(decision)) => decision,
+        Ok(Err(_)) | Err(_) => {
+            let removed = permissions
+                .entries
+                .lock()
+                .map(|mut entries| entries.remove(&request_id).is_some())
+                .unwrap_or(false);
+            if removed {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "runtime",
+                    action = "permission.timeout",
+                    session_id = %runtime_session_id,
+                    provider_session_id = %provider_session_id,
+                    request_id = %request_id,
+                    timeout_ms = permissions.timeout.as_millis(),
+                    "ACP provider permission request timed out",
+                );
+            }
+            PermissionDecision::Cancel
+        }
+    };
+
+    let response = response_for_permission_decision(&options, decision);
+    emit_permission_outcome(
+        event_tx,
+        runtime_session_id,
+        &request_id,
+        matches!(response.outcome, RequestPermissionOutcome::Selected(_))
+            && selected_option_is_allow(&options, &response),
+    );
+    response
+}
+
+fn response_for_permission_decision(
+    options: &[PermissionOption],
+    decision: PermissionDecision,
+) -> RequestPermissionResponse {
+    match decision {
+        PermissionDecision::Approve { option_id } => {
+            let Some(option) = find_permission_option(options, &option_id) else {
+                return RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled);
+            };
+            if matches!(
+                option.kind,
+                PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+            ) {
+                RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                    SelectedPermissionOutcome::new(option.option_id.clone()),
+                ))
+            } else {
+                RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled)
+            }
+        }
+        PermissionDecision::Reject => match options.iter().find(|option| {
+            matches!(
+                option.kind,
+                PermissionOptionKind::RejectOnce | PermissionOptionKind::RejectAlways
+            )
+        }) {
+            Some(option) => RequestPermissionResponse::new(RequestPermissionOutcome::Selected(
+                SelectedPermissionOutcome::new(option.option_id.clone()),
+            )),
+            None => RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled),
+        },
+        PermissionDecision::Cancel => {
+            RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled)
+        }
+    }
+}
+
+fn selected_option_is_allow(
+    options: &[PermissionOption],
+    response: &RequestPermissionResponse,
+) -> bool {
+    let RequestPermissionOutcome::Selected(selected) = &response.outcome else {
+        return false;
+    };
+    find_permission_option(options, &selected.option_id.to_string()).is_some_and(|option| {
+        matches!(
+            option.kind,
+            PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
+        )
+    })
+}
+
+fn find_permission_option<'a>(
+    options: &'a [PermissionOption],
+    option_id: &str,
+) -> Option<&'a PermissionOption> {
+    options
+        .iter()
+        .find(|option| option.option_id.to_string() == option_id)
+}
+
+fn emit_permission_outcome(
+    event_tx: &mpsc::UnboundedSender<AcpEvent>,
+    session_id: &str,
+    request_id: &str,
+    granted: bool,
+) {
+    drop(event_tx.send(AcpEvent::PermissionOutcome {
+        id: uuid::Uuid::new_v4().to_string(),
+        created_at: jiff::Timestamp::now().to_string(),
+        session_id: session_id.to_string(),
+        seq: 0,
+        request_id: request_id.to_string(),
+        granted,
+    }));
+}
+
+fn acp_permission_option_from_protocol(option: &PermissionOption) -> AcpPermissionOption {
+    AcpPermissionOption {
+        option_id: option.option_id.to_string(),
+        name: option.name.clone(),
+        kind: match option.kind {
+            PermissionOptionKind::AllowOnce => "allow_once",
+            PermissionOptionKind::AllowAlways => "allow_always",
+            PermissionOptionKind::RejectOnce => "reject_once",
+            PermissionOptionKind::RejectAlways => "reject_always",
+            _ => "unknown",
+        }
+        .to_string(),
     }
 }
 
@@ -444,6 +810,7 @@ async fn run_codex_session(
     event_tx: mpsc::UnboundedSender<AcpEvent>,
     started_tx: oneshot::Sender<Result<RuntimeStarted, String>>,
     mut command_rx: mpsc::UnboundedReceiver<SessionCommand>,
+    permissions: Arc<PendingPermissions>,
 ) -> Result<(), String> {
     let launch = resolve_provider_launch(input.provider.as_deref())?;
     let provider_id = launch.id.clone();
@@ -515,48 +882,12 @@ async fn run_codex_session(
             {
                 let session_id = session_id.clone();
                 let event_tx = event_tx.clone();
+                let permissions = Arc::clone(&permissions);
                 async move |args: RequestPermissionRequest, responder, _cx| {
-                    let title = args.tool_call.fields.title.clone();
-
-                    drop(event_tx.send(AcpEvent::PermissionRequest {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        created_at: jiff::Timestamp::now().to_string(),
-                        session_id: session_id.clone(),
-                        seq: 0,
-                        request_id: args.tool_call.tool_call_id.to_string(),
-                        action_summary: title
-                            .clone()
-                            .unwrap_or_else(|| "Permission requested".to_string()),
-                        options: args
-                            .options
-                            .iter()
-                            .map(|option| AcpPermissionOption {
-                                option_id: option.option_id.to_string(),
-                                name: option.name.clone(),
-                                kind: match option.kind {
-                                    PermissionOptionKind::AllowOnce => "allow_once",
-                                    PermissionOptionKind::AllowAlways => "allow_always",
-                                    PermissionOptionKind::RejectOnce => "reject_once",
-                                    PermissionOptionKind::RejectAlways => "reject_always",
-                                    _ => "unknown",
-                                }
-                                .to_string(),
-                            })
-                            .collect(),
-                    }));
-
-                    drop(event_tx.send(AcpEvent::PermissionOutcome {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        created_at: jiff::Timestamp::now().to_string(),
-                        session_id: session_id.clone(),
-                        seq: 0,
-                        request_id: args.tool_call.tool_call_id.to_string(),
-                        granted: false,
-                    }));
-
-                    responder.respond(RequestPermissionResponse::new(
-                        RequestPermissionOutcome::Cancelled,
-                    ))
+                    let response =
+                        handle_permission_request(&session_id, &event_tx, &permissions, args)
+                            .await;
+                    responder.respond(response)
                 }
             },
             on_receive_request!(),
@@ -798,6 +1129,7 @@ async fn run_codex_session(
                                 }
                             }
                             SessionCommand::Cancel => {
+                                permissions.cancel_session(&session.session_id().to_string());
                                 session
                                     .connection()
                                     .send_notification(CancelNotification::new(
@@ -1305,7 +1637,8 @@ fn map_stop_reason(stop_reason: &StopReason) -> &'static str {
 mod tests {
     use super::*;
     use agent_client_protocol::schema::{
-        AvailableCommandsUpdate, TextContent, ToolCall, ToolCallUpdate, ToolCallUpdateFields,
+        AvailableCommandsUpdate, PermissionOptionId, TextContent, ToolCall, ToolCallUpdate,
+        ToolCallUpdateFields,
     };
 
     fn text_chunk(text: &str) -> ContentChunk {
@@ -1680,19 +2013,161 @@ mod tests {
         );
     }
 
-    #[test]
-    fn permission_response_defaults_to_cancelled_until_user_decision_path_exists() {
-        let response = RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled);
-        let value = serde_json::to_value(&response).expect("permission response serializes");
+    fn permission_request(tool_call_id: &str) -> RequestPermissionRequest {
+        RequestPermissionRequest::new(
+            "provider-session-1",
+            ToolCallUpdate::new(
+                tool_call_id.to_string(),
+                ToolCallUpdateFields::new().title(Some("Read project file".to_string())),
+            ),
+            vec![
+                PermissionOption::new(
+                    PermissionOptionId::new("allow-once"),
+                    "Allow once",
+                    PermissionOptionKind::AllowOnce,
+                ),
+                PermissionOption::new(
+                    PermissionOptionId::new("reject-once"),
+                    "Reject",
+                    PermissionOptionKind::RejectOnce,
+                ),
+            ],
+        )
+    }
 
-        assert!(
-            !value.to_string().contains("allow"),
-            "default permission response must not synthesize an allow option: {value}"
-        );
-        assert!(
-            value.to_string().contains("cancelled"),
-            "default permission response should fail closed as cancelled: {value}"
-        );
+    fn permission_outcome_granted(events: &[AcpEvent]) -> bool {
+        match events.last().expect("permission outcome event") {
+            AcpEvent::PermissionOutcome { granted, .. } => *granted,
+            other => panic!("expected PermissionOutcome, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn permission_request_is_pending_by_default_until_timeout() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let permissions = PendingPermissions::new(Duration::from_millis(25));
+
+        let response =
+            handle_permission_request("session-1", &tx, &permissions, permission_request("tool-1"))
+                .await;
+
+        assert!(matches!(
+            response.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+        assert_eq!(permissions.pending_count(), 0);
+
+        let events = drain_events(&mut rx, 2);
+        assert!(matches!(events[0], AcpEvent::PermissionRequest { .. }));
+        assert!(!permission_outcome_granted(&events));
+    }
+
+    #[tokio::test]
+    async fn explicit_rejection_selects_reject_option_and_denies_request() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let permissions = PendingPermissions::new(Duration::from_secs(1));
+        let permissions_for_decision = permissions.clone();
+
+        let pending = tokio::spawn(async move {
+            handle_permission_request(
+                "session-1",
+                &tx,
+                &permissions,
+                permission_request("tool-reject"),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+
+        permissions_for_decision
+            .reject("tool-reject")
+            .expect("reject pending permission");
+        let response = pending.await.expect("permission task joins");
+
+        match response.outcome {
+            RequestPermissionOutcome::Selected(selected) => {
+                assert_eq!(selected.option_id.to_string(), "reject-once");
+            }
+            other => panic!("expected selected reject option, got {other:?}"),
+        }
+        assert_eq!(permissions_for_decision.pending_count(), 0);
+
+        let events = drain_events(&mut rx, 2);
+        assert!(!permission_outcome_granted(&events));
+    }
+
+    #[tokio::test]
+    async fn explicit_approval_selects_only_requested_allow_option() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let permissions = PendingPermissions::new(Duration::from_secs(1));
+        let permissions_for_decision = permissions.clone();
+
+        let pending = tokio::spawn(async move {
+            handle_permission_request(
+                "session-1",
+                &tx,
+                &permissions,
+                permission_request("tool-allow"),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+
+        let wrong_request = permissions_for_decision
+            .approve("other-tool", "allow-once")
+            .expect_err("approval must be scoped to a pending request");
+        assert!(wrong_request.contains("not pending"));
+
+        let reject_as_approval = permissions_for_decision
+            .approve("tool-allow", "reject-once")
+            .expect_err("approval must not select a reject option");
+        assert!(reject_as_approval.contains("allow option"));
+
+        permissions_for_decision
+            .approve("tool-allow", "allow-once")
+            .expect("approve requested permission");
+        let response = pending.await.expect("permission task joins");
+
+        match response.outcome {
+            RequestPermissionOutcome::Selected(selected) => {
+                assert_eq!(selected.option_id.to_string(), "allow-once");
+            }
+            other => panic!("expected selected allow option, got {other:?}"),
+        }
+        assert_eq!(permissions_for_decision.pending_count(), 0);
+
+        let events = drain_events(&mut rx, 2);
+        assert!(permission_outcome_granted(&events));
+    }
+
+    #[tokio::test]
+    async fn cancellation_does_not_allow_pending_permission() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let permissions = PendingPermissions::new(Duration::from_secs(1));
+        let permissions_for_cancel = permissions.clone();
+
+        let pending = tokio::spawn(async move {
+            handle_permission_request(
+                "session-1",
+                &tx,
+                &permissions,
+                permission_request("tool-cancel"),
+            )
+            .await
+        });
+        tokio::task::yield_now().await;
+
+        permissions_for_cancel.cancel_session("provider-session-1");
+        let response = pending.await.expect("permission task joins");
+
+        assert!(matches!(
+            response.outcome,
+            RequestPermissionOutcome::Cancelled
+        ));
+        assert_eq!(permissions_for_cancel.pending_count(), 0);
+
+        let events = drain_events(&mut rx, 2);
+        assert!(!permission_outcome_granted(&events));
     }
 
     #[test]
@@ -1704,7 +2179,10 @@ mod tests {
             ("LAB_TOKEN".to_string(), "lab-secret".to_string()),
             ("RADARR_API_KEY".to_string(), "radarr-secret".to_string()),
             ("OPENAI_API_KEY".to_string(), "openai-secret".to_string()),
-            ("AWS_SECRET_ACCESS_KEY".to_string(), "aws-secret".to_string()),
+            (
+                "AWS_SECRET_ACCESS_KEY".to_string(),
+                "aws-secret".to_string(),
+            ),
             ("GITHUB_TOKEN".to_string(), "github-secret".to_string()),
             ("CUSTOM_PASSWORD".to_string(), "password-secret".to_string()),
             ("UNRELATED".to_string(), "value".to_string()),
@@ -1728,7 +2206,10 @@ mod tests {
             "failed OPENAI_API_KEY=[redacted] --token=[redacted] mode=debug"
         );
 
-        let long_secret = format!("RADARR_API_KEY=secret {}", "x".repeat(MAX_PROVIDER_STDERR_CHARS + 100));
+        let long_secret = format!(
+            "RADARR_API_KEY=secret {}",
+            "x".repeat(MAX_PROVIDER_STDERR_CHARS + 100)
+        );
         let (line, truncated) = redact_provider_stderr_line(&long_secret);
         assert!(truncated);
         assert_eq!(line.chars().count(), MAX_PROVIDER_STDERR_CHARS);
@@ -1782,6 +2263,7 @@ pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::UnboundedReceiver<AcpEve
     let handle = RuntimeHandle {
         provider_session_id: "fake-provider-session".to_string(),
         command_tx,
+        permissions: Arc::new(PendingPermissions::new(DEFAULT_PERMISSION_TIMEOUT)),
     };
     (handle, event_rx)
 }

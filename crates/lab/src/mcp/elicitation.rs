@@ -29,6 +29,17 @@ pub(crate) async fn elicit_confirm(
     action: &str,
 ) -> ElicitResult {
     if context.peer.supported_elicitation_modes().is_empty() {
+        tracing::warn!(
+            surface = "mcp",
+            service,
+            action,
+            actor = "mcp_client",
+            outcome = "not_supported",
+            entity_kind = "destructive_action",
+            entity_id = %format!("{service}.{action}"),
+            kind = "confirmation_required",
+            "destructive action elicitation not supported",
+        );
         return ElicitResult::NotSupported;
     }
 
@@ -39,6 +50,17 @@ pub(crate) async fn elicit_confirm(
         )
         .build()
     else {
+        tracing::warn!(
+            surface = "mcp",
+            service,
+            action,
+            actor = "lab",
+            outcome = "schema_failed",
+            entity_kind = "destructive_action",
+            entity_id = %format!("{service}.{action}"),
+            kind = "internal_error",
+            "destructive action elicitation schema build failed",
+        );
         return ElicitResult::NotSupported;
     };
 
@@ -61,14 +83,74 @@ pub(crate) async fn elicit_confirm(
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
                 if confirmed {
+                    tracing::info!(
+                        surface = "mcp",
+                        service,
+                        action,
+                        actor = "mcp_client",
+                        outcome = "confirmed",
+                        entity_kind = "destructive_action",
+                        entity_id = %format!("{service}.{action}"),
+                        "destructive action elicitation confirmed",
+                    );
                     ElicitResult::Confirmed
                 } else {
+                    tracing::warn!(
+                        surface = "mcp",
+                        service,
+                        action,
+                        actor = "mcp_client",
+                        outcome = "declined",
+                        entity_kind = "destructive_action",
+                        entity_id = %format!("{service}.{action}"),
+                        kind = "confirmation_required",
+                        "destructive action elicitation accepted without confirmation",
+                    );
                     ElicitResult::Declined
                 }
             }
-            ElicitationAction::Decline => ElicitResult::Declined,
-            ElicitationAction::Cancel => ElicitResult::Cancelled,
+            ElicitationAction::Decline => {
+                tracing::warn!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    actor = "mcp_client",
+                    outcome = "declined",
+                    entity_kind = "destructive_action",
+                    entity_id = %format!("{service}.{action}"),
+                    kind = "confirmation_required",
+                    "destructive action elicitation declined",
+                );
+                ElicitResult::Declined
+            }
+            ElicitationAction::Cancel => {
+                tracing::warn!(
+                    surface = "mcp",
+                    service,
+                    action,
+                    actor = "mcp_client",
+                    outcome = "cancelled",
+                    entity_kind = "destructive_action",
+                    entity_id = %format!("{service}.{action}"),
+                    kind = "confirmation_required",
+                    "destructive action elicitation cancelled",
+                );
+                ElicitResult::Cancelled
+            }
         },
-        Err(_) => ElicitResult::Failed,
+        Err(_) => {
+            tracing::warn!(
+                surface = "mcp",
+                service,
+                action,
+                actor = "mcp_client",
+                outcome = "failed",
+                entity_kind = "destructive_action",
+                entity_id = %format!("{service}.{action}"),
+                kind = "confirmation_required",
+                "destructive action elicitation request failed",
+            );
+            ElicitResult::Failed
+        }
     }
 }

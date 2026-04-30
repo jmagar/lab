@@ -19,14 +19,33 @@ pub struct PeerNotifier {
 
 impl PeerNotifier {
     pub async fn run(self, mut rx: mpsc::UnboundedReceiver<GatewayCatalogDiff>) {
+        tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "notifier.start",
+            subsystem = "mcp_server",
+            phase = "peer_notifier.start",
+            "starting MCP peer catalog-change notifier"
+        );
         while let Some(diff) = rx.recv().await {
             self.notify_catalog_changes(&diff).await;
         }
+        tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "notifier.stop",
+            subsystem = "mcp_server",
+            phase = "peer_notifier.stop",
+            "MCP peer catalog-change notifier stopped"
+        );
     }
 
     async fn notify_catalog_changes(&self, diff: &GatewayCatalogDiff) {
         let peers = self.peers.read().await.clone();
         tracing::info!(
+            surface = "mcp",
+            service = "peers",
+            action = "catalog.notify",
             subsystem = "mcp_server",
             phase = "catalog.notify",
             peer_count = peers.len(),
@@ -43,6 +62,9 @@ impl PeerNotifier {
                 ok = peer.notify_tool_list_changed().await.is_ok();
                 if !ok {
                     tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
                         peer_index = index,
                         phase = "tools",
                         tools_changed = diff.tools_changed,
@@ -56,6 +78,9 @@ impl PeerNotifier {
                 ok = peer.notify_resource_list_changed().await.is_ok();
                 if !ok {
                     tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
                         peer_index = index,
                         phase = "resources",
                         tools_changed = diff.tools_changed,
@@ -69,6 +94,9 @@ impl PeerNotifier {
                 ok = peer.notify_prompt_list_changed().await.is_ok();
                 if !ok {
                     tracing::warn!(
+                        surface = "mcp",
+                        service = "peers",
+                        action = "peer.disconnect",
                         peer_index = index,
                         phase = "prompts",
                         tools_changed = diff.tools_changed,
@@ -91,14 +119,18 @@ impl PeerNotifier {
         let total = guard.len();
         if pruned > 0 {
             tracing::info!(
-                surface = "mcp", service = "peers", action = "peer.gc",
+                surface = "mcp",
+                service = "peers",
+                action = "peer.gc",
                 pruned_count = pruned,
                 active_count = total,
                 "pruned stale MCP peer sessions after catalog notify",
             );
         } else {
             tracing::debug!(
-                surface = "mcp", service = "peers", action = "peer.gc",
+                surface = "mcp",
+                service = "peers",
+                action = "peer.gc",
                 active_count = total,
                 "catalog notify complete — all peers alive",
             );

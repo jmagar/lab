@@ -52,6 +52,10 @@ impl HostLockRegistry {
                     tracing::debug!(
                         surface = "dispatch", service = "deploy.lock", action = "lock.acquired",
                         host = %host,
+                        actor = "operator",
+                        outcome = "success",
+                        entity_kind = "deploy_host",
+                        entity_id = %host,
                         timeout_ms = timeout.as_millis(),
                         wait_ms = wait_started.elapsed().as_millis(),
                         "deploy host lock acquired",
@@ -62,6 +66,10 @@ impl HostLockRegistry {
                     tracing::warn!(
                         surface = "dispatch", service = "deploy.lock", action = "lock.conflict",
                         host = %host,
+                        actor = "operator",
+                        outcome = "timeout",
+                        entity_kind = "deploy_host",
+                        entity_id = %host,
                         timeout_ms = timeout.as_millis(),
                         wait_ms = wait_started.elapsed().as_millis(),
                         kind = "conflict",
