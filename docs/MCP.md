@@ -63,6 +63,15 @@ Dynamic client registration is intentionally restricted in this first launch:
 - `/revoke` is not implemented in this batch
 - refresh-token rotation is not implemented in this batch
 
+## HTTP Route Posture
+
+When HTTP serving is enabled, the route classes have separate auth contracts:
+
+- `/mcp` is the MCP streamable HTTP endpoint. If bearer or OAuth auth is configured, it requires token auth and does not accept browser sessions.
+- `/v1/*` is the product API. If bearer or OAuth auth is configured, it is protected even when browser UI auth is disabled for static assets.
+- Static web assets serve the Labby browser app shell. Disabling browser UI auth only changes browser-session behavior for the web UI; it is not a switch that disables `/v1` or `/mcp` auth.
+- `/dev/*` routes are development preview routes. They are authenticated whenever bearer or OAuth auth is configured. They are only open when the server is intentionally running with no auth configured, and that posture is local/dev only, not production.
+
 ## One Tool Per Service
 
 Each service exposes exactly one MCP tool named after the service.

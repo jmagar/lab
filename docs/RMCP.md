@@ -91,6 +91,13 @@ HTTP MCP-specific rules:
 - preserve RMCP session semantics
 - respect RMCP host-header protections unless there is an explicit deployment override
 
+Axum route-boundary rules:
+
+- `/mcp` is protected by bearer/OAuth token auth when server auth is configured; it does not accept browser sessions.
+- `/v1/*` is protected by bearer/OAuth token auth and, where allowed by the API router, browser sessions. Static web UI auth-disable settings must not bypass `/v1` auth when server auth exists.
+- Static web asset serving is an SPA fallback, not an API auth policy. Browser UI auth-disable mode only affects browser-session endpoints and UI behavior.
+- `/dev/*` routes are development preview routes mounted before the SPA fallback. They share the same auth middleware whenever server auth is configured; no-auth `/dev/*` is only for explicit local development with no bearer/OAuth auth configured.
+
 ## Capability Contract
 
 `lab` intends to expose these RMCP capability families:
