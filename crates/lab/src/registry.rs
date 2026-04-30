@@ -665,6 +665,7 @@ mod tests {
             s.insert("logs");
             s.insert(lab_apis::marketplace::META.name); // always-on
             s.insert(lab_apis::doctor::META.name); // always-on
+            s.insert(lab_apis::stash::META.name); // always-on
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);
             #[cfg(feature = "sonarr")]

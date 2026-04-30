@@ -18,6 +18,7 @@ mod log_fmt;
 mod mcp;
 mod node;
 mod oauth;
+mod observability;
 mod output;
 mod process;
 mod registry;
