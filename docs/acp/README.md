@@ -133,9 +133,93 @@ already started speaking.
 
 ## Status
 
-Today ACP exists as a product-local browser/API surface, but not yet as a fully
-promoted first-class service across the shared `dispatch`, CLI, MCP, and
-registry layers.
+ACP is registered as a first-class always-on service. The pieces in place:
 
-The design in [design.md](./design.md) is the source of truth for that
-promotion.
+- `lab-apis::acp` — capability module with `META`, `AcpEvent`, `AcpSessionState`,
+  `AcpSessionSummary`, `AcpPersistence` trait, and bounded `SessionHandle`
+  abstraction.
+- `crates/lab/src/dispatch/acp/` — shared dispatch layer (`catalog.rs`,
+  `client.rs`, `params.rs`, `dispatch.rs`, `persistence.rs` SQLite impl,
+  `page_context.rs` sanitizer).
+- `crates/lab/src/acp/` — runtime, registry, providers, persistence (legacy
+  JSON file fallback).
+- `crates/lab/src/api/services/acp.rs` — HTTP surface, both `POST /v1/acp`
+  shared-action route and the REST-shaped browser compatibility routes for SSE.
+- Registration in `crates/lab/src/registry.rs` so the shared catalog and MCP
+  envelope discover ACP automatically.
+
+Phase 2 work that is still pending:
+
+- Typed CLI subcommands (`lab acp ...`). Today the catalog is reachable from
+  HTTP and via the shared dispatch path, but there is no clap-typed CLI shim.
+- Browser-facing UI contract refinements tracked in [design.md](./design.md).
+
+## Security and runtime posture
+
+This section reflects landed protections from the review remediation epic and
+the remaining gaps. It does not claim work that has not shipped.
+
+Landed:
+
+- Provider filesystem capabilities are disabled at the `ClientCapabilities`
+  level until a contained workspace policy and permission flow exist —
+  provider-side `fs.read_text_file` and `fs.write_text_file` are off
+  (`runtime.rs::lab_client_capabilities`).
+- Permission decisions are explicit: there is no auto-approval path. Each
+  permission request emits an event and waits for an authenticated decision
+  bounded by `LAB_ACP_PERMISSION_TIMEOUT_MS` (default 60 s).
+- HTTP authentication propagates `AuthContext.sub` to the registry; sessions
+  are bound to the creating principal and subscribe/prompt/cancel/close
+  enforce the binding. Anonymous principals are rejected at the API
+  boundary.
+- Browser SSE attaches a `subscribe_ticket` per stream rather than relying on
+  cookie auth alone.
+- ACP Registry installs validate `agent_id` before any path is constructed,
+  blocking traversal and shell metacharacter injection in install dirs.
+- Provider subprocesses spawn with `env_clear()` and a fixed allowlist
+  (`PATH`, `HOME`, locale vars, terminal vars, Windows `SystemRoot`). Per-
+  provider entries can extend this allowlist explicitly via the structured
+  `env` field on `AcpProviderEntry`.
+- Provider commands and arguments are stored as a structured
+  `command + args + cwd + env` shape in `acp-providers.json`. Quoted args
+  and paths-with-spaces round-trip verbatim. Legacy entries without an
+  `args` key fall back to whitespace-splitting `command` (one-time read
+  fidelity gap; re-installing migrates the entry).
+- Provider stderr is line-redacted and length-capped before being forwarded
+  on the SSE event stream (`MAX_PROVIDER_STDERR_CHARS`, redaction via
+  `dispatch::redact`).
+- Per-session command and prompt queues are bounded
+  (`SESSION_COMMAND_QUEUE_CAPACITY`). The per-session AcpEvent channel
+  feeding the registry hub is bounded at `ACP_EVENT_CHANNEL_CAPACITY` (1024)
+  and back-pressures to the provider's stdio reader on persistence stalls
+  rather than growing memory unboundedly.
+- HMAC-signed `permission_outcome` payloads detect tampering of persisted
+  decisions. The fallback ephemeral key path emits truthful metadata about
+  its persistence model so operators do not assume cross-restart guarantees.
+- SSE backfill is capped at the SQL layer
+  (`load_events_since_capped(.., BACKFILL_CAP=10_000)`), preserving "last N
+  events" semantics without materialising the full event range in memory.
+- Page-context sanitization is predicate-based with an explicit deny-list
+  for prompt-injection terms; the allowed character set is structural
+  (`is_safe_page_context_char`) rather than a hand-spelled `&[char]`. The
+  policy is documented in the source.
+- The provider prompt idle timeout
+  (`LAB_ACP_PROMPT_IDLE_TIMEOUT_MS`, default 5 s) and its observable firing
+  behavior are documented above.
+
+Remaining gaps tracked but not closed in this remediation pass:
+
+- The legacy `Bridge*` compatibility projection types
+  (`crates/lab/src/acp/types.rs`) are still consumed by the legacy JSON-file
+  persistence and mirrored by the frontend. Removing them is a coordinated
+  Rust + frontend wire-format change deferred until the legacy
+  `JsonFileAcpPersistence` is retired.
+- Provider sandboxing beyond the disabled-capabilities posture is out of
+  scope here. Workspace jails and permission-flow-driven file access remain
+  future work tracked separately.
+- Typed `lab acp ...` CLI subcommands are not yet shipped (Phase 2).
+- The on-disk `acp-providers.json` format includes structured `args`, `cwd`,
+  and `env` fields that the install paths populate, but pre-existing
+  installations written before this format change still serialize through
+  the legacy fallback. Re-install migrates one entry at a time on demand;
+  there is no batch migration script.

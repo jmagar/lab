@@ -66,26 +66,50 @@ this spec is amended:
 
 ## Problem statement
 
-ACP currently exists as a product-local browser/API surface rather than a
-first-class service integration.
+ACP began as a product-local browser/API surface rather than a first-class
+service integration. The first-class promotion has now landed; what remains
+is the Phase 2 surface work and the secondary cleanups documented at the
+bottom of this section.
 
 Current state:
 
 - browser route: `apps/gateway-admin/app/(admin)/chat/page.tsx`
 - browser shell: `apps/gateway-admin/components/chat/chat-shell.tsx`
 - API surface: `crates/lab/src/api/services/acp.rs`
+- shared dispatch: `crates/lab/src/dispatch/acp/` (`catalog.rs`, `client.rs`,
+  `params.rs`, `dispatch.rs`, SQLite `persistence.rs`, `page_context.rs`)
+- capability module: `crates/lab-apis/src/acp/` (`session.rs` bounded
+  `SessionHandle`, `persistence.rs` `AcpPersistence` trait, `types.rs`
+  `AcpEvent`/`AcpSessionState`/`AcpSessionSummary`)
 - runtime/session state: `crates/lab/src/acp/registry.rs`
 - provider runtime: `crates/lab/src/acp/runtime.rs`
+- registry registration: `crates/lab/src/registry.rs::build_default_registry`
+  registers ACP as an always-on service (no feature flag)
 
-What is missing:
+What is now landed (was previously listed missing):
 
-- no `lab-apis::acp` capability module
-- no shared `dispatch/acp/` service entry
-- no registry registration as a first-class service
-- no CLI surface
-- no MCP one-tool-per-service surface
-- no explicit service metadata/registration path aligned with the rest of the
-  platform
+- `lab-apis::acp` capability module
+- shared `dispatch/acp/` service entry following the standard four-file
+  layout
+- registry registration as a first-class always-on service
+- HTTP `POST /v1/acp` shared-action surface alongside browser-compat REST
+  routes for SSE
+- MCP one-tool-per-service surface via the catalog-driven `lab.acp` tool
+- explicit `lab_apis::acp::META` service metadata aligned with the rest of
+  the platform
+
+What is still missing or in progress:
+
+- typed `lab acp ...` CLI subcommands (Phase 2; the shared dispatch path is
+  reachable, but there is no clap-typed CLI shim)
+- removal of legacy `Bridge*` compatibility/projection types — kept for the
+  on-disk JSON event log written by `JsonFileAcpPersistence`; coordinated
+  Rust + frontend wire-format change deferred
+- batch migration of pre-structured `acp-providers.json` entries; today
+  re-installing a provider migrates one entry at a time
+- provider workspace jail and contained file-access policy — provider FS
+  capabilities are off until a real jail exists, but the jail itself is
+  future work
 
 At the same time, `gateway` already owns upstream MCP management:
 
