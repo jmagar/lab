@@ -44,3 +44,28 @@ export function createAcpFetcher() {
     })
   }
 }
+
+export async function requestAcpSubscribeTicket(
+  fetchAcp: ReturnType<typeof createAcpFetcher>,
+  sessionId: string,
+  signal?: AbortSignal,
+) {
+  const response = await fetchAcp(
+    `/sessions/${encodeURIComponent(sessionId)}/subscribe_ticket`,
+    {
+      method: 'POST',
+      signal,
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(`ACP subscribe ticket request failed with ${response.status}`)
+  }
+
+  const body = (await response.json()) as { ticket?: unknown }
+  if (typeof body.ticket !== 'string' || body.ticket.length === 0) {
+    throw new Error('ACP subscribe ticket response missing ticket')
+  }
+
+  return body.ticket
+}

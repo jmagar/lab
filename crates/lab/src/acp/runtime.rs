@@ -7,10 +7,10 @@ use agent_client_protocol::schema::{
     CancelNotification, ClientCapabilities, ConfigOptionUpdate, ContentBlock, ContentChunk,
     CreateTerminalRequest, CurrentModeUpdate, FileSystemCapabilities, Implementation,
     InitializeRequest, KillTerminalRequest, PermissionOptionKind, ProtocolVersion,
-    ReadTextFileRequest, ReadTextFileResponse, ReleaseTerminalRequest, RequestPermissionOutcome,
-    RequestPermissionRequest, RequestPermissionResponse, SelectedPermissionOutcome,
-    SessionInfoUpdate, SessionNotification, SessionUpdate, StopReason, TerminalOutputRequest,
-    WaitForTerminalExitRequest, WriteTextFileRequest, WriteTextFileResponse,
+    ReadTextFileRequest, ReleaseTerminalRequest, RequestPermissionOutcome,
+    RequestPermissionRequest, RequestPermissionResponse, SessionInfoUpdate, SessionNotification,
+    SessionUpdate, StopReason, TerminalOutputRequest, WaitForTerminalExitRequest,
+    WriteTextFileRequest,
 };
 use agent_client_protocol::{
     Agent, ByteStreams, Client, ConnectionTo, Dispatch, JsonRpcMessage, on_receive_request,
@@ -29,12 +29,14 @@ use super::types::{
     AcpEvent, AcpPermissionOption, AcpProviderHealth, StartSessionInput, StartSessionResult,
 };
 use crate::acp::providers::{AcpProviderEntry, read_providers};
+use crate::dispatch::redact::redact_stdio_value;
 
 fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Error {
     agent_client_protocol::Error::internal_error().data(message.into())
 }
 
 const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
+const MAX_PROVIDER_STDERR_CHARS: usize = 2_048;
 
 fn acp_prompt_idle_timeout() -> Duration {
     std::env::var("LAB_ACP_PROMPT_IDLE_TIMEOUT_MS")
@@ -43,6 +45,19 @@ fn acp_prompt_idle_timeout() -> Duration {
         .map(Duration::from_millis)
         .filter(|duration| !duration.is_zero())
         .unwrap_or(DEFAULT_PROMPT_IDLE_TIMEOUT)
+}
+
+fn lab_client_capabilities() -> ClientCapabilities {
+    // Lab relays display metadata, but it does not currently provide a safe
+    // provider filesystem jail. Keep provider-side fs requests disabled until
+    // a contained workspace policy and permission flow exist.
+    let mut meta = serde_json::Map::new();
+    meta.insert("terminal_output".to_string(), json!(true));
+    ClientCapabilities::new()
+        .fs(FileSystemCapabilities::new()
+            .read_text_file(false)
+            .write_text_file(false))
+        .meta(meta)
 }
 
 #[derive(Clone)]
@@ -371,6 +386,58 @@ fn resolve_provider_launch(provider: Option<&str>) -> Result<ProviderLaunch, Str
         .ok_or_else(|| format!("ACP provider `{provider_id}` is not installed"))
 }
 
+fn provider_subprocess_env<I>(vars: I) -> Vec<(String, String)>
+where
+    I: IntoIterator<Item = (String, String)>,
+{
+    let mut env: Vec<(String, String)> = vars
+        .into_iter()
+        .filter(|(key, _)| is_provider_env_allowed(key))
+        .collect();
+    env.sort_by(|left, right| left.0.cmp(&right.0));
+    env.dedup_by(|left, right| left.0 == right.0);
+    env
+}
+
+fn is_provider_env_allowed(key: &str) -> bool {
+    matches!(
+        key,
+        "PATH"
+            | "HOME"
+            | "TMPDIR"
+            | "TEMP"
+            | "TMP"
+            | "LANG"
+            | "LC_ALL"
+            | "TERM"
+            | "USER"
+            | "USERNAME"
+            | "SHELL"
+            | "SystemRoot"
+            | "SYSTEMROOT"
+            | "ComSpec"
+            | "COMSPEC"
+            | "PATHEXT"
+    )
+}
+
+fn redact_provider_stderr_line(line: &str) -> (String, bool) {
+    let redacted = line
+        .split_whitespace()
+        .map(redact_stdio_value)
+        .collect::<Vec<_>>()
+        .join(" ");
+    if redacted.chars().count() <= MAX_PROVIDER_STDERR_CHARS {
+        return (redacted, false);
+    }
+
+    let truncated = redacted
+        .chars()
+        .take(MAX_PROVIDER_STDERR_CHARS)
+        .collect::<String>();
+    (truncated, true)
+}
+
 async fn run_codex_session(
     session_id: String,
     input: StartSessionInput,
@@ -384,6 +451,8 @@ async fn run_codex_session(
     command
         .args(&launch.args)
         .current_dir(Path::new(&input.cwd))
+        .env_clear()
+        .envs(provider_subprocess_env(std::env::vars()))
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -422,13 +491,15 @@ async fn run_codex_session(
     tokio::spawn(async move {
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
+            let (text, truncated) = redact_provider_stderr_line(&line);
             drop(stderr_tx.send(provider_info_event(
                 stderr_session.clone(),
                 &stderr_provider,
                 json!({
                     "type": "stderr",
                     "title": format!("{stderr_provider} stderr"),
-                    "text": line,
+                    "text": text,
+                    "truncated": truncated,
                 }),
             )));
         }
@@ -446,16 +517,6 @@ async fn run_codex_session(
                 let event_tx = event_tx.clone();
                 async move |args: RequestPermissionRequest, responder, _cx| {
                     let title = args.tool_call.fields.title.clone();
-                    let selected = args
-                        .options
-                        .iter()
-                        .find(|option| option.kind == PermissionOptionKind::AllowOnce)
-                        .or_else(|| {
-                            args.options
-                                .iter()
-                                .find(|option| option.kind == PermissionOptionKind::AllowAlways)
-                        })
-                        .or_else(|| args.options.first());
 
                     drop(event_tx.send(AcpEvent::PermissionRequest {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -490,54 +551,25 @@ async fn run_codex_session(
                         session_id: session_id.clone(),
                         seq: 0,
                         request_id: args.tool_call.tool_call_id.to_string(),
-                        granted: selected.is_some_and(|option| {
-                            matches!(
-                                option.kind,
-                                PermissionOptionKind::AllowOnce | PermissionOptionKind::AllowAlways
-                            )
-                        }),
+                        granted: false,
                     }));
 
-                    responder.respond(RequestPermissionResponse::new(match selected {
-                        Some(option) => RequestPermissionOutcome::Selected(
-                            SelectedPermissionOutcome::new(option.option_id.clone()),
-                        ),
-                        None => RequestPermissionOutcome::Cancelled,
-                    }))
+                    responder.respond(RequestPermissionResponse::new(
+                        RequestPermissionOutcome::Cancelled,
+                    ))
                 }
             },
             on_receive_request!(),
         )
         .on_receive_request(
-            async move |args: ReadTextFileRequest, responder, _cx| {
-                let content = tokio::fs::read_to_string(&args.path)
-                    .await
-                    .map_err(agent_client_protocol::Error::into_internal_error)?;
-                let lines: Vec<&str> = content.lines().collect();
-                let start = args.line.unwrap_or(1).saturating_sub(1) as usize;
-                let end = args
-                    .limit
-                    .map(|limit| start.saturating_add(limit as usize))
-                    .unwrap_or(lines.len());
-                let selected = lines
-                    .get(start..std::cmp::min(end, lines.len()))
-                    .unwrap_or(&[])
-                    .join("\n");
-                responder.respond(ReadTextFileResponse::new(selected))
+            async move |_args: ReadTextFileRequest, responder, _cx| {
+                responder.respond_with_error(agent_client_protocol::Error::method_not_found())
             },
             on_receive_request!(),
         )
         .on_receive_request(
-            async move |args: WriteTextFileRequest, responder, _cx| {
-                if let Some(parent) = args.path.parent() {
-                    tokio::fs::create_dir_all(parent)
-                        .await
-                        .map_err(agent_client_protocol::Error::into_internal_error)?;
-                }
-                tokio::fs::write(&args.path, args.content)
-                    .await
-                    .map_err(agent_client_protocol::Error::into_internal_error)?;
-                responder.respond(WriteTextFileResponse::new())
+            async move |_args: WriteTextFileRequest, responder, _cx| {
+                responder.respond_with_error(agent_client_protocol::Error::method_not_found())
             },
             on_receive_request!(),
         )
@@ -600,18 +632,7 @@ async fn run_codex_session(
                                     // PHASE 1: do NOT call .terminal(true) — server-hosted terminal
                                     // execution lives in lab-lffl. Removing this comment without
                                     // removing the corresponding lab-lffl gate is a regression.
-                                    let mut meta = serde_json::Map::new();
-                                    meta.insert(
-                                        "terminal_output".to_string(),
-                                        json!(true),
-                                    );
-                                    ClientCapabilities::new()
-                                        .fs(
-                                            FileSystemCapabilities::new()
-                                                .read_text_file(true)
-                                                .write_text_file(true),
-                                        )
-                                        .meta(meta)
+                                    lab_client_capabilities()
                                 }),
                         )
                         .block_task()
@@ -838,15 +859,21 @@ async fn terminate_codex_child(
     if let Some(pid) = child_process_group.and_then(|value| i32::try_from(value).ok()) {
         let pgid = Pid::from_raw(pid);
         tracing::info!(
-            surface = "acp", service = "runtime", action = "subprocess.sigterm",
-            pgid = pid, "Sending SIGTERM to ACP subprocess process group",
+            surface = "acp",
+            service = "runtime",
+            action = "subprocess.sigterm",
+            pgid = pid,
+            "Sending SIGTERM to ACP subprocess process group",
         );
         let _ = killpg(pgid, Signal::SIGTERM);
         tokio::time::sleep(Duration::from_millis(250)).await;
         if matches!(child.try_wait(), Ok(None)) {
             tracing::warn!(
-                surface = "acp", service = "runtime", action = "subprocess.sigkill",
-                pgid = pid, "ACP subprocess did not exit after SIGTERM — sending SIGKILL",
+                surface = "acp",
+                service = "runtime",
+                action = "subprocess.sigkill",
+                pgid = pid,
+                "ACP subprocess did not exit after SIGTERM — sending SIGKILL",
             );
             let _ = killpg(pgid, Signal::SIGKILL);
         }
@@ -863,7 +890,9 @@ async fn terminate_codex_child(
     match child.kill().await {
         Ok(()) => {
             tracing::info!(
-                surface = "acp", service = "runtime", action = "subprocess.killed",
+                surface = "acp",
+                service = "runtime",
+                action = "subprocess.killed",
                 "ACP subprocess killed (non-unix path)",
             );
         }
@@ -1586,14 +1615,7 @@ mod tests {
     fn initialize_request_advertises_terminal_output_metadata_only() {
         use agent_client_protocol::schema::InitializeRequest;
 
-        // Build the same capabilities inline as the runtime does.
-        let mut meta = serde_json::Map::new();
-        meta.insert("terminal_output".to_string(), json!(true));
-        let capabilities = ClientCapabilities::new()
-            .fs(FileSystemCapabilities::new()
-                .read_text_file(true)
-                .write_text_file(true))
-            .meta(meta);
+        let capabilities = lab_client_capabilities();
 
         let value = serde_json::to_value(&capabilities).unwrap();
 
@@ -1602,6 +1624,17 @@ mod tests {
             value.get("terminal"),
             Some(&serde_json::json!(false)),
             "terminal must be false in Phase 1 — server-hosted execution lives in lab-lffl"
+        );
+
+        assert_eq!(
+            value.get("fs").and_then(|fs| fs.get("readTextFile")),
+            Some(&serde_json::json!(false)),
+            "provider filesystem reads must stay disabled until a workspace jail lands"
+        );
+        assert_eq!(
+            value.get("fs").and_then(|fs| fs.get("writeTextFile")),
+            Some(&serde_json::json!(false)),
+            "provider filesystem writes must stay disabled until a workspace jail lands"
         );
 
         // _meta.terminal_output must be true (Phase 1: display metadata relay).
@@ -1629,6 +1662,78 @@ mod tests {
             Some(&serde_json::json!(false)),
             "terminal must be false in InitializeRequest"
         );
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("fs"))
+                .and_then(|fs| fs.get("readTextFile")),
+            Some(&serde_json::json!(false)),
+            "InitializeRequest must not advertise provider filesystem reads"
+        );
+        assert_eq!(
+            req_value
+                .get("clientCapabilities")
+                .and_then(|c| c.get("fs"))
+                .and_then(|fs| fs.get("writeTextFile")),
+            Some(&serde_json::json!(false)),
+            "InitializeRequest must not advertise provider filesystem writes"
+        );
+    }
+
+    #[test]
+    fn permission_response_defaults_to_cancelled_until_user_decision_path_exists() {
+        let response = RequestPermissionResponse::new(RequestPermissionOutcome::Cancelled);
+        let value = serde_json::to_value(&response).expect("permission response serializes");
+
+        assert!(
+            !value.to_string().contains("allow"),
+            "default permission response must not synthesize an allow option: {value}"
+        );
+        assert!(
+            value.to_string().contains("cancelled"),
+            "default permission response should fail closed as cancelled: {value}"
+        );
+    }
+
+    #[test]
+    fn provider_subprocess_env_only_keeps_explicit_allowlist() {
+        let env = provider_subprocess_env(vec![
+            ("PATH".to_string(), "/usr/bin".to_string()),
+            ("HOME".to_string(), "/home/test".to_string()),
+            ("LANG".to_string(), "C.UTF-8".to_string()),
+            ("LAB_TOKEN".to_string(), "lab-secret".to_string()),
+            ("RADARR_API_KEY".to_string(), "radarr-secret".to_string()),
+            ("OPENAI_API_KEY".to_string(), "openai-secret".to_string()),
+            ("AWS_SECRET_ACCESS_KEY".to_string(), "aws-secret".to_string()),
+            ("GITHUB_TOKEN".to_string(), "github-secret".to_string()),
+            ("CUSTOM_PASSWORD".to_string(), "password-secret".to_string()),
+            ("UNRELATED".to_string(), "value".to_string()),
+        ]);
+
+        let keys: Vec<&str> = env.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, vec!["HOME", "LANG", "PATH"]);
+        assert!(
+            env.iter().all(|(_, value)| !value.contains("secret")),
+            "provider env must not include service credentials: {env:?}"
+        );
+    }
+
+    #[test]
+    fn redact_provider_stderr_line_masks_secrets_and_limits_length() {
+        let (line, truncated) =
+            redact_provider_stderr_line("failed OPENAI_API_KEY=abc123 --token=secret mode=debug");
+        assert!(!truncated);
+        assert_eq!(
+            line,
+            "failed OPENAI_API_KEY=[redacted] --token=[redacted] mode=debug"
+        );
+
+        let long_secret = format!("RADARR_API_KEY=secret {}", "x".repeat(MAX_PROVIDER_STDERR_CHARS + 100));
+        let (line, truncated) = redact_provider_stderr_line(&long_secret);
+        assert!(truncated);
+        assert_eq!(line.chars().count(), MAX_PROVIDER_STDERR_CHARS);
+        assert!(!line.contains("secret"));
+        assert!(line.starts_with("RADARR_API_KEY=[redacted] "));
     }
 
     // -----------------------------------------------------------------------
@@ -1663,7 +1768,6 @@ mod tests {
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
@@ -1681,4 +1785,3 @@ pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::UnboundedReceiver<AcpEve
     };
     (handle, event_rx)
 }
-

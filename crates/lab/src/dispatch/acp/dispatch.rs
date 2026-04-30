@@ -242,6 +242,7 @@ pub async fn dispatch_with_registry(
         "session.subscribe_ticket" => {
             let session_id = require_str(&params, "session_id")?;
             let principal = opt_str(&params, "principal").unwrap_or("");
+            registry.check_session_access(session_id, principal).await?;
             let ticket = issue_subscribe_ticket(session_id, principal)?;
             to_json(json!({
                 "ticket": ticket,

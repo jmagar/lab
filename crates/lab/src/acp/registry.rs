@@ -156,7 +156,7 @@ impl AcpSessionRegistry {
     }
 
     fn check_principal(session: &Session, principal: &str) -> Result<(), ToolError> {
-        if principal.is_empty() || session.principal.is_empty() {
+        if session.principal.is_empty() {
             return Ok(());
         }
         if session.principal != principal {
@@ -180,9 +180,7 @@ impl AcpSessionRegistry {
             let guard = self.sessions.read().await;
             guard
                 .values()
-                .filter(|s| {
-                    principal.is_empty() || s.principal.is_empty() || s.principal == principal
-                })
+                .filter(|s| s.principal.is_empty() || s.principal == principal)
                 .cloned()
                 .collect()
         };
@@ -193,6 +191,15 @@ impl AcpSessionRegistry {
         }
         summaries.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         summaries
+    }
+
+    pub async fn check_session_access(
+        &self,
+        session_id: &str,
+        principal: &str,
+    ) -> Result<(), ToolError> {
+        let session = self.get_session_arc(session_id).await?;
+        Self::check_principal(&session, principal)
     }
 
     pub async fn get_session(&self, session_id: &str) -> Option<AcpSessionSummary> {
@@ -212,7 +219,9 @@ impl AcpSessionRegistry {
         // Guard: refuse during shutdown.
         if self.shutting_down.load(Ordering::SeqCst) {
             tracing::warn!(
-                surface = "acp", service = "registry", action = "session.create",
+                surface = "acp",
+                service = "registry",
+                action = "session.create",
                 "ACP registry is shutting down — rejecting new session",
             );
             return Err(ToolError::Sdk {
@@ -228,8 +237,11 @@ impl AcpSessionRegistry {
         };
         if active_count >= MAX_CONCURRENT_SESSIONS {
             tracing::warn!(
-                surface = "acp", service = "registry", action = "session.create",
-                active_sessions = active_count, limit = MAX_CONCURRENT_SESSIONS,
+                surface = "acp",
+                service = "registry",
+                action = "session.create",
+                active_sessions = active_count,
+                limit = MAX_CONCURRENT_SESSIONS,
                 "ACP session limit reached — rejecting create_session",
             );
             return Err(ToolError::Sdk {
@@ -248,8 +260,11 @@ impl AcpSessionRegistry {
             recent.retain(|t| now.duration_since(*t).as_secs() < STORM_WINDOW_SECS);
             if recent.len() >= STORM_MAX_CREATIONS {
                 tracing::error!(
-                    surface = "acp", service = "registry", action = "session.create",
-                    creations_in_window = recent.len(), window_secs = STORM_WINDOW_SECS,
+                    surface = "acp",
+                    service = "registry",
+                    action = "session.create",
+                    creations_in_window = recent.len(),
+                    window_secs = STORM_WINDOW_SECS,
                     "ACP session creation storm detected — circuit breaker tripped",
                 );
                 return Err(ToolError::Sdk {
@@ -257,7 +272,8 @@ impl AcpSessionRegistry {
                     message: format!(
                         "Session creation storm: {} sessions in {}s window. \
                          Wait before creating more.",
-                        recent.len(), STORM_WINDOW_SECS,
+                        recent.len(),
+                        STORM_WINDOW_SECS,
                     ),
                 });
             }
@@ -299,7 +315,10 @@ impl AcpSessionRegistry {
                 session_id = %session_id, error = %message,
                 "ACP runtime launch failed",
             );
-            ToolError::Sdk { sdk_kind: "internal_error".to_string(), message }
+            ToolError::Sdk {
+                sdk_kind: "internal_error".to_string(),
+                message,
+            }
         })?;
 
         let provider = normalize_provider_id(input.provider.as_deref());
@@ -311,7 +330,11 @@ impl AcpSessionRegistry {
             state: AcpSessionState::Idle,
             created_at: created_at.clone(),
             updated_at: created_at,
-            principal: if principal.is_empty() { None } else { Some(principal.to_string()) },
+            principal: if principal.is_empty() {
+                None
+            } else {
+                Some(principal.to_string())
+            },
             provider_session_id: Some(started.provider_session_id),
             agent_name: Some(started.agent_name),
             agent_version: Some(started.agent_version),
@@ -399,11 +422,17 @@ impl AcpSessionRegistry {
         }
 
         let runtime = {
-            session.handle.lock().await
+            session
+                .handle
+                .lock()
+                .await
                 .clone()
                 .ok_or_else(|| internal("ACP runtime unavailable"))?
         };
-        runtime.prompt(prompt.to_string()).await.map_err(internal_message)?;
+        runtime
+            .prompt(prompt.to_string())
+            .await
+            .map_err(internal_message)?;
 
         if let Some(db) = self.persistence().await {
             let summary = session.summary.read().await;
@@ -431,7 +460,9 @@ impl AcpSessionRegistry {
                 });
             }
         }
-        { *session.state.write().await = AcpSessionState::Cancelled; }
+        {
+            *session.state.write().await = AcpSessionState::Cancelled;
+        }
         {
             let mut summary = session.summary.write().await;
             summary.state = AcpSessionState::Cancelled;
@@ -443,10 +474,15 @@ impl AcpSessionRegistry {
             "ACP session cancelled",
         );
         let runtime = { session.handle.lock().await.clone() };
-        if let Some(rt) = runtime { drop(rt.cancel().await); }
+        if let Some(rt) = runtime {
+            drop(rt.cancel().await);
+        }
 
         if let Some(db) = self.persistence().await {
-            if let Err(error) = db.update_session_state(session_id, AcpSessionState::Cancelled).await {
+            if let Err(error) = db
+                .update_session_state(session_id, AcpSessionState::Cancelled)
+                .await
+            {
                 tracing::warn!(
                     surface = "acp", service = "registry", action = "session.state",
                     session_id, error = %error, "failed to persist cancelled session state",
@@ -459,7 +495,9 @@ impl AcpSessionRegistry {
     pub async fn close_session(&self, session_id: &str, principal: &str) -> Result<(), ToolError> {
         let session = self.get_session_arc(session_id).await?;
         Self::check_principal(&session, principal)?;
-        { *session.state.write().await = AcpSessionState::Closed; }
+        {
+            *session.state.write().await = AcpSessionState::Closed;
+        }
         {
             let mut summary = session.summary.write().await;
             summary.state = AcpSessionState::Closed;
@@ -471,12 +509,19 @@ impl AcpSessionRegistry {
             "ACP session closed",
         );
         let runtime = { session.handle.lock().await.clone() };
-        if let Some(rt) = runtime { drop(rt.cancel().await); }
+        if let Some(rt) = runtime {
+            drop(rt.cancel().await);
+        }
         // Free the slot immediately.
-        { self.sessions.write().await.remove(session_id); }
+        {
+            self.sessions.write().await.remove(session_id);
+        }
 
         if let Some(db) = self.persistence().await {
-            if let Err(error) = db.update_session_state(session_id, AcpSessionState::Closed).await {
+            if let Err(error) = db
+                .update_session_state(session_id, AcpSessionState::Closed)
+                .await
+            {
                 tracing::warn!(
                     surface = "acp", service = "registry", action = "session.state",
                     session_id, error = %error, "failed to persist closed session state",
@@ -491,11 +536,12 @@ impl AcpSessionRegistry {
     #[allow(dead_code)]
     pub async fn shutdown_all_sessions(&self) {
         self.shutting_down.store(true, Ordering::SeqCst);
-        let sessions: Vec<Arc<Session>> = {
-            self.sessions.read().await.values().cloned().collect()
-        };
+        let sessions: Vec<Arc<Session>> =
+            { self.sessions.read().await.values().cloned().collect() };
         tracing::warn!(
-            surface = "acp", service = "registry", action = "shutdown",
+            surface = "acp",
+            service = "registry",
+            action = "shutdown",
             count = sessions.len(),
             "Initiating graceful shutdown — terminating all ACP sessions",
         );
@@ -512,20 +558,27 @@ impl AcpSessionRegistry {
         // Wait for event forwarders to remove sessions (up to 10 s).
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         while tokio::time::Instant::now() < deadline {
-            if self.sessions.read().await.is_empty() { break; }
+            if self.sessions.read().await.is_empty() {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
         let mut guard = self.sessions.write().await;
         let remaining = guard.len();
         if remaining > 0 {
             tracing::warn!(
-                surface = "acp", service = "registry", action = "shutdown",
-                count = remaining, "Force-removing sessions that did not exit within window",
+                surface = "acp",
+                service = "registry",
+                action = "shutdown",
+                count = remaining,
+                "Force-removing sessions that did not exit within window",
             );
             guard.clear();
         } else {
             tracing::info!(
-                surface = "acp", service = "registry", action = "shutdown",
+                surface = "acp",
+                service = "registry",
+                action = "shutdown",
                 "All ACP sessions terminated cleanly",
             );
         }
@@ -600,11 +653,19 @@ impl AcpSessionRegistry {
                         session_id, error = %error,
                         "failed to load backlog from SQLite, using in-memory transcript",
                     );
-                    load_in_memory_events(&session, since_seq).await.into_iter().map(Arc::new).collect()
+                    load_in_memory_events(&session, since_seq)
+                        .await
+                        .into_iter()
+                        .map(Arc::new)
+                        .collect()
                 }
             }
         } else {
-            load_in_memory_events(&session, since_seq).await.into_iter().map(Arc::new).collect()
+            load_in_memory_events(&session, since_seq)
+                .await
+                .into_iter()
+                .map(Arc::new)
+                .collect()
         };
 
         let last_backlog_seq = backlog.last().map(|e| e.seq()).unwrap_or(since_seq);
@@ -624,12 +685,12 @@ impl AcpSessionRegistry {
 
     fn spawn_health_reporter(sessions: Arc<RwLock<HashMap<String, Arc<Session>>>>) {
         tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_secs(HEALTH_REPORT_INTERVAL_SECS));
+            let mut interval =
+                tokio::time::interval(Duration::from_secs(HEALTH_REPORT_INTERVAL_SECS));
             loop {
                 interval.tick().await;
-                let snapshot: Vec<Arc<Session>> = {
-                    sessions.read().await.values().cloned().collect()
-                };
+                let snapshot: Vec<Arc<Session>> =
+                    { sessions.read().await.values().cloned().collect() };
                 let total = snapshot.len();
                 let (mut running, mut idle, mut waiting) = (0usize, 0usize, 0usize);
                 for s in &snapshot {
@@ -641,8 +702,12 @@ impl AcpSessionRegistry {
                     }
                 }
                 tracing::info!(
-                    surface = "acp", service = "registry", action = "health",
-                    total_sessions = total, running, idle,
+                    surface = "acp",
+                    service = "registry",
+                    action = "health",
+                    total_sessions = total,
+                    running,
+                    idle,
                     waiting_for_permission = waiting,
                     "ACP registry health report",
                 );
@@ -661,12 +726,14 @@ impl AcpSessionRegistry {
     }
 
     pub async fn reap_idle_sessions(&self) {
-        let sessions: Vec<Arc<Session>> = {
-            self.sessions.read().await.values().cloned().collect()
-        };
+        let sessions: Vec<Arc<Session>> =
+            { self.sessions.read().await.values().cloned().collect() };
         for session in sessions {
             let state = session.state.read().await.clone();
-            if matches!(state, AcpSessionState::Running | AcpSessionState::WaitingForPermission) {
+            if matches!(
+                state,
+                AcpSessionState::Running | AcpSessionState::WaitingForPermission
+            ) {
                 continue;
             }
             let idle_duration = { session.last_activity.lock().await.elapsed() };
@@ -679,7 +746,9 @@ impl AcpSessionRegistry {
                     "ACP session exceeded idle timeout — removing from registry",
                 );
                 let runtime = { session.handle.lock().await.clone() };
-                if let Some(rt) = runtime { drop(rt.cancel().await); }
+                if let Some(rt) = runtime {
+                    drop(rt.cancel().await);
+                }
                 self.sessions.write().await.remove(&session.id);
             }
         }
@@ -713,7 +782,8 @@ impl AcpSessionRegistry {
                                 "after_seq": event.seq(),
                             }),
                         },
-                    ).await;
+                    )
+                    .await;
                     tracing::warn!(
                         surface = "acp", service = "registry", action = "fanout.backpressure",
                         session_id = %session.id, dropped_subscribers = dropped,
@@ -728,7 +798,10 @@ impl AcpSessionRegistry {
 
             // Runtime thread exited (event_tx dropped) — clean up.
             let current_state = session.state.read().await.clone();
-            if matches!(current_state, AcpSessionState::Running | AcpSessionState::WaitingForPermission) {
+            if matches!(
+                current_state,
+                AcpSessionState::Running | AcpSessionState::WaitingForPermission
+            ) {
                 tracing::error!(
                     surface = "acp", service = "registry", action = "runtime.exit",
                     session_id = %session.id, state = ?current_state,
@@ -764,19 +837,30 @@ impl AcpSessionRegistry {
         );
         let (provider, cwd, title) = {
             let summary = session.summary.read().await;
-            (summary.provider.clone(), summary.cwd.clone(), summary.title.clone())
+            (
+                summary.provider.clone(),
+                summary.cwd.clone(),
+                summary.title.clone(),
+            )
         };
         let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
         let (runtime, started) = launch_codex_runtime(
             session.id.clone(),
-            StartSessionInput { provider: Some(provider), cwd, title: Some(title), principal: None },
+            StartSessionInput {
+                provider: Some(provider),
+                cwd,
+                title: Some(title),
+                principal: None,
+            },
             event_tx.clone(),
         )
         .await
         .map_err(internal_message)?;
 
         self.spawn_event_forwarder(Arc::clone(session), event_rx);
-        { *session.handle.lock().await = Some(runtime); }
+        {
+            *session.handle.lock().await = Some(runtime);
+        }
         {
             let mut summary = session.summary.write().await;
             summary.provider_session_id = Some(started.provider_session_id);
@@ -806,7 +890,11 @@ impl AcpSessionRegistry {
     /// Inject a pre-built session with a fake RuntimeHandle — no subprocess spawned.
     /// The returned session summary mirrors what create_session would return.
     #[cfg(test)]
-    pub async fn inject_fake_session(&self, session_id: &str, principal: &str) -> AcpSessionSummary {
+    pub async fn inject_fake_session(
+        &self,
+        session_id: &str,
+        principal: &str,
+    ) -> AcpSessionSummary {
         use super::runtime::fake_handle_for_tests;
         let created_at = jiff::Timestamp::now().to_string();
         let summary = AcpSessionSummary {
@@ -817,15 +905,30 @@ impl AcpSessionRegistry {
             state: AcpSessionState::Idle,
             created_at: created_at.clone(),
             updated_at: created_at,
-            principal: if principal.is_empty() { None } else { Some(principal.to_string()) },
+            principal: if principal.is_empty() {
+                None
+            } else {
+                Some(principal.to_string())
+            },
             provider_session_id: Some("fake-provider-session".to_string()),
             agent_name: Some("test-agent".to_string()),
             agent_version: Some("0.0.1".to_string()),
         };
-        let session = Session::new(session_id.to_string(), principal.to_string(), summary.clone());
+        let session = Session::new(
+            session_id.to_string(),
+            principal.to_string(),
+            summary.clone(),
+        );
         let (fake_rt, fake_rx) = fake_handle_for_tests();
-        { *session.handle.lock().await = Some(fake_rt); }
-        { self.sessions.write().await.insert(session_id.to_string(), Arc::clone(&session)); }
+        {
+            *session.handle.lock().await = Some(fake_rt);
+        }
+        {
+            self.sessions
+                .write()
+                .await
+                .insert(session_id.to_string(), Arc::clone(&session));
+        }
 
         // Minimal forwarder: just drains and removes on channel close.
         let registry = self.clone();
@@ -842,7 +945,8 @@ impl AcpSessionRegistry {
     #[cfg(test)]
     pub async fn set_last_activity_for_test(&self, session_id: &str, elapsed: Duration) {
         if let Ok(session) = self.get_session_arc(session_id).await {
-            let past = Instant::now().checked_sub(elapsed)
+            let past = Instant::now()
+                .checked_sub(elapsed)
                 .expect("elapsed too large for Instant::checked_sub");
             *session.last_activity.lock().await = past;
         }
@@ -855,7 +959,9 @@ impl AcpSessionRegistry {
 }
 
 impl Default for AcpSessionRegistry {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -864,7 +970,8 @@ impl Default for AcpSessionRegistry {
 
 async fn load_in_memory_events(session: &Arc<Session>, since_seq: u64) -> Vec<AcpEvent> {
     let events = session.events.read().await;
-    let filtered: Vec<AcpEvent> = events.iter()
+    let filtered: Vec<AcpEvent> = events
+        .iter()
         .filter(|e| e.seq() > since_seq)
         .cloned()
         .collect();
@@ -884,8 +991,12 @@ async fn apply_session_event(session: &Arc<Session>, event: &AcpEvent) {
     {
         let mut summary = session.summary.write().await;
         summary.updated_at = event_created_at(event).to_string();
-        if let Some(ref state) = maybe_new_state { summary.state = state.clone(); }
-        if let Some(title) = session_title_from_event(event) { summary.title = title; }
+        if let Some(ref state) = maybe_new_state {
+            summary.state = state.clone();
+        }
+        if let Some(title) = session_title_from_event(event) {
+            summary.title = title;
+        }
     }
     if let Some(new_state) = maybe_new_state {
         *session.state.write().await = new_state;
@@ -924,15 +1035,23 @@ async fn fanout_event(session: &Arc<Session>, event: Arc<AcpEvent>) -> usize {
                 dropped += 1;
                 to_remove.push(i);
                 tracing::warn!(
-                    surface = "acp", service = "registry", action = "fanout",
-                    subscriber_index = i, session_id = event.session_id(), seq = event.seq(),
+                    surface = "acp",
+                    service = "registry",
+                    action = "fanout",
+                    subscriber_index = i,
+                    session_id = event.session_id(),
+                    seq = event.seq(),
                     "subscriber mpsc full — subscriber removed, must replay from transcript",
                 );
             }
-            Err(mpsc::error::TrySendError::Closed(_)) => { to_remove.push(i); }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                to_remove.push(i);
+            }
         }
     }
-    for i in to_remove.into_iter().rev() { subs.swap_remove(i); }
+    for i in to_remove.into_iter().rev() {
+        subs.swap_remove(i);
+    }
     dropped
 }
 
@@ -962,13 +1081,22 @@ async fn persist_session_event(registry: &AcpSessionRegistry, event: &AcpEvent) 
 // ---------------------------------------------------------------------------
 
 fn internal(message: &str) -> ToolError {
-    ToolError::Sdk { sdk_kind: "internal_error".to_string(), message: message.to_string() }
+    ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message: message.to_string(),
+    }
 }
 fn internal_message(message: String) -> ToolError {
-    ToolError::Sdk { sdk_kind: "internal_error".to_string(), message }
+    ToolError::Sdk {
+        sdk_kind: "internal_error".to_string(),
+        message,
+    }
 }
 fn not_found(message: &str) -> ToolError {
-    ToolError::Sdk { sdk_kind: "not_found".to_string(), message: message.to_string() }
+    ToolError::Sdk {
+        sdk_kind: "not_found".to_string(),
+        message: message.to_string(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -987,7 +1115,9 @@ mod tests {
     async fn test_session_limit_enforced() {
         let registry = test_registry();
         for i in 0..MAX_CONCURRENT_SESSIONS {
-            registry.inject_fake_session(&format!("sess-limit-{i}"), "").await;
+            registry
+                .inject_fake_session(&format!("sess-limit-{i}"), "")
+                .await;
         }
         assert_eq!(registry.session_count().await, MAX_CONCURRENT_SESSIONS);
         // Verify the limit constant is sane and the map is at capacity.
@@ -1025,10 +1155,15 @@ mod tests {
         let now = Instant::now();
         let in_window = {
             let recent = registry.recent_creations.lock().await;
-            recent.iter().filter(|t| now.duration_since(**t).as_secs() < STORM_WINDOW_SECS).count()
+            recent
+                .iter()
+                .filter(|t| now.duration_since(**t).as_secs() < STORM_WINDOW_SECS)
+                .count()
         };
-        assert!(in_window >= STORM_MAX_CREATIONS,
-            "circuit breaker should trip: {in_window} >= {STORM_MAX_CREATIONS}");
+        assert!(
+            in_window >= STORM_MAX_CREATIONS,
+            "circuit breaker should trip: {in_window} >= {STORM_MAX_CREATIONS}"
+        );
     }
 
     #[tokio::test]
@@ -1045,11 +1180,17 @@ mod tests {
         let registry = test_registry();
         registry.inject_fake_session("reattach-sess", "").await;
         let session = registry.get_session_arc("reattach-sess").await.unwrap();
-        assert!(session.handle.lock().await.is_some(), "handle must be present after inject");
+        assert!(
+            session.handle.lock().await.is_some(),
+            "handle must be present after inject"
+        );
         // reattach_runtime should return Ok without spawning (handle already present).
         let result = registry.reattach_runtime(&session).await;
         assert!(result.is_ok());
-        assert!(session.handle.lock().await.is_some(), "handle must still be present");
+        assert!(
+            session.handle.lock().await.is_some(),
+            "handle must still be present"
+        );
     }
 
     #[tokio::test]
@@ -1065,29 +1206,50 @@ mod tests {
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
-            if registry.session_count().await == 0 { break; }
+            if registry.session_count().await == 0 {
+                break;
+            }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
-        assert_eq!(registry.session_count().await, 0, "session removed after runtime exit");
+        assert_eq!(
+            registry.session_count().await,
+            0,
+            "session removed after runtime exit"
+        );
     }
 
     #[tokio::test]
     async fn test_idle_timeout_terminates_session() {
         let registry = test_registry(); // 100 ms timeout
         registry.inject_fake_session("idle-sess", "").await;
-        registry.set_last_activity_for_test("idle-sess", Duration::from_secs(10)).await;
+        registry
+            .set_last_activity_for_test("idle-sess", Duration::from_secs(10))
+            .await;
         registry.reap_idle_sessions().await;
-        assert_eq!(registry.session_count().await, 0, "idle session must be reaped");
+        assert_eq!(
+            registry.session_count().await,
+            0,
+            "idle session must be reaped"
+        );
     }
 
     #[tokio::test]
     async fn test_shutdown_terminates_all_sessions() {
         let registry = test_registry();
-        for i in 0..3 { registry.inject_fake_session(&format!("sd-{i}"), "").await; }
+        for i in 0..3 {
+            registry.inject_fake_session(&format!("sd-{i}"), "").await;
+        }
         assert_eq!(registry.session_count().await, 3);
         registry.shutdown_all_sessions().await;
-        assert_eq!(registry.session_count().await, 0, "all sessions removed after shutdown");
-        assert!(registry.shutting_down.load(Ordering::SeqCst), "shutting_down flag set");
+        assert_eq!(
+            registry.session_count().await,
+            0,
+            "all sessions removed after shutdown"
+        );
+        assert!(
+            registry.shutting_down.load(Ordering::SeqCst),
+            "shutting_down flag set"
+        );
     }
 
     #[tokio::test]

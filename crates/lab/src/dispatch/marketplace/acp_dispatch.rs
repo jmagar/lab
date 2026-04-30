@@ -130,6 +130,7 @@ fn enrich_agents_with_install_state(mut agents: Vec<Agent>) -> Result<Vec<Agent>
 #[cfg(feature = "acp_registry")]
 async fn dispatch_install(client: &AcpRegistryClient, params: &Value) -> Result<Value, ToolError> {
     let id = require_str(params, "id")?.to_string();
+    validate_agent_id_for_path(&id)?;
 
     let node_ids: Vec<String> = match params.get("node_ids") {
         Some(Value::Array(arr)) => arr
@@ -474,6 +475,7 @@ async fn install_binary(
 
 /// Resolve `~/.lab/bin/<agent_id>/`.
 fn agent_bin_dir(agent_id: &str) -> Result<PathBuf, ToolError> {
+    validate_agent_id_for_path(agent_id)?;
     let env_path = crate::config::dotenv_path().ok_or_else(|| ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
         message: "cannot determine ~/.lab path".to_string(),
@@ -482,6 +484,31 @@ fn agent_bin_dir(agent_id: &str) -> Result<PathBuf, ToolError> {
         .parent()
         .ok_or_else(|| ToolError::internal_message("dotenv path has no parent"))?;
     Ok(lab_dir.join("bin").join(agent_id))
+}
+
+fn validate_agent_id_for_path(agent_id: &str) -> Result<(), ToolError> {
+    let valid = !agent_id.is_empty()
+        && agent_id.len() <= 128
+        && agent_id != "."
+        && agent_id != ".."
+        && agent_id
+            .as_bytes()
+            .first()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && agent_id.bytes().all(|byte| {
+            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-')
+        });
+
+    if valid {
+        return Ok(());
+    }
+
+    Err(ToolError::InvalidParam {
+        message:
+            "agent_id must be 1-128 ASCII chars: letters, digits, dot, underscore, or dash; it must start with a letter or digit"
+                .to_string(),
+        param: "id".to_string(),
+    })
 }
 
 /// Validate an archive URL: require HTTPS, reject loopback/private hosts.
@@ -897,4 +924,41 @@ fn dispatch_uninstall(id: &str) -> Result<Value, ToolError> {
         "id": id,
         "removed": removed,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_agent_id_for_path_accepts_safe_ids() {
+        for id in ["codex-acp", "agent_1", "zed.agent", "A1-b_2.c3"] {
+            validate_agent_id_for_path(id).expect(id);
+        }
+    }
+
+    #[test]
+    fn validate_agent_id_for_path_rejects_path_and_control_ids() {
+        let too_long = "a".repeat(129);
+        let invalid_ids = [
+            "",
+            ".",
+            "..",
+            "../escape",
+            "escape/child",
+            "escape\\child",
+            "/absolute",
+            ".hidden",
+            "-leading-dash",
+            "_leading-underscore",
+            "contains space",
+            "contains\nnewline",
+            "éclair",
+            too_long.as_str(),
+        ];
+        for id in invalid_ids {
+            let err = validate_agent_id_for_path(id).expect_err(id);
+            assert_eq!(err.kind(), "invalid_param");
+        }
+    }
 }

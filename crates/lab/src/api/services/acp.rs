@@ -1,7 +1,7 @@
 use std::convert::Infallible;
 
 use axum::{
-    Json, Router,
+    Extension, Json, Router,
     extract::{Path, Query, State},
     http::StatusCode,
     response::{
@@ -14,6 +14,7 @@ use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
 
+use crate::api::oauth::AuthContext;
 use crate::api::state::AppState;
 use crate::dispatch::acp::dispatch::dispatch_with_registry;
 use crate::dispatch::acp::dispatch::validate_subscribe_ticket;
@@ -22,13 +23,27 @@ use crate::dispatch::error::ToolError;
 /// Hard cap on incoming prompt text (64 000 chars ≈ 16 000 tokens at 4 chars/token).
 const PROMPT_MAX_CHARS: usize = 64_000;
 
+fn required_principal(auth: Option<Extension<AuthContext>>) -> Result<String, ToolError> {
+    let principal = auth
+        .map(|Extension(ctx)| ctx.sub)
+        .filter(|sub| !sub.trim().is_empty())
+        .ok_or_else(|| ToolError::Sdk {
+            sdk_kind: "auth_failed".to_string(),
+            message: "authenticated ACP principal required".to_string(),
+        })?;
+    Ok(principal)
+}
+
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
         .route("/provider", get(provider_health))
         .route("/sessions", get(list_sessions).post(create_session))
         .route("/sessions/{session_id}/prompt", post(prompt_session))
         .route("/sessions/{session_id}/cancel", post(cancel_session))
-        .route("/sessions/{session_id}/subscribe_ticket", post(subscribe_ticket))
+        .route(
+            "/sessions/{session_id}/subscribe_ticket",
+            post(subscribe_ticket),
+        )
         .route("/sessions/{session_id}/events", get(stream_events))
 }
 
@@ -39,11 +54,21 @@ async fn provider_health(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-async fn list_sessions(State(state): State<AppState>) -> impl IntoResponse {
-    // TODO(phase-2): extract bearer principal from request extensions and pass it here
-    // so each caller only sees their own sessions. Until bearer auth is wired in the
-    // middleware layer this returns all sessions (anonymous == empty principal).
-    match dispatch_with_registry(&state.acp_registry, "session.list", json!({})).await {
+async fn list_sessions(
+    State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
+) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
+    match dispatch_with_registry(
+        &state.acp_registry,
+        "session.list",
+        json!({ "principal": principal }),
+    )
+    .await
+    {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),
     }
@@ -58,12 +83,18 @@ struct CreateSessionBody {
 
 async fn create_session(
     State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
     Json(body): Json<CreateSessionBody>,
 ) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
     let params = json!({
         "provider": body.provider,
         "cwd": body.cwd,
         "title": body.title,
+        "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.start", params).await {
         Ok(v) => Json(v).into_response(),
@@ -91,9 +122,14 @@ struct PromptBody {
 
 async fn prompt_session(
     State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
     Path(session_id): Path<String>,
     Json(body): Json<PromptBody>,
 ) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
     if body.prompt.trim().is_empty() {
         return ToolError::MissingParam {
             message: "prompt is required".to_string(),
@@ -128,6 +164,7 @@ async fn prompt_session(
         "session_id": session_id,
         "text": body.prompt.trim(),
         "page_context": page_context_value,
+        "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.prompt", params).await {
         Ok(v) => Json(v).into_response(),
@@ -137,11 +174,17 @@ async fn prompt_session(
 
 async fn cancel_session(
     State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
     let params = json!({
         "session_id": session_id,
         "confirm": true,
+        "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.cancel", params).await {
         Ok(v) => Json(v).into_response(),
@@ -151,10 +194,14 @@ async fn cancel_session(
 
 async fn subscribe_ticket(
     State(state): State<AppState>,
+    auth: Option<Extension<AuthContext>>,
     Path(session_id): Path<String>,
 ) -> impl IntoResponse {
-    // TODO(phase-2): extract authenticated principal from request extensions.
-    let params = json!({ "session_id": session_id, "principal": "" });
+    let principal = match required_principal(auth) {
+        Ok(principal) => principal,
+        Err(error) => return error.into_response(),
+    };
+    let params = json!({ "session_id": session_id, "principal": principal });
     match dispatch_with_registry(&state.acp_registry, "session.subscribe_ticket", params).await {
         Ok(v) => Json(v).into_response(),
         Err(e) => e.into_response(),

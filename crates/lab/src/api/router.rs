@@ -328,7 +328,7 @@ async fn authenticate_request(
 }
 
 /// Build the `/v1` sub-router with all feature-gated service routes.
-fn build_v1_router(state: &AppState) -> Router<AppState> {
+fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppState> {
     let is_master = state.is_master();
     let openapi_spec: Arc<String> = super::openapi::build_openapi_spec(state.registry.services())
         .unwrap_or_else(|e| {
@@ -398,18 +398,16 @@ fn build_v1_router(state: &AppState) -> Router<AppState> {
             .iter()
             .any(|service| service.name == "fs")
         {
-            // SECURITY: the /v1 route layer is removed when
-            // `web_ui_auth_disabled` is true (intended for static-asset dev
-            // flows), which would also remove bearer/session auth from
-            // /v1/fs. fs operations read workspace files, so refuse to
-            // mount them on an unauthenticated surface and surface a
-            // WARN so operators notice the misconfiguration.
-            if state.web_ui_auth_disabled {
+            // SECURITY: fs operations read workspace files, so refuse to
+            // mount them on an unauthenticated API surface. Static web UI
+            // auth settings do not bypass `/v1` auth when bearer/OAuth auth
+            // is configured.
+            if state.web_ui_auth_disabled && !api_auth_configured {
                 tracing::warn!(
                     subsystem = "startup",
                     phase = "fs.mount.skipped",
                     reason = "web_ui_auth_disabled",
-                    "fs service is configured but LAB_WEB_UI_AUTH_DISABLED=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
+                    "fs service is configured but LAB_WEB_UI_DISABLE_AUTH=true would expose workspace files unauthenticated; refusing to mount /v1/fs"
                 );
             } else {
                 v1 = v1.nest("/fs", services::fs::routes(state.clone()));
@@ -680,13 +678,16 @@ pub fn build_router(
     if let Some(ref auth_state) = auth_state {
         state = state.with_oauth_state(auth_state.clone());
     }
-    if bearer_token.is_none() && auth_state.is_none() {
+    let static_token = bearer_token.map(Arc::<str>::from);
+    let auth_state = auth_state.map(Arc::new);
+    let needs_auth = static_token.is_some() || auth_state.is_some();
+    if !needs_auth {
         tracing::warn!(
             "HTTP API started without bearer token or OAuth auth state — all protected routes are unprotected"
         );
     }
 
-    let v1 = build_v1_router(&state);
+    let v1 = build_v1_router(&state, needs_auth);
 
     let x_request_id = HeaderName::from_static("x-request-id");
 
@@ -694,9 +695,6 @@ pub fn build_router(
     // sessions while `/mcp` remains token-authenticated only.
     let v1_router = Router::new().nest("/v1", v1);
     let is_master = state.is_master();
-    let static_token = bearer_token.map(Arc::<str>::from);
-    let auth_state = auth_state.map(Arc::new);
-    let needs_auth = static_token.is_some() || auth_state.is_some();
     let resource_url: Option<Arc<str>> = auth_state
         .as_ref()
         .and_then(|state| state.config.public_url.as_ref().map(url::Url::as_str))
@@ -710,7 +708,7 @@ pub fn build_router(
     let auth_state_for_v1 = auth_state.clone();
     let static_token_for_v1 = static_token.clone();
     let resource_url_for_v1 = resource_url.clone();
-    let v1_protected = if needs_auth && !state.web_ui_auth_disabled {
+    let v1_protected = if needs_auth {
         v1_router.route_layer(axum::middleware::from_fn(
             move |request: Request<Body>, next: Next| {
                 authenticate_request(
@@ -836,9 +834,9 @@ pub fn build_router(
             .route("/token", post(auth_token));
     }
 
-    // Dev routes — unauthenticated, registered BEFORE the Next.js static fallback
-    // so they win over the SPA. See docs/design/component-development.md §5
-    // (two-tier serving model) for the full rationale.
+    // Dev routes — registered BEFORE the Next.js static fallback so they win
+    // over the SPA. See docs/design/component-development.md §5 (two-tier
+    // serving model) for the full rationale.
     //
     // /dev/api/*        → read-only dispatch endpoints (marketplace guard, nodeinfo)
     // /dev, /dev/{name} → Tier 1 mockup file server: serves HTML from
@@ -846,7 +844,7 @@ pub fn build_router(
     //                     Once a feature graduates to a real Next.js page at
     //                     app/(admin)/dev/{name}/page.tsx, remove the corresponding
     //                     dev_mockup_named handler entry.
-    router = router
+    let dev_routes = Router::new()
         .route("/dev/api/marketplace", post(dev_marketplace_readonly))
         .route("/dev/api/nodeinfo", get(dev_nodeinfo))
         // Mockup page routes — MUST stay before the static fallback (docs/design/component-development.md §5)
@@ -854,6 +852,26 @@ pub fn build_router(
         .route("/dev/", get(dev_mockup))
         .route("/dev/{name}", get(dev_mockup_named))
         .route("/dev/{name}/", get(dev_mockup_named));
+    let dev_routes = if needs_auth {
+        let auth_state_for_dev = auth_state.clone();
+        let static_token_for_dev = static_token.clone();
+        let resource_url_for_dev = resource_url.clone();
+        dev_routes.route_layer(axum::middleware::from_fn(
+            move |request: Request<Body>, next: Next| {
+                authenticate_request(
+                    request,
+                    next,
+                    static_token_for_dev.clone(),
+                    auth_state_for_dev.clone(),
+                    resource_url_for_dev.clone(),
+                    true,
+                )
+            },
+        ))
+    } else {
+        dev_routes
+    };
+    router = router.merge(dev_routes);
 
     // Static-file fallback for the Next.js SPA.
     if state.web_assets_enabled() {
@@ -1104,7 +1122,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn web_ui_auth_bypass_opens_v1_only() {
+    async fn web_ui_auth_disabled_does_not_bypass_v1_auth() {
         let state = AppState::new().with_web_ui_auth_disabled(true);
         let mcp_router: Router<AppState> =
             Router::new().route("/mcp", get(|| async { StatusCode::OK }));
@@ -1121,7 +1139,12 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(v1_response.status(), StatusCode::OK);
+        assert_eq!(v1_response.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(v1_response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["kind"], "auth_failed");
 
         let mcp_response = app
             .oneshot(
@@ -1901,7 +1924,7 @@ mod tests {
         }
     }
 
-    /// POST /dev/api/marketplace must accept whitelisted read-only actions without auth.
+    /// POST /dev/api/marketplace must accept whitelisted read-only actions after auth.
     #[tokio::test]
     async fn dev_marketplace_allows_whitelisted_read_actions() {
         let state = AppState::new();
@@ -1915,6 +1938,7 @@ mod tests {
                         .method("POST")
                         .uri("/dev/api/marketplace")
                         .header(header::CONTENT_TYPE, "application/json")
+                        .header(header::AUTHORIZATION, "Bearer secret-token")
                         .body(Body::from(
                             serde_json::to_string(&serde_json::json!({ "action": action }))
                                 .unwrap(),
@@ -1933,7 +1957,7 @@ mod tests {
         }
     }
 
-    /// POST /dev/api/marketplace must block mutating actions without requiring auth.
+    /// POST /dev/api/marketplace must block mutating actions after auth.
     #[tokio::test]
     async fn dev_marketplace_blocks_mutating_actions() {
         let state = AppState::new();
@@ -1954,6 +1978,7 @@ mod tests {
                         .method("POST")
                         .uri("/dev/api/marketplace")
                         .header(header::CONTENT_TYPE, "application/json")
+                        .header(header::AUTHORIZATION, "Bearer secret-token")
                         .body(Body::from(
                             serde_json::to_string(&serde_json::json!({ "action": action }))
                                 .unwrap(),
@@ -1976,12 +2001,10 @@ mod tests {
         }
     }
 
-    /// POST /dev/api/marketplace must be reachable without a bearer token
-    /// (the route is intentionally outside the v1 auth middleware).
+    /// POST /dev/api/marketplace must require auth when auth is configured.
     #[tokio::test]
-    async fn dev_marketplace_requires_no_auth() {
+    async fn dev_marketplace_requires_auth_when_configured() {
         let state = AppState::new();
-        // Router configured with a bearer token — /dev/api/marketplace must bypass it.
         let app = build_router_with_bearer(state, Some("secret-token".into()), None);
 
         let response = app
@@ -1996,11 +2019,58 @@ mod tests {
             .await
             .unwrap();
 
-        // Must reach the dev guard (403) rather than the auth middleware (401).
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "/dev/api/marketplace must use auth middleware when auth is configured"
+        );
+    }
+
+    #[tokio::test]
+    async fn dev_mockup_routes_require_auth_when_configured() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, Some("secret-token".into()), None);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/dev/example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "/dev mockup routes must use auth middleware when auth is configured"
+        );
+    }
+
+    /// POST /dev/api/marketplace remains open in explicit no-auth local mode.
+    #[tokio::test]
+    async fn dev_marketplace_allows_no_auth_when_server_has_no_auth() {
+        let state = AppState::new();
+        let app = build_router_with_bearer(state, None, None);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/dev/api/marketplace")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"plugin.install"}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
         assert_eq!(
             response.status(),
             StatusCode::FORBIDDEN,
-            "/dev/api/marketplace must be reachable unauthenticated and fail with 403, not 401"
+            "no-auth local mode should still reach the read-only dev guard"
         );
     }
 }

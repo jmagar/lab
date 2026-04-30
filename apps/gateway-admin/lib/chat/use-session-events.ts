@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { normalizeGatewayApiBase } from '@/lib/api/gateway-config'
 import { gatewayHeaders } from '@/lib/api/gateway-request'
+import { createAcpFetcher, requestAcpSubscribeTicket } from '@/lib/acp/fetch'
 import { isStandaloneBearerAuthMode } from '@/lib/auth/auth-mode'
 import type { AcpEvent, BridgeEvent } from '@/lib/acp/types'
 import {
@@ -47,10 +48,12 @@ export function buildSessionEventsUrl(
   acpBase: string,
   sessionId: string,
   lastSeq: number,
+  ticket: string,
   origin: string,
 ) {
   const url = new URL(`${acpBase}/sessions/${sessionId}/events`, origin)
   url.searchParams.set('since', String(lastSeq))
+  url.searchParams.set('ticket', ticket)
   return url.toString()
 }
 
@@ -125,6 +128,7 @@ const MAX_BATCH_QUEUE = 50_000
 
 export function useSessionEvents(sessionId: string | null) {
   const acpBase = React.useMemo(() => `${normalizeGatewayApiBase()}/acp`, [])
+  const fetchAcp = React.useMemo(() => createAcpFetcher(), [])
   const standaloneBearerAuth = React.useMemo(() => isStandaloneBearerAuthMode(), [])
   const requestCredentials = React.useMemo<RequestCredentials>(
     () => (standaloneBearerAuth ? 'omit' : 'include'),
@@ -210,15 +214,21 @@ export function useSessionEvents(sessionId: string | null) {
     lastSeqRef.current = cachedLastSeq
 
     const abortController = new AbortController()
-    const url = buildSessionEventsUrl(
-      acpBase,
-      sessionId,
-      lastSeqRef.current,
-      window.location.origin,
-    )
 
     void (async () => {
       try {
+        const ticket = await requestAcpSubscribeTicket(
+          fetchAcp,
+          sessionId,
+          abortController.signal,
+        )
+        const url = buildSessionEventsUrl(
+          acpBase,
+          sessionId,
+          lastSeqRef.current,
+          ticket,
+          window.location.origin,
+        )
         const response = await fetch(url, {
           method: 'GET',
           headers: gatewayHeaders(),
@@ -276,7 +286,7 @@ export function useSessionEvents(sessionId: string | null) {
       }
       flushBatch()
     }
-  }, [acpBase, enqueueEvent, flushBatch, requestCredentials, sessionId])
+  }, [acpBase, enqueueEvent, fetchAcp, flushBatch, requestCredentials, sessionId])
 
   const derived = React.useMemo(() => deriveTranscriptAndActivity(events), [events])
 

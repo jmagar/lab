@@ -19,6 +19,7 @@ use crate::config::{
 use crate::dispatch::clients::SharedServiceClients;
 use crate::dispatch::error::ToolError;
 use crate::dispatch::gateway::oauth::UpstreamOauthStatusView;
+use crate::dispatch::redact::{redact_stdio_args, redact_stdio_value, redact_url};
 use crate::dispatch::upstream::pool::{
     UpstreamCachedSummary, UpstreamPool, in_process_upstream_name,
 };
@@ -300,7 +301,7 @@ impl GatewayManager {
     ) -> Result<crate::dispatch::gateway::oauth::ProbeResult, ToolError> {
         use rmcp::transport::AuthorizationManager;
         let started = std::time::Instant::now();
-        let redacted_url = redact_gateway_url(url);
+        let redacted_url = redact_url(url);
 
         // SSRF validation (synchronous DNS) — must run in spawn_blocking.
         // Also enforces https-only and rejects RFC 1918, loopback, and link-local.
@@ -2177,13 +2178,9 @@ fn config_view(upstream: &UpstreamConfig, tool_search: &ToolSearchConfig) -> Gat
     GatewayConfigView {
         name: upstream.name.clone(),
         enabled: upstream.enabled,
-        url: upstream.url.as_deref().map(redact_gateway_url),
-        command: upstream.command.as_deref().map(redact_gateway_stdio_value),
-        args: upstream
-            .args
-            .iter()
-            .map(|arg| redact_gateway_stdio_value(arg))
-            .collect(),
+        url: upstream.url.as_deref().map(redact_url),
+        command: upstream.command.as_deref().map(redact_stdio_value),
+        args: redact_stdio_args(&upstream.args),
         bearer_token_env: upstream.bearer_token_env.clone(),
         oauth_enabled: upstream.oauth.is_some(),
         proxy_resources: upstream.proxy_resources,
@@ -2265,90 +2262,12 @@ fn sanitize_schema(schema: Option<serde_json::Value>) -> Option<serde_json::Valu
 }
 
 fn redacted_gateway_target(upstream: &UpstreamConfig) -> Option<String> {
-    upstream.url.as_deref().map(redact_gateway_url).or_else(|| {
+    upstream.url.as_deref().map(redact_url).or_else(|| {
         upstream.command.as_deref().map(|command| {
-            let args = upstream
-                .args
-                .iter()
-                .map(|arg| redact_gateway_stdio_value(arg))
-                .collect::<Vec<_>>();
+            let args = redact_stdio_args(&upstream.args);
             format_redacted_gateway_command(command, &args)
         })
     })
-}
-
-fn redact_gateway_url(url: &str) -> String {
-    let Ok(mut parsed) = Url::parse(url) else {
-        return "[invalid-url-redacted]".to_string();
-    };
-
-    let _ = parsed.set_username("");
-    let _ = parsed.set_password(None);
-
-    let query = parsed.query().map(|query| {
-        query
-            .split('&')
-            .filter(|pair| !pair.is_empty())
-            .map(|pair| {
-                let (key, value) = pair.split_once('=').map_or((pair, ""), |(k, v)| (k, v));
-                if is_sensitive_query_key(key) {
-                    format!("{key}=[redacted]")
-                } else if value.is_empty() {
-                    key.to_string()
-                } else {
-                    format!("{key}={value}")
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("&")
-    });
-    parsed.set_query(query.as_deref());
-
-    parsed.to_string()
-}
-
-fn is_sensitive_query_key(key: &str) -> bool {
-    let normalized = key.to_ascii_lowercase().replace('-', "_");
-    matches!(
-        normalized.as_str(),
-        "token"
-            | "access_token"
-            | "id_token"
-            | "refresh_token"
-            | "apikey"
-            | "api_key"
-            | "password"
-            | "passwd"
-            | "secret"
-            | "client_secret"
-            | "authorization"
-            | "bearer"
-            | "session"
-            | "session_id"
-            | "cookie"
-            | "code"
-    ) || normalized.ends_with("_token")
-        || normalized.ends_with("_secret")
-        || normalized.ends_with("_password")
-        || normalized.ends_with("_key")
-}
-
-fn redact_gateway_stdio_value(value: &str) -> String {
-    if let Some((key, _)) = value.split_once('=')
-        && is_sensitive_query_key(key)
-    {
-        return format!("{key}=[redacted]");
-    }
-
-    if let Some(flag) = value.strip_prefix("--") {
-        let (key, maybe_value) = flag.split_once('=').map_or((flag, ""), |(k, v)| (k, v));
-        if is_sensitive_query_key(key) {
-            let _ = maybe_value;
-            return format!("--{key}=[redacted]");
-        }
-    }
-
-    value.to_string()
 }
 
 fn format_redacted_gateway_command(command: &str, args: &[String]) -> String {
@@ -2357,7 +2276,7 @@ fn format_redacted_gateway_command(command: &str, args: &[String]) -> String {
         return "env".to_string();
     }
 
-    redact_gateway_stdio_value(command)
+    redact_stdio_value(command)
 }
 
 fn empty_upstream_summary() -> UpstreamCachedSummary {

@@ -4,6 +4,7 @@
 //! or stdio (child process), discovers their tools, and caches schemas.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::AtomicU8;
 use std::time::{Duration, Instant};
@@ -24,6 +25,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::config::UpstreamConfig;
+use crate::dispatch::redact::{redact_stdio_value, redact_url};
 use crate::mcp::logging::logging_level_rank;
 use crate::mcp::server::LabMcpServer;
 use crate::oauth::upstream::cache::OauthClientCache;
@@ -93,13 +95,22 @@ fn is_websocket_url(url: &str) -> bool {
 
 fn configured_bearer_token(env_name: &str) -> Option<String> {
     let token = std::env::var(env_name).ok().or_else(|| {
-        crate::config::dotenv_path().and_then(|path| {
-            dotenvy::from_path_iter(path).ok().and_then(|iter| {
-                iter.filter_map(Result::ok)
-                    .find_map(|(key, value)| (key == env_name).then_some(value))
-            })
-        })
+        crate::config::dotenv_path()
+            .as_deref()
+            .and_then(|path| configured_bearer_token_from_dotenv_path(env_name, path))
     })?;
+    normalize_bearer_token(&token)
+}
+
+fn configured_bearer_token_from_dotenv_path(env_name: &str, path: &Path) -> Option<String> {
+    dotenvy::from_path_iter(path).ok().and_then(|iter| {
+        iter.filter_map(Result::ok)
+            .find_map(|(key, value)| (key == env_name).then_some(value))
+            .and_then(|value| normalize_bearer_token(&value))
+    })
+}
+
+fn normalize_bearer_token(token: &str) -> Option<String> {
     let token = token.trim();
     if token.is_empty() {
         return None;
@@ -115,6 +126,10 @@ fn configured_bearer_token(env_name: &str) -> Option<String> {
     (!raw.is_empty()).then(|| raw.to_string())
 }
 
+fn configured_authorization_header(env_name: &str) -> Option<String> {
+    configured_bearer_token(env_name).map(|token| format!("Bearer {token}"))
+}
+
 /// Strip query strings and fragments from resource URIs before logging.
 ///
 /// SECURITY: Upstream MCP servers may return resource URIs containing pre-signed
@@ -125,24 +140,15 @@ pub(crate) fn redact_resource_uri_for_logging(uri: &str) -> &str {
 }
 
 fn upstream_target_redacted(config: &UpstreamConfig) -> String {
-    // SECURITY: Never log raw URLs — they may contain userinfo credentials.
-    // Strip username/password before logging; log the command path for stdio upstreams.
+    // SECURITY: Never log raw URLs or command fragments without central redaction.
     match &config.url {
-        Some(url_str) => {
-            if let Ok(mut parsed) = url::Url::parse(url_str) {
-                let _ = parsed.set_username("");
-                let _ = parsed.set_password(None);
-                parsed.set_query(None);
-                parsed.set_fragment(None);
-                parsed.to_string()
-            } else {
-                "<invalid-url>".to_string()
-            }
-        }
+        Some(url_str) => redact_url(url_str),
         None => config
             .command
-            .clone()
-            .unwrap_or_else(|| "<missing>".to_string()),
+            .as_deref()
+            .map(redact_stdio_value)
+            .or_else(|| Some("<missing>".to_string()))
+            .expect("static fallback is present"),
     }
 }
 
@@ -2385,7 +2391,7 @@ async fn connect_websocket_upstream(
     tracing::info!(
         surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "websocket",
-        action = "upstream.connect.start", url = %url,
+        action = "upstream.connect.start", target = %upstream_target_redacted(config),
         "upstream connect start",
     );
     if config.oauth.is_some() {
@@ -2399,17 +2405,7 @@ async fn connect_websocket_upstream(
     let authorization = config
         .bearer_token_env
         .as_deref()
-        .and_then(|env_name| std::env::var(env_name).ok())
-        .map(|token| {
-            if token
-                .get(..7)
-                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("bearer "))
-            {
-                token
-            } else {
-                format!("Bearer {}", token.trim())
-            }
-        });
+        .and_then(configured_authorization_header);
     let transport = connect_websocket_transport(
         WebSocketTransportConfig::new(parsed.to_string()).with_authorization(authorization),
     );
@@ -2452,7 +2448,7 @@ async fn connect_http_upstream(
     tracing::info!(
         surface = "dispatch", service = "upstream.pool",
         upstream = %config.name, transport = "http",
-        action = "upstream.connect.start", url = %url,
+        action = "upstream.connect.start", target = %upstream_target_redacted(config),
         "upstream connect start",
     );
     let transport_config = StreamableHttpClientTransportConfig::with_uri(url);
@@ -2805,6 +2801,67 @@ fn resolve_exposure_policy(
 mod tests {
     use super::*;
     use crate::config::{UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration};
+
+    fn test_upstream_config() -> UpstreamConfig {
+        UpstreamConfig {
+            enabled: true,
+            name: "test".into(),
+            url: None,
+            bearer_token_env: None,
+            command: None,
+            args: vec![],
+            proxy_resources: false,
+            proxy_prompts: false,
+            expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
+            oauth: None,
+            tool_search: crate::config::ToolSearchConfig::default(),
+        }
+    }
+
+    #[test]
+    fn upstream_target_redacts_url_credentials_and_sensitive_query_values() {
+        let mut config = test_upstream_config();
+        config.url = Some("https://user:pass@example.com/mcp?token=secret&mode=1#frag".into());
+
+        assert_eq!(
+            upstream_target_redacted(&config),
+            "https://example.com/mcp?token=[redacted]&mode=1"
+        );
+    }
+
+    #[test]
+    fn upstream_target_redacts_stdio_secret_flags() {
+        let mut config = test_upstream_config();
+        config.command = Some("--api-key=secret".into());
+
+        assert_eq!(upstream_target_redacted(&config), "--api-key=[redacted]");
+    }
+
+    #[test]
+    fn configured_bearer_token_reads_and_normalizes_dotenv_values() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "WS_TOKEN=\"Bearer dotenv-secret\"\nOTHER=ignored\n")
+            .expect("write env");
+
+        assert_eq!(
+            configured_bearer_token_from_dotenv_path("WS_TOKEN", &path),
+            Some("dotenv-secret".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_bearer_token_rejects_empty_values() {
+        assert_eq!(normalize_bearer_token("   "), None);
+        assert_eq!(normalize_bearer_token("Bearer   "), None);
+        assert_eq!(normalize_bearer_token(" raw-token "), Some("raw-token".to_string()));
+        assert_eq!(
+            normalize_bearer_token("Bearer raw-token"),
+            Some("raw-token".to_string())
+        );
+    }
 
     #[test]
     fn validate_rejects_empty_name() {

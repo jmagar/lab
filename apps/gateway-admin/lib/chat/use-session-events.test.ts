@@ -22,10 +22,10 @@ function sseFrame(value: BridgeEvent) {
   return `data: ${JSON.stringify(value)}\n\n`
 }
 
-test('buildSessionEventsUrl includes the current resume checkpoint', () => {
+test('buildSessionEventsUrl includes the current resume checkpoint and subscribe ticket', () => {
   assert.equal(
-    buildSessionEventsUrl('/v1/acp', 'session-1', 7, 'http://127.0.0.1:3000'),
-    'http://127.0.0.1:3000/v1/acp/sessions/session-1/events?since=7',
+    buildSessionEventsUrl('/v1/acp', 'session-1', 7, 'ticket:abc/123', 'http://127.0.0.1:3000'),
+    'http://127.0.0.1:3000/v1/acp/sessions/session-1/events?since=7&ticket=ticket%3Aabc%2F123',
   )
 })
 

@@ -158,9 +158,8 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
         }),
     )
     .await
-    .expect("missing principal now returns an empty event page");
-    assert_eq!(missing_identity["count"], 0);
-    assert_eq!(missing_identity["events"], json!([]));
+    .expect_err("missing principal must fail for an owned session");
+    assert_eq!(missing_identity.kind(), "not_found");
 
     let wrong_identity = dispatch_with_registry(
         &registry,
@@ -183,9 +182,8 @@ async fn session_scoped_actions_reject_missing_and_wrong_identity() {
         }),
     )
     .await
-    .expect("anonymous subscribe ticket now succeeds");
-    assert!(anonymous_ticket["ticket"].as_str().is_some());
-    assert_eq!(anonymous_ticket["expires_in_secs"], 30);
+    .expect_err("anonymous subscribe ticket must fail for an owned session");
+    assert_eq!(anonymous_ticket.kind(), "not_found");
 }
 
 #[tokio::test]
@@ -219,6 +217,83 @@ async fn destructive_acp_actions_require_confirmation() {
     .await
     .expect_err("confirm=false must fail");
     assert_eq!(explicit_false.kind(), "confirmation_required");
+}
+
+#[tokio::test]
+async fn http_acp_handlers_scope_sessions_to_authenticated_principal() {
+    let _test_guard = test_lock().lock().await;
+    let _launch_guard = install_fake_provider();
+
+    let (app, registry) = acp_test_app();
+
+    let unauthenticated_create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp/sessions")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({}).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(unauthenticated_create.status(), StatusCode::UNAUTHORIZED);
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp/sessions")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({}).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create.status(), StatusCode::OK);
+    let created = json_body(create).await;
+    let owned_by_static_bearer = created["id"].as_str().expect("session id");
+
+    let ticket = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/v1/acp/sessions/{owned_by_static_bearer}/subscribe_ticket"
+                ))
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(ticket.status(), StatusCode::OK);
+    let ticket_json = json_body(ticket).await;
+    let ticket_value = ticket_json["ticket"].as_str().expect("ticket");
+    let (ticket_session, ticket_principal) =
+        validate_subscribe_ticket(ticket_value).expect("ticket validates");
+    assert_eq!(ticket_session, owned_by_static_bearer);
+    assert_eq!(ticket_principal, "static-bearer");
+
+    let alice_session = create_owned_session(registry.as_ref(), "alice").await;
+    let non_owner_ticket = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/acp/sessions/{alice_session}/subscribe_ticket"))
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .body(Body::empty())
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(non_owner_ticket.status(), StatusCode::NOT_FOUND);
+    let non_owner_json = json_body(non_owner_ticket).await;
+    assert_eq!(non_owner_json["kind"], "not_found");
 }
 
 #[tokio::test]
