@@ -29,6 +29,7 @@ mod tui;
 use std::process::ExitCode;
 
 use clap::Parser;
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, filter::filter_fn, fmt, prelude::*};
 
 use crate::cli::Cli;
@@ -49,7 +50,7 @@ fn human_console_target_enabled(target: &str) -> bool {
 ///
 /// Accepts config.toml log preferences; env vars `LAB_LOG` / `LAB_LOG_FORMAT`
 /// override them when set.
-fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_override: Option<&str>) {
+fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_override: Option<&str>) -> tracing_appender::non_blocking::WorkerGuard {
     // Priority: explicit CLI override > LAB_LOG env var > config.toml > default.
     let filter = if let Some(directive) = filter_override {
         EnvFilter::new(directive)
@@ -63,6 +64,24 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
         })
     };
 
+    // ── Rolling file appender (survives OOM — guard must live as long as main) ──
+    let log_dir = std::env::var("LAB_LOG_DIR")
+        .unwrap_or_else(|_| format!(
+            "{}/.local/share/lab/logs",
+            std::env::var("HOME").unwrap_or_default()
+        ));
+    std::fs::create_dir_all(&log_dir).ok();
+
+    let file_appender = RollingFileAppender::builder()
+        .rotation(Rotation::DAILY)
+        .filename_prefix("lab")
+        .filename_suffix("log")
+        .max_log_files(7)
+        .build(&log_dir)
+        .expect("failed to create lab log file appender");
+
+    let (non_blocking_file, _log_guard) = tracing_appender::non_blocking(file_appender);
+
     let use_json = match std::env::var("LAB_LOG_FORMAT").ok() {
         Some(v) => v.eq_ignore_ascii_case("json"),
         None => log
@@ -75,7 +94,8 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
         tracing_subscriber::registry()
             .with(filter)
             .with(LogIngestLayer)
-            .with(fmt::layer().json().with_writer(std::io::stderr))
+            .with(fmt::layer().json().with_writer(std::io::stderr))           // console
+            .with(fmt::layer().json().with_writer(non_blocking_file))         // file
             .init();
     } else {
         let fmt_layer = fmt::layer()
@@ -92,9 +112,12 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
         tracing_subscriber::registry()
             .with(filter)
             .with(LogIngestLayer)
-            .with(fmt_layer)
+            .with(fmt_layer)                                                   // console (pretty)
+            .with(fmt::layer().json().with_writer(non_blocking_file))         // file (JSON)
             .init();
     }
+
+    _log_guard
 }
 
 #[tokio::main]
@@ -121,7 +144,8 @@ async fn main() -> ExitCode {
     } else {
         None
     };
-    init_tracing(&config.log, cli.color, log_filter_override.as_deref());
+    // _log_guard MUST live for the entire process — dropping it stops file logging.
+    let _log_guard = init_tracing(&config.log, cli.color, log_filter_override.as_deref());
 
     // 3. Load .env files (secrets + URL env vars).
     if let Err(err) = config::load_dotenv() {
