@@ -19,7 +19,8 @@
  */
 
 import * as React from 'react'
-import { Plus, SidebarOpen, Zap } from 'lucide-react'
+import { AlertCircle, Plus, SidebarOpen, Zap } from 'lucide-react'
+import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -27,6 +28,11 @@ import { SessionSidebar } from '@/components/chat/session-sidebar'
 import { MessageThread } from '@/components/chat/message-thread'
 import { ChatInput } from '@/components/chat/chat-input'
 import { ACP_AGENT, ensurePromptRunId } from '@/lib/chat/use-chat-session-controller'
+import {
+  errorMessageFromPayload,
+  readJsonSafe,
+  type ErrorPayload,
+} from '@/lib/chat/acp-normalizers'
 import { createAcpFetcher } from '@/lib/acp/fetch'
 import {
   useChatSessionData,
@@ -46,7 +52,7 @@ export function FloatingChatShell({
   config,
 }: FloatingChatShellProps) {
   // ---- Context consumers ----
-  const { runs, selectedRun, selectedRunId, providerHealth, providers, agents, projects, pageContext } =
+  const { runs, selectedRun, selectedRunId, providerHealth, agents, projects, pageContext } =
     useChatSessionData()
   const { createSession, selectRun, refreshSessions, selectAgent } = useChatSessionActions()
   const { connectionState } = useChatSessionConnection()
@@ -55,8 +61,10 @@ export function FloatingChatShell({
   // ---- Local state ----
   const [sessionPanelOpen, setSessionPanelOpen] = React.useState(false)
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
+  const [lastActionError, setLastActionError] = React.useState<string | null>(null)
 
   const providerReady = Boolean(providerHealth?.ready)
+  const visibleError = lastActionError ?? (!providerReady ? providerHealth?.message : null)
 
   const selectedAgent = selectedRun
     ? (agents.find((agent) => agent.id === selectedRun.provider) ?? {
@@ -81,6 +89,7 @@ export function FloatingChatShell({
   // ---- sendPrompt (reads pageContext from provider + config) ----
   const sendPrompt = React.useCallback(
     async (payload: ChatInputPayload) => {
+      setLastActionError(null)
       try {
         const runId = await ensurePromptRunId(selectedRunId, createSession, isMobileViewport)
         const fetchAcp = createAcpFetcher()
@@ -104,23 +113,34 @@ export function FloatingChatShell({
         })
 
         if (!response.ok) {
-          // Non-fatal — providerHealth messaging handles this
+          const errorPayload = await readJsonSafe<ErrorPayload>(response)
+          const message = errorMessageFromPayload(
+            errorPayload,
+            'Failed to send prompt to ACP session.',
+          )
+          setLastActionError(message)
+          toast.error(message)
           return
         }
 
         await refreshSessions()
-      } catch {
-        // Keep UI responsive; provider health message carries the failure detail
+      } catch (error) {
+        const message = messageFromUnknownError(error, 'Failed to send prompt to ACP session.')
+        setLastActionError(message)
+        toast.error(message)
       }
     },
     [config?.sendPageContext, createSession, isMobileViewport, pageContext, refreshSessions, selectedRunId],
   )
 
   const createRun = React.useCallback(async () => {
+    setLastActionError(null)
     try {
       await createSession()
-    } catch {
-      // providerHealth.message carries the failure detail
+    } catch (error) {
+      const message = messageFromUnknownError(error, 'Failed to create ACP session.')
+      setLastActionError(message)
+      toast.error(message)
     }
   }, [createSession])
 
@@ -195,7 +215,7 @@ export function FloatingChatShell({
             runs={runs}
             selectedRunId={selectedRunId}
             selectedProjectId="workspace"
-            onSelectRun={(runId, _projectId) => selectRun(runId)}
+            onSelectRun={(runId) => selectRun(runId)}
             onNewRun={() => void createRun()}
           />
         )}
@@ -203,6 +223,16 @@ export function FloatingChatShell({
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           {/* Message thread — React.memo'd, only re-renders when messages changes */}
           <MessageThread run={selectedRun} messages={messages} connectionState={connectionState} />
+
+          {visibleError && (
+            <div
+              role="status"
+              className="mx-3 mb-2 flex items-start gap-2 rounded border border-aurora-error/40 bg-aurora-error/10 px-3 py-2 text-[12px] leading-5 text-aurora-error sm:mx-4"
+            >
+              <AlertCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 break-words">{visibleError}</span>
+            </div>
+          )}
 
           {/* Chat input */}
           <ChatInput
@@ -217,4 +247,11 @@ export function FloatingChatShell({
       </div>
     </div>
   )
+}
+
+function messageFromUnknownError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+  return fallback
 }
