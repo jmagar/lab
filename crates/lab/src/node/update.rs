@@ -283,6 +283,7 @@ async fn run_remote_target<I: HostIo + 'static>(
         }
     };
 
+    log_remote_update_stage_enter(&alias, &resolved_node_id, "preflight");
     let preflight_started = Instant::now();
     let preflight_result = preflight(
         io.clone(),
@@ -293,8 +294,24 @@ async fn run_remote_target<I: HostIo + 'static>(
     .await;
     stages_ms.insert("preflight".into(), preflight_started.elapsed().as_millis());
     let preflight_result = match preflight_result {
-        Ok(result) => result,
+        Ok(result) => {
+            log_remote_update_stage_exit(
+                &alias,
+                &resolved_node_id,
+                "preflight",
+                preflight_started.elapsed().as_millis(),
+                result.skip_transfer,
+            );
+            result
+        }
         Err(error) => {
+            log_remote_update_stage_failure(
+                &alias,
+                &resolved_node_id,
+                "preflight",
+                preflight_started.elapsed().as_millis(),
+                &error,
+            );
             return failed_result(
                 alias,
                 UpdateTargetKind::Remote,
@@ -309,10 +326,18 @@ async fn run_remote_target<I: HostIo + 'static>(
     let skipped_transfer = preflight_result.skip_transfer;
 
     if !preflight_result.skip_transfer {
+        log_remote_update_stage_enter(&alias, &resolved_node_id, "transfer");
         let transfer_started = Instant::now();
         let file = match tokio::fs::File::open(&artifact.path).await {
             Ok(file) => file,
             Err(error) => {
+                log_remote_update_stage_failure(
+                    &alias,
+                    &resolved_node_id,
+                    "transfer",
+                    transfer_started.elapsed().as_millis(),
+                    &format_args!("open artifact: {error}"),
+                );
                 return failed_result(
                     alias,
                     UpdateTargetKind::Remote,
@@ -333,6 +358,13 @@ async fn run_remote_target<I: HostIo + 'static>(
         .await;
         stages_ms.insert("transfer".into(), transfer_started.elapsed().as_millis());
         if let Err(error) = transfer_result {
+            log_remote_update_stage_failure(
+                &alias,
+                &resolved_node_id,
+                "transfer",
+                transfer_started.elapsed().as_millis(),
+                &error,
+            );
             return failed_result(
                 alias.clone(),
                 UpdateTargetKind::Remote,
@@ -343,13 +375,31 @@ async fn run_remote_target<I: HostIo + 'static>(
                 error.to_string(),
             );
         }
+        log_remote_update_stage_exit(
+            &alias,
+            &resolved_node_id,
+            "transfer",
+            transfer_started.elapsed().as_millis(),
+            false,
+        );
+    } else {
+        log_remote_update_stage_enter(&alias, &resolved_node_id, "transfer");
+        log_remote_update_stage_exit(&alias, &resolved_node_id, "transfer", 0, true);
     }
 
+    log_remote_update_stage_enter(&alias, &resolved_node_id, "normalize");
     let normalize_started = Instant::now();
     if let Err(error) =
         normalize_remote_runtime(io.clone(), &resolved_node_id, &controller_host).await
     {
         stages_ms.insert("normalize".into(), normalize_started.elapsed().as_millis());
+        log_remote_update_stage_failure(
+            &alias,
+            &resolved_node_id,
+            "normalize",
+            normalize_started.elapsed().as_millis(),
+            &error,
+        );
         return failed_result(
             alias.clone(),
             UpdateTargetKind::Remote,
@@ -361,10 +411,25 @@ async fn run_remote_target<I: HostIo + 'static>(
         );
     }
     stages_ms.insert("normalize".into(), normalize_started.elapsed().as_millis());
+    log_remote_update_stage_exit(
+        &alias,
+        &resolved_node_id,
+        "normalize",
+        normalize_started.elapsed().as_millis(),
+        false,
+    );
 
+    log_remote_update_stage_enter(&alias, &resolved_node_id, "restart");
     let restart_started = Instant::now();
     if let Err(error) = restart_target(io.clone(), target_config.restart.as_ref()).await {
         stages_ms.insert("restart".into(), restart_started.elapsed().as_millis());
+        log_remote_update_stage_failure(
+            &alias,
+            &resolved_node_id,
+            "restart",
+            restart_started.elapsed().as_millis(),
+            &error,
+        );
         return failed_result(
             alias.clone(),
             UpdateTargetKind::Remote,
@@ -376,10 +441,25 @@ async fn run_remote_target<I: HostIo + 'static>(
         );
     }
     stages_ms.insert("restart".into(), restart_started.elapsed().as_millis());
+    log_remote_update_stage_exit(
+        &alias,
+        &resolved_node_id,
+        "restart",
+        restart_started.elapsed().as_millis(),
+        false,
+    );
 
+    log_remote_update_stage_enter(&alias, &resolved_node_id, "verify");
     let verify_started = Instant::now();
     if let Err(error) = verify(io.clone(), target_config.install_path.clone()).await {
         stages_ms.insert("verify".into(), verify_started.elapsed().as_millis());
+        log_remote_update_stage_failure(
+            &alias,
+            &resolved_node_id,
+            "verify",
+            verify_started.elapsed().as_millis(),
+            &error,
+        );
         return failed_result(
             alias.clone(),
             UpdateTargetKind::Remote,
@@ -391,20 +471,38 @@ async fn run_remote_target<I: HostIo + 'static>(
         );
     }
     stages_ms.insert("verify".into(), verify_started.elapsed().as_millis());
+    log_remote_update_stage_exit(
+        &alias,
+        &resolved_node_id,
+        "verify",
+        verify_started.elapsed().as_millis(),
+        false,
+    );
 
+    log_remote_update_stage_enter(&alias, &resolved_node_id, "controller_verify");
     let controller_started = Instant::now();
     // `node_connected` helper not yet present on MasterClient; use
     // fetch_device as a stand-in (a 200 response implies the controller
     // has a record for this node, which is adequate for controller_verify).
-    let connected = controller_client
-        .fetch_device(&resolved_node_id)
-        .await
-        .is_ok();
+    let controller_result = controller_client.fetch_device(&resolved_node_id).await;
+    let connected = controller_result.is_ok();
     stages_ms.insert(
         "controller_verify".into(),
         controller_started.elapsed().as_millis(),
     );
     if !connected {
+        let error = controller_result
+            .as_ref()
+            .err()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "controller did not report node as connected".to_string());
+        log_remote_update_stage_failure(
+            &alias,
+            &resolved_node_id,
+            "controller_verify",
+            controller_started.elapsed().as_millis(),
+            &error,
+        );
         return failed_result(
             alias.clone(),
             UpdateTargetKind::Remote,
@@ -418,6 +516,13 @@ async fn run_remote_target<I: HostIo + 'static>(
             ),
         );
     }
+    log_remote_update_stage_exit(
+        &alias,
+        &resolved_node_id,
+        "controller_verify",
+        controller_started.elapsed().as_millis(),
+        false,
+    );
 
     UpdateTargetResult {
         target: alias,
@@ -431,6 +536,62 @@ async fn run_remote_target<I: HostIo + 'static>(
         stages_ms,
         error: None,
     }
+}
+
+fn log_remote_update_stage_enter(target: &str, node_id: &str, stage: &str) {
+    tracing::info!(
+        surface = "cli",
+        service = "nodes",
+        action = "node.update",
+        event = "remote_update.stage.enter",
+        target = %target,
+        node_id = %node_id,
+        stage = %stage,
+        "remote node update stage started",
+    );
+}
+
+fn log_remote_update_stage_exit(
+    target: &str,
+    node_id: &str,
+    stage: &str,
+    elapsed_ms: u128,
+    skipped: bool,
+) {
+    tracing::info!(
+        surface = "cli",
+        service = "nodes",
+        action = "node.update",
+        event = "remote_update.stage.exit",
+        target = %target,
+        node_id = %node_id,
+        stage = %stage,
+        elapsed_ms,
+        skipped,
+        "remote node update stage finished",
+    );
+}
+
+fn log_remote_update_stage_failure(
+    target: &str,
+    node_id: &str,
+    stage: &str,
+    elapsed_ms: u128,
+    error: &dyn std::fmt::Display,
+) {
+    tracing::warn!(
+        surface = "cli",
+        service = "nodes",
+        action = "node.update",
+        event = "remote_update.stage.exit",
+        kind = "remote_update_failed",
+        target = %target,
+        node_id = %node_id,
+        stage = %stage,
+        elapsed_ms,
+        error = %error,
+        "remote node update stage failed",
+    );
 }
 
 async fn run_local_controller(
@@ -908,6 +1069,30 @@ mod tests {
 
     use super::*;
     use crate::dispatch::deploy::runner::test_support::{RecordingIo, RunResp};
+
+    #[test]
+    fn remote_update_logs_required_stage_observability_fields() {
+        let source = include_str!("update.rs");
+        for field in [
+            "event = \"remote_update.stage.enter\"",
+            "event = \"remote_update.stage.exit\"",
+            "kind = \"remote_update_failed\"",
+            "action = \"node.update\"",
+            "elapsed_ms",
+            "node_id = %node_id",
+            "\"preflight\"",
+            "\"transfer\"",
+            "\"normalize\"",
+            "\"restart\"",
+            "\"verify\"",
+            "\"controller_verify\"",
+        ] {
+            assert!(
+                source.contains(field),
+                "missing remote update field: {field}"
+            );
+        }
+    }
 
     #[test]
     fn resolve_targets_adds_local_controller_last_for_all() {

@@ -56,19 +56,16 @@ pub async fn send_to_node(node_id: &str, msg: Message) -> Result<(), NodeDispatc
             })?;
         sender.clone()
     };
-    sender
-        .send(msg)
-        .await
-        .map_err(|_| {
-            tracing::warn!(
-                surface = "dispatch", service = "node.send", action = "send.channel_closed",
-                node_id = %node_id,
-                "send channel closed for node (race with disconnect)",
-            );
-            NodeDispatchError::ChannelClosed {
-                node_id: node_id.to_string(),
-            }
-        })
+    sender.send(msg).await.map_err(|_| {
+        tracing::warn!(
+            surface = "dispatch", service = "node.send", action = "send.channel_closed",
+            node_id = %node_id,
+            "send channel closed for node (race with disconnect)",
+        );
+        NodeDispatchError::ChannelClosed {
+            node_id: node_id.to_string(),
+        }
+    })
 }
 
 /// Convenience wrapper: send a JSON text frame to a connected node.
@@ -263,11 +260,20 @@ pub async fn send_rpc_to_node(
     method: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
-    if pending_map().len() >= MAX_PENDING_RPC {
+    let global_pending = pending_map().len();
+    let owner_pending = pending_owners().len();
+    if global_pending >= MAX_PENDING_RPC {
         tracing::warn!(
             surface = "dispatch", service = "node.send", action = "rpc.cap_hit",
-            inflight = pending_map().len(), limit = MAX_PENDING_RPC,
-            node_id = %node_id, method = %method,
+            kind = "rate_limited",
+            node_id = %node_id,
+            method = %method,
+            pending_global_depth = global_pending,
+            pending_owner_depth = owner_pending,
+            pending_global_limit = MAX_PENDING_RPC,
+            pending_node_depth = pending_count_for_node(node_id),
+            pending_node_limit = MAX_PENDING_RPC_PER_NODE,
+            queue_depth = global_pending,
             "master pending-rpc map full — refusing new RPC request",
         );
         return Err(ToolError::Sdk {
@@ -284,8 +290,15 @@ pub async fn send_rpc_to_node(
     if per_node >= MAX_PENDING_RPC_PER_NODE {
         tracing::warn!(
             surface = "dispatch", service = "node.send", action = "rpc.per_node_cap_hit",
-            inflight_for_node = per_node, limit = MAX_PENDING_RPC_PER_NODE,
-            node_id = %node_id, method = %method,
+            kind = "rate_limited",
+            node_id = %node_id,
+            method = %method,
+            pending_node_depth = per_node,
+            pending_node_limit = MAX_PENDING_RPC_PER_NODE,
+            pending_global_depth = global_pending,
+            pending_global_limit = MAX_PENDING_RPC,
+            pending_owner_depth = owner_pending,
+            queue_depth = per_node,
             "per-node RPC cap exceeded — refusing new RPC request",
         );
         return Err(ToolError::Sdk {
@@ -528,5 +541,15 @@ mod tests {
             !rpc_id_owned_by(&rpc_id, "node-a"),
             "owner entry must be cleared when the RPC resolves"
         );
+    }
+
+    #[test]
+    fn rpc_cap_hit_logs_include_depth_context() {
+        let source = include_str!("send.rs");
+        assert!(source.contains("action = \"rpc.cap_hit\""));
+        assert!(source.contains("pending_global_depth"));
+        assert!(source.contains("pending_node_depth"));
+        assert!(source.contains("pending_owner_depth"));
+        assert!(source.contains("queue_depth"));
     }
 }

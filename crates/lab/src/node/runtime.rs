@@ -104,7 +104,9 @@ impl NodeRuntime {
     pub async fn spawn_ws_flush_loop(&self) -> Result<()> {
         if matches!(self.resolved.role, NodeRole::Master) {
             tracing::debug!(
-                surface = "node", service = "runtime", action = "ws_flush.skip",
+                surface = "node",
+                service = "runtime",
+                action = "ws_flush.skip",
                 "skipping ws flush loop: process is master role",
             );
             return Ok(());
@@ -125,8 +127,15 @@ impl NodeRuntime {
             node_id = %self.resolved.local_host,
             "spawning node→master websocket flush loop",
         );
+        let node_id = self.resolved.local_host.clone();
         tokio::spawn(async move {
             ws_client.run(queue).await;
+            tracing::error!(
+                surface = "node", service = "runtime", action = "ws_flush.exit",
+                kind = "internal_error",
+                node_id = %node_id,
+                "node websocket flush loop exited unexpectedly",
+            );
         });
         Ok(())
     }
@@ -139,6 +148,18 @@ impl NodeRuntime {
     #[must_use]
     pub fn home_dir(&self) -> &Path {
         &self.home_dir
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn runtime_flush_loop_has_unexpected_exit_observability() {
+        let source = include_str!("runtime.rs");
+        assert!(source.contains("action = \"ws_flush.spawn\""));
+        assert!(source.contains("action = \"ws_flush.exit\""));
+        assert!(source.contains("kind = \"internal_error\""));
+        assert!(source.contains("node websocket flush loop exited unexpectedly"));
     }
 }
 

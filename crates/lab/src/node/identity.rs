@@ -13,15 +13,63 @@ pub fn resolve_local_hostname() -> Result<String> {
     {
         return Ok(value);
     }
+    tracing::debug!(
+        surface = "node",
+        service = "identity",
+        action = "hostname.resolve",
+        event = "identity.cache_miss",
+        source = "environment",
+        "hostname environment lookup missed",
+    );
 
     for path in ["/etc/hostname", "/etc/HOSTNAME"] {
-        if let Ok(value) = fs::read_to_string(path) {
-            if let Some(normalized) = normalize_host_identifier(&value) {
-                return Ok(normalized);
+        match fs::read_to_string(path) {
+            Ok(value) => {
+                if let Some(normalized) = normalize_host_identifier(&value) {
+                    return Ok(normalized);
+                }
+                tracing::debug!(
+                    surface = "node",
+                    service = "identity",
+                    action = "hostname.resolve",
+                    event = "identity.cache_miss",
+                    source = %path,
+                    "hostname file was empty after normalization",
+                );
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                tracing::debug!(
+                    surface = "node",
+                    service = "identity",
+                    action = "hostname.resolve",
+                    event = "identity.cache_miss",
+                    source = %path,
+                    "hostname file was not present",
+                );
+            }
+            Err(error) => {
+                tracing::warn!(
+                    surface = "node",
+                    service = "identity",
+                    action = "hostname.resolve",
+                    event = "identity.fetch_failure",
+                    kind = "identity_fetch_failed",
+                    source = %path,
+                    error = %error,
+                    "hostname fetch failed",
+                );
             }
         }
     }
 
+    tracing::debug!(
+        surface = "node",
+        service = "identity",
+        action = "hostname.resolve",
+        event = "identity.cache_miss",
+        source = "fallback",
+        "using fallback hostname identity",
+    );
     Ok("localhost".to_string())
 }
 
@@ -82,4 +130,24 @@ fn hosts_refer_to_same_device(local_host: &str, master_host: &str) -> bool {
     let local_short = short_host_identifier(local_host);
     let master_short = short_host_identifier(master_host);
     local_short == master_short && (local_host == local_short || master_host == master_short)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn hostname_resolution_logs_misses_and_fetch_failures() {
+        let source = include_str!("identity.rs");
+        for field in [
+            "event = \"identity.cache_miss\"",
+            "event = \"identity.fetch_failure\"",
+            "kind = \"identity_fetch_failed\"",
+            "action = \"hostname.resolve\"",
+            "source = %path",
+        ] {
+            assert!(
+                source.contains(field),
+                "missing identity log field: {field}"
+            );
+        }
+    }
 }

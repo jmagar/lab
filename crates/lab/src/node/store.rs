@@ -55,7 +55,12 @@ impl NodeStore {
 
     pub async fn record_hello(&self, hello: NodeHello) {
         let mut inner = self.inner.write().await;
-        let is_new = !inner.contains_key(&hello.node_id);
+        let previous = inner.get(&hello.node_id);
+        let is_new = previous.is_none();
+        let previous_connected = previous.map(|snapshot| snapshot.connected).unwrap_or(false);
+        let previous_role = previous.and_then(|snapshot| snapshot.role.clone());
+        let previous_version =
+            previous.and_then(|snapshot| snapshot.status.as_ref()?.version.clone());
         let snapshot = inner
             .entry(hello.node_id.clone())
             .or_insert_with(|| NodeSnapshot {
@@ -73,8 +78,14 @@ impl NodeStore {
         snapshot.role = Some(hello.role.clone());
         tracing::info!(
             surface = "node", service = "store", action = "node.hello",
+            event = "node.state_changed",
             node_id = %hello.node_id,
-            role = ?hello.role,
+            role = %hello.role,
+            version = %hello.version,
+            connected = true,
+            previous_connected,
+            previous_role = previous_role.as_deref(),
+            previous_version = previous_version.as_deref(),
             is_new_node = is_new,
             "node hello recorded",
         );
@@ -125,16 +136,31 @@ impl NodeStore {
             status.connected = connected;
         }
         if prev_connected != connected {
+            let role = snapshot.role.as_deref();
+            let version = snapshot
+                .status
+                .as_ref()
+                .and_then(|status| status.version.as_deref());
             if connected {
                 tracing::info!(
                     surface = "node", service = "store", action = "node.connected",
+                    event = "node.connected",
                     node_id = %node_id,
+                    role,
+                    version,
+                    connected,
+                    previous_connected = prev_connected,
                     "node marked connected",
                 );
             } else {
                 tracing::info!(
                     surface = "node", service = "store", action = "node.disconnected",
+                    event = "node.disconnected",
                     node_id = %node_id,
+                    role,
+                    version,
+                    connected,
+                    previous_connected = prev_connected,
                     "node marked disconnected",
                 );
             }
@@ -304,5 +330,24 @@ impl NodeStore {
             .take(effective_limit)
             .cloned()
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn node_connection_logs_keep_observability_fields() {
+        let source = include_str!("store.rs");
+        for field in [
+            "event = \"node.state_changed\"",
+            "event = \"node.connected\"",
+            "event = \"node.disconnected\"",
+            "node_id = %node_id",
+            "role",
+            "version",
+            "previous_connected",
+        ] {
+            assert!(source.contains(field), "missing log field: {field}");
+        }
     }
 }

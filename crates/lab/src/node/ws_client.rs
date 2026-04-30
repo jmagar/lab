@@ -122,11 +122,13 @@ impl WsClient {
                         stable_seed(&self.node_id, attempt),
                     );
                     tracing::warn!(
+                        surface = "node", service = "ws_client", action = "ws.reconnect_attempt",
+                        kind = "network_error",
                         node_id = %self.node_id,
                         attempt,
                         backoff_ms = delay.as_millis(),
                         error = %error,
-                        "ws.reconnect_attempt"
+                        "node websocket reconnect scheduled",
                     );
                     tokio::time::sleep(delay).await;
                 }
@@ -135,17 +137,26 @@ impl WsClient {
     }
 
     async fn connect_and_run_session(&self, queue: &NodeOutboundQueue) -> Result<()> {
+        let session_id = Uuid::new_v4().to_string();
         let token = token::load_or_create(&self.token_path).await?;
         let tailnet_identity = TailnetIdentity::discover(&self.node_id);
         tracing::info!(
+            surface = "node", service = "ws_client", action = "ws.session.start",
+            node_id = %self.node_id,
+            session_id = %session_id,
+            "node websocket session starting",
+        );
+        tracing::info!(
             surface = "node", service = "ws_client", action = "ws.connect.start",
             node_id = %self.node_id,
+            session_id = %session_id,
             "node websocket connecting to master",
         );
         let (socket, _) = self.open_websocket().await?;
         tracing::info!(
             surface = "node", service = "ws_client", action = "ws.connect.finish",
             node_id = %self.node_id,
+            session_id = %session_id,
             "node websocket connected",
         );
 
@@ -154,6 +165,14 @@ impl WsClient {
         tx.send(Message::Text(serde_json::to_string(&initialize)?.into()))
             .await
             .context("queue websocket initialize")?;
+        tracing::info!(
+            surface = "node", service = "ws_client", action = "ws.init.send",
+            node_id = %self.node_id,
+            session_id = %session_id,
+            writer_queue_remaining = tx.capacity(),
+            writer_queue_capacity = tx.max_capacity(),
+            "node websocket initialize queued",
+        );
 
         // Pending response map: request id → oneshot sender.
         // The reader task resolves pending entries when it sees a JSON-RPC response.
@@ -171,16 +190,33 @@ impl WsClient {
         let mut session_tasks: tokio::task::JoinSet<()> = tokio::task::JoinSet::new();
 
         // Writer task: drains `rx` → `sink`.
-        session_tasks.spawn(async move {
-            let mut sink = sink;
-            let mut rx: mpsc::Receiver<Message> = rx;
-            while let Some(msg) = rx.recv().await {
-                if let Err(error) = sink.send(msg).await {
-                    tracing::warn!(error = %error, "ws writer error");
-                    break;
+        {
+            let node_id = self.node_id.clone();
+            let session_id = session_id.clone();
+            session_tasks.spawn(async move {
+                let mut sink = sink;
+                let mut rx: mpsc::Receiver<Message> = rx;
+                while let Some(msg) = rx.recv().await {
+                    if let Err(error) = sink.send(msg).await {
+                        tracing::warn!(
+                            surface = "node", service = "ws_client", action = "ws.write.error",
+                            kind = "network_error",
+                            node_id = %node_id,
+                            session_id = %session_id,
+                            error = %error,
+                            "node websocket writer error",
+                        );
+                        break;
+                    }
                 }
-            }
-        });
+                tracing::debug!(
+                    surface = "node", service = "ws_client", action = "ws.write.exit",
+                    node_id = %node_id,
+                    session_id = %session_id,
+                    "node websocket writer loop exited",
+                );
+            });
+        }
 
         // Channel for progress notifications coming back from install handlers.
         // These are forwarded to `tx` as raw JSON text frames.
@@ -193,9 +229,23 @@ impl WsClient {
         // Forward progress notifications to the write channel.
         {
             let tx_for_progress = tx.clone();
+            let node_id = self.node_id.clone();
+            let session_id = session_id.clone();
             session_tasks.spawn(async move {
                 while let Some(notif) = progress_rx.recv().await {
-                    tx_for_progress.send(Message::Text(notif.into())).await.ok();
+                    if tx_for_progress
+                        .send(Message::Text(notif.into()))
+                        .await
+                        .is_err()
+                    {
+                        tracing::debug!(
+                            surface = "node", service = "ws_client", action = "ws.progress.exit",
+                            node_id = %node_id,
+                            session_id = %session_id,
+                            "progress forwarder stopped because websocket writer is gone",
+                        );
+                        break;
+                    }
                 }
             });
         }
@@ -222,15 +272,25 @@ impl WsClient {
             let progress_tx_for_worker = progress_tx.clone();
             let semaphore = Arc::clone(&inbound_semaphore);
             let node_id = self.node_id.clone();
+            let session_id = session_id.clone();
             session_tasks.spawn(async move {
                 while let Some(frame) = inbound_rx.recv().await {
                     let permit = match Arc::clone(&semaphore).acquire_owned().await {
                         Ok(permit) => permit,
-                        Err(_) => break, // semaphore closed on session exit
+                        Err(_) => {
+                            tracing::debug!(
+                                surface = "node", service = "ws_client", action = "ws.inbound_worker.exit",
+                                node_id = %node_id,
+                                session_id = %session_id,
+                                "inbound rpc worker stopped because semaphore closed",
+                            );
+                            break;
+                        }
                     };
                     let tx_for_handler = tx_for_worker.clone();
                     let progress_for_handler = progress_tx_for_worker.clone();
                     let node_id_for_handler = node_id.clone();
+                    let session_id_for_handler = session_id.clone();
                     tokio::spawn(async move {
                         let _permit = permit;
                         let response =
@@ -241,7 +301,9 @@ impl WsClient {
                         });
                         if tx_for_handler.send(Message::Text(encoded.into())).await.is_err() {
                             tracing::debug!(
+                                surface = "node", service = "ws_client", action = "ws.inbound_response.drop",
                                 node_id = %node_id_for_handler,
+                                session_id = %session_id_for_handler,
                                 "inbound rpc response send failed (writer task likely gone)"
                             );
                         }
@@ -255,6 +317,7 @@ impl WsClient {
             let pending = Arc::clone(&pending_clone);
             let tx = tx_clone.clone();
             let node_id = self.node_id.clone();
+            let session_id = session_id.clone();
             session_tasks.spawn(async move {
                 while let Some(message) = stream.next().await {
                     let text = match message {
@@ -267,10 +330,47 @@ impl WsClient {
                         }
                         Ok(Message::Pong(_) | Message::Frame(_)) => continue,
                         Ok(Message::Binary(_)) => {
-                            tracing::warn!(node_id = %node_id, "ws binary frame ignored");
+                            tracing::warn!(
+                                surface = "node", service = "ws_client", action = "ws.read.binary_ignored",
+                                kind = "invalid_frame",
+                                node_id = %node_id,
+                                session_id = %session_id,
+                                "node websocket binary frame ignored",
+                            );
                             continue;
                         }
-                        Ok(Message::Close(_)) | Err(_) => {
+                        Ok(Message::Close(frame)) => {
+                            let pending_depth = pending.lock().await.len();
+                            let close_code = frame.as_ref().map(|f| format!("{:?}", f.code));
+                            let close_reason = frame.as_ref().map(|f| f.reason.to_string());
+                            tracing::info!(
+                                surface = "node", service = "ws_client", action = "ws.close",
+                                node_id = %node_id,
+                                session_id = %session_id,
+                                close_code = close_code.as_deref(),
+                                close_reason = close_reason.as_deref(),
+                                pending_depth,
+                                "node websocket close frame received",
+                            );
+                            {
+                                let mut guard = init_tx.lock().await;
+                                guard.take();
+                            }
+                            let mut map = pending.lock().await;
+                            map.clear();
+                            break;
+                        }
+                        Err(error) => {
+                            let pending_depth = pending.lock().await.len();
+                            tracing::warn!(
+                                surface = "node", service = "ws_client", action = "ws.read.error",
+                                kind = "network_error",
+                                node_id = %node_id,
+                                session_id = %session_id,
+                                error = %error,
+                                pending_depth,
+                                "node websocket read error",
+                            );
                             {
                                 let mut guard = init_tx.lock().await;
                                 guard.take();
@@ -285,7 +385,14 @@ impl WsClient {
                     let parsed: Value = match serde_json::from_str(&text) {
                         Ok(v) => v,
                         Err(error) => {
-                            tracing::warn!(node_id = %node_id, error = %error, "ws unparse-able frame");
+                            tracing::warn!(
+                                surface = "node", service = "ws_client", action = "ws.read.invalid_json",
+                                kind = "invalid_frame",
+                                node_id = %node_id,
+                                session_id = %session_id,
+                                error = %error,
+                                "node websocket frame was not valid JSON",
+                            );
                             continue;
                         }
                     };
@@ -320,7 +427,12 @@ impl WsClient {
                             Ok(()) => {}
                             Err(mpsc::error::TrySendError::Full(frame)) => {
                                 tracing::warn!(
+                                    surface = "node", service = "ws_client", action = "ws.inbound_queue.full",
+                                    kind = "backpressure",
                                     node_id = %node_id,
+                                    session_id = %session_id,
+                                    inbound_queue_depth = INBOUND_RPC_QUEUE_CAPACITY,
+                                    inbound_queue_limit = INBOUND_RPC_QUEUE_CAPACITY,
                                     "inbound rpc queue full; returning backpressure error to master"
                                 );
                                 let id = frame.get("id").cloned().unwrap_or(Value::Null);
@@ -343,6 +455,13 @@ impl WsClient {
                             }
                             Err(mpsc::error::TrySendError::Closed(_)) => {
                                 // Worker task exited; session is tearing down.
+                                tracing::warn!(
+                                    surface = "node", service = "ws_client", action = "ws.inbound_queue.closed",
+                                    kind = "internal_error",
+                                    node_id = %node_id,
+                                    session_id = %session_id,
+                                    "inbound rpc queue closed while reader was active",
+                                );
                                 break;
                             }
                         }
@@ -362,16 +481,23 @@ impl WsClient {
                 .context("initialize response channel closed")?;
             validate_success_response(&init_response, &json!(1))?;
             self.connected.store(true, Ordering::Relaxed);
+            tracing::info!(
+                surface = "node", service = "ws_client", action = "ws.init.finish",
+                node_id = %self.node_id,
+                session_id = %session_id,
+                "node websocket initialize acknowledged",
+            );
 
             let mut status_deadline = tokio::time::Instant::now() + STATUS_INTERVAL;
 
             loop {
                 let ack_count = self
-                    .flush_queue_batch_async(queue, &tx, &pending_clone)
+                    .flush_queue_batch_async(queue, &tx, &pending_clone, &session_id)
                     .await?;
                 let now = tokio::time::Instant::now();
                 if now >= status_deadline {
-                    self.send_status_update_async(&tx, &pending_clone).await?;
+                    self.send_status_update_async(&tx, &pending_clone, &session_id)
+                        .await?;
                     status_deadline = now + STATUS_INTERVAL;
                     continue;
                 }
@@ -392,6 +518,24 @@ impl WsClient {
         session_tasks.abort_all();
         while session_tasks.join_next().await.is_some() {}
 
+        self.connected.store(false, Ordering::Relaxed);
+        match &session_result {
+            Ok(()) => tracing::info!(
+                surface = "node", service = "ws_client", action = "ws.session.finish",
+                node_id = %self.node_id,
+                session_id = %session_id,
+                "node websocket session finished",
+            ),
+            Err(error) => tracing::warn!(
+                surface = "node", service = "ws_client", action = "ws.session.error",
+                kind = "network_error",
+                node_id = %self.node_id,
+                session_id = %session_id,
+                error = %error,
+                "node websocket session ended with error",
+            ),
+        }
+
         session_result
     }
 
@@ -403,18 +547,39 @@ impl WsClient {
     /// map is already full) so a silent master cannot wedge the client or
     /// leak pending senders.
     async fn send_and_await(
+        node_id: &str,
+        session_id: &str,
         tx: &mpsc::Sender<Message>,
         pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
         request: &Value,
         request_id: &str,
     ) -> Result<String> {
+        let method = request
+            .get("method")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
         let (resp_tx, resp_rx) = oneshot::channel::<String>();
         {
             let mut map = pending.lock().await;
-            if map.len() >= MAX_PENDING_INFLIGHT {
+            let pending_depth = map.len();
+            if pending_depth >= MAX_PENDING_INFLIGHT {
+                tracing::warn!(
+                    surface = "node", service = "ws_client", action = "ws.pending.cap_hit",
+                    kind = "rate_limited",
+                    node_id = %node_id,
+                    session_id = %session_id,
+                    method = %method,
+                    request_id = %request_id,
+                    pending_depth,
+                    pending_high_water = MAX_PENDING_INFLIGHT,
+                    pending_limit = MAX_PENDING_INFLIGHT,
+                    writer_queue_remaining = tx.capacity(),
+                    writer_queue_capacity = tx.max_capacity(),
+                    "node ws_client pending map full; refusing websocket request",
+                );
                 return Err(anyhow!(
                     "node ws_client pending map full ({} inflight); refusing request_id={}",
-                    map.len(),
+                    pending_depth,
                     request_id
                 ));
             }
@@ -450,6 +615,7 @@ impl WsClient {
         queue: &NodeOutboundQueue,
         tx: &mpsc::Sender<Message>,
         pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
+        session_id: &str,
     ) -> Result<usize> {
         let drained = queue.drain_batch(FLUSH_BATCH_SIZE).await?;
         let mut ack_count = 0usize;
@@ -460,7 +626,15 @@ impl WsClient {
             let expected_id = json!(request_id);
             let result: Result<()> = async {
                 let request = queue_envelope_to_request(&envelope, &request_id)?;
-                let response = Self::send_and_await(tx, pending, &request, &request_id).await?;
+                let response = Self::send_and_await(
+                    &self.node_id,
+                    session_id,
+                    tx,
+                    pending,
+                    &request,
+                    &request_id,
+                )
+                .await?;
                 validate_success_response(&response, &expected_id)
             }
             .await;
@@ -478,6 +652,7 @@ impl WsClient {
         &self,
         tx: &mpsc::Sender<Message>,
         pending: &tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>,
+        session_id: &str,
     ) -> Result<()> {
         let metrics = tokio::task::spawn_blocking({
             let node_id = self.node_id.clone();
@@ -512,7 +687,15 @@ impl WsClient {
             "method": "nodes/status.push",
             "params": params,
         });
-        let response = Self::send_and_await(tx, pending, &request, &request_id).await?;
+        let response = Self::send_and_await(
+            &self.node_id,
+            session_id,
+            tx,
+            pending,
+            &request,
+            &request_id,
+        )
+        .await?;
         validate_success_response(&response, &json!(request_id))?;
         Ok(())
     }
@@ -605,7 +788,8 @@ impl WsClient {
         let init_response = init_rx.await.context("init response channel closed")?;
         validate_success_response(&init_response, &json!(1))?;
 
-        self.flush_queue_batch_async(queue, &tx, &pending).await?;
+        self.flush_queue_batch_async(queue, &tx, &pending, "test-session")
+            .await?;
 
         // Close the socket.
         tx.send(Message::Close(None)).await.ok();
@@ -1518,12 +1702,57 @@ mod tests {
         // gone, send_and_await returns with the pending entry already cleaned.
         let request_id = Uuid::new_v4().to_string();
         let request = json!({"jsonrpc": "2.0", "id": request_id, "method": "test"});
-        let result = WsClient::send_and_await(&tx, &pending, &request, &request_id).await;
+        let result = WsClient::send_and_await(
+            "node-test",
+            "session-test",
+            &tx,
+            &pending,
+            &request,
+            &request_id,
+        )
+        .await;
         assert!(result.is_err(), "expected send failure when writer is gone");
         let map = pending.lock().await;
         assert!(
             !map.contains_key(&request_id),
             "pending entry must be removed on send failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_and_await_rejects_when_pending_map_is_saturated() {
+        let (tx, _rx) = mpsc::channel::<Message>(16);
+        let pending: Arc<tokio::sync::Mutex<HashMap<String, oneshot::Sender<String>>>> =
+            Arc::new(tokio::sync::Mutex::new(HashMap::new()));
+
+        {
+            let mut map = pending.lock().await;
+            for index in 0..MAX_PENDING_INFLIGHT {
+                let (sender, _receiver) = oneshot::channel::<String>();
+                map.insert(format!("pending-{index}"), sender);
+            }
+        }
+
+        let request_id = Uuid::new_v4().to_string();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "method": "nodes/status.push",
+        });
+        let result = WsClient::send_and_await(
+            "node-test",
+            "session-test",
+            &tx,
+            &pending,
+            &request,
+            &request_id,
+        )
+        .await;
+        assert!(result.is_err(), "saturated pending map must reject");
+        let map = pending.lock().await;
+        assert!(
+            !map.contains_key(&request_id),
+            "rejected request must not be inserted"
         );
     }
 
@@ -1565,6 +1794,18 @@ mod tests {
         // validator compares via `Value` equality so both shapes work.
         let payload = r#"{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05"}}"#;
         assert!(validate_success_response(payload, &json!(1)).is_ok());
+    }
+
+    #[test]
+    fn websocket_observability_fields_are_kept_on_source_paths() {
+        let source = include_str!("ws_client.rs");
+        assert!(source.contains("action = \"ws.pending.cap_hit\""));
+        assert!(source.contains("pending_high_water"));
+        assert!(source.contains("action = \"ws.session.start\""));
+        assert!(source.contains("action = \"ws.init.finish\""));
+        assert!(source.contains("action = \"ws.close\""));
+        assert!(source.contains("action = \"ws.read.error\""));
+        assert!(source.contains("session_id"));
     }
 
     // ------------------------------------------------------------------

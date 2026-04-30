@@ -183,11 +183,59 @@ async fn routable_upstream_peers(
         names
     };
 
+    let acquire_started = Instant::now();
+    tracing::debug!(
+        surface = "dispatch",
+        service = "upstream.pool",
+        action = "upstream.acquire",
+        event = "start",
+        operation = "connection.acquire",
+        requested_operation = "capability.route",
+        capability = capability_name(capability),
+        requested_count = names.len(),
+        "upstream pool acquire start"
+    );
     let connections = pool.connections.read().await;
-    names
+    let connection_count = connections.len();
+    let peers = names
         .drain(..)
         .filter_map(|name| connections.get(&name).map(|conn| (name, conn.peer.clone())))
-        .collect()
+        .collect::<Vec<_>>();
+    drop(connections);
+    let pool_size = pool.catalog.read().await.len();
+    let elapsed_ms = acquire_started.elapsed().as_millis();
+    if peers.is_empty() {
+        tracing::warn!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.acquire",
+            event = "empty",
+            operation = "connection.acquire",
+            requested_operation = "capability.route",
+            capability = capability_name(capability),
+            elapsed_ms,
+            kind = "upstream_pool_empty",
+            pool_size,
+            connection_count,
+            "upstream pool acquire empty"
+        );
+    } else {
+        tracing::debug!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.acquire",
+            event = "finish",
+            operation = "connection.acquire",
+            requested_operation = "capability.route",
+            capability = capability_name(capability),
+            elapsed_ms,
+            pool_size,
+            connection_count,
+            acquired_count = peers.len(),
+            "upstream pool acquire finish"
+        );
+    }
+    peers
 }
 
 /// Returns true if the error represents a capability the upstream simply doesn't support
@@ -199,6 +247,14 @@ fn is_capability_unsupported(error: &rmcp::ServiceError) -> bool {
         || msg.contains("method_not_found")
         || msg.contains("-32601")
         || msg.contains("Not implemented")
+}
+
+fn capability_name(capability: UpstreamCapability) -> &'static str {
+    match capability {
+        UpstreamCapability::Tools => "tools",
+        UpstreamCapability::Prompts => "prompts",
+        UpstreamCapability::Resources => "resources",
+    }
 }
 
 async fn discover_capability_counts(
@@ -439,6 +495,121 @@ impl UpstreamPool {
     pub fn with_runtime_owner(mut self, owner: Option<UpstreamRuntimeOwner>) -> Self {
         self.runtime_owner = owner;
         self
+    }
+
+    async fn acquire_peer(
+        &self,
+        upstream_name: &str,
+        capability: UpstreamCapability,
+        requested_operation: &'static str,
+    ) -> Option<rmcp::service::Peer<RoleClient>> {
+        let acquire_started = Instant::now();
+        tracing::debug!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.acquire",
+            event = "start",
+            operation = "connection.acquire",
+            requested_operation,
+            upstream = %upstream_name,
+            capability = capability_name(capability),
+            "upstream pool acquire start"
+        );
+        let connections = self.connections.read().await;
+        let connection_count = connections.len();
+        let peer = connections.get(upstream_name).map(|conn| conn.peer.clone());
+        drop(connections);
+        let pool_size = self.catalog.read().await.len();
+        let elapsed_ms = acquire_started.elapsed().as_millis();
+        if peer.is_some() {
+            tracing::debug!(
+                surface = "dispatch",
+                service = "upstream.pool",
+                action = "upstream.acquire",
+                event = "finish",
+                operation = "connection.acquire",
+                requested_operation,
+                upstream = %upstream_name,
+                capability = capability_name(capability),
+                elapsed_ms,
+                pool_size,
+                connection_count,
+                "upstream pool acquire finish"
+            );
+        } else {
+            tracing::warn!(
+                surface = "dispatch",
+                service = "upstream.pool",
+                action = "upstream.acquire",
+                event = "empty",
+                operation = "connection.acquire",
+                requested_operation,
+                upstream = %upstream_name,
+                capability = capability_name(capability),
+                elapsed_ms,
+                kind = "upstream_not_connected",
+                pool_size,
+                connection_count,
+                "upstream pool acquire empty"
+            );
+        }
+        peer
+    }
+
+    pub async fn drain_for_swap(&self, reason: &'static str) {
+        let started = Instant::now();
+        let catalog_count = self.catalog.read().await.len();
+        let connection_count = self.connections.read().await.len();
+        let probe_task_count = self.probe_tasks.read().await.len();
+        tracing::info!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.pool.drain",
+            event = "start",
+            operation = "pool.drain",
+            reason,
+            pool_size = catalog_count,
+            connection_count,
+            probe_task_count,
+            "upstream pool drain start"
+        );
+
+        let cancelled_probe_count = {
+            let mut tasks = self.probe_tasks.write().await;
+            let count = tasks.len();
+            for cancel in tasks.values() {
+                cancel.cancel();
+            }
+            tasks.clear();
+            count
+        };
+        let drained_connection_count = {
+            let mut connections = self.connections.write().await;
+            let count = connections.len();
+            connections.clear();
+            count
+        };
+        let drained_catalog_count = {
+            let mut catalog = self.catalog.write().await;
+            let count = catalog.len();
+            catalog.clear();
+            count
+        };
+        self.resource_upstreams.write().await.clear();
+
+        tracing::info!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.pool.drain",
+            event = "finish",
+            operation = "pool.drain",
+            reason,
+            elapsed_ms = started.elapsed().as_millis(),
+            drained_catalog_count,
+            drained_connection_count,
+            cancelled_probe_count,
+            "upstream pool drain finish"
+        );
     }
 
     /// Connect to all configured upstreams in parallel and discover their tools.
@@ -709,6 +880,16 @@ impl UpstreamPool {
             let cancel = CancellationToken::new();
             tasks.insert(config.name.clone(), cancel.clone());
             drop(tasks);
+            tracing::info!(
+                surface = "dispatch",
+                service = "upstream.pool",
+                action = "upstream.reprobe",
+                event = "scheduled",
+                operation = "health",
+                upstream = %config.name,
+                transport = upstream_transport(&config),
+                "upstream reprobe scheduled"
+            );
 
             let mut attempt = 0_u32;
             loop {
@@ -718,20 +899,82 @@ impl UpstreamPool {
                 } else {
                     jitter_delay(base, stable_jitter_seed(&config.name, attempt))
                 };
+                tracing::debug!(
+                    surface = "dispatch",
+                    service = "upstream.pool",
+                    action = "upstream.reprobe",
+                    event = "sleep",
+                    operation = "health",
+                    upstream = %config.name,
+                    transport = upstream_transport(&config),
+                    attempt,
+                    sleep_ms = sleep_for.as_millis(),
+                    "upstream reprobe sleep scheduled"
+                );
                 tokio::select! {
-                    _ = cancel.cancelled() => break,
-                    _ = tokio::time::sleep(sleep_for) => {}
-                }
-
-                match pool.reprobe_upstream(&config).await {
-                    Ok(true) => attempt = 0,
-                    Ok(false) => {}
-                    Err(error) => {
-                        attempt = attempt.saturating_add(1);
-                        tracing::warn!(
+                    _ = cancel.cancelled() => {
+                        tracing::info!(
+                            surface = "dispatch",
+                            service = "upstream.pool",
+                            action = "upstream.reprobe",
+                            event = "cancelled",
+                            operation = "health",
                             upstream = %config.name,
                             transport = upstream_transport(&config),
                             attempt,
+                            "upstream reprobe cancelled"
+                        );
+                        break;
+                    },
+                    _ = tokio::time::sleep(sleep_for) => {}
+                }
+
+                let reprobe_started = Instant::now();
+                match pool.reprobe_upstream(&config).await {
+                    Ok(true) => {
+                        tracing::info!(
+                            surface = "dispatch",
+                            service = "upstream.pool",
+                            action = "upstream.reprobe",
+                            event = "finish",
+                            operation = "health",
+                            upstream = %config.name,
+                            transport = upstream_transport(&config),
+                            attempt,
+                            elapsed_ms = reprobe_started.elapsed().as_millis(),
+                            changed = true,
+                            "upstream reprobe succeeded"
+                        );
+                        attempt = 0;
+                    }
+                    Ok(false) => {
+                        tracing::debug!(
+                            surface = "dispatch",
+                            service = "upstream.pool",
+                            action = "upstream.reprobe",
+                            event = "finish",
+                            operation = "health",
+                            upstream = %config.name,
+                            transport = upstream_transport(&config),
+                            attempt,
+                            elapsed_ms = reprobe_started.elapsed().as_millis(),
+                            changed = false,
+                            "upstream reprobe skipped"
+                        );
+                    }
+                    Err(error) => {
+                        attempt = attempt.saturating_add(1);
+                        tracing::warn!(
+                            surface = "dispatch",
+                            service = "upstream.pool",
+                            action = "upstream.reprobe",
+                            event = "error",
+                            operation = "health",
+                            upstream = %config.name,
+                            transport = upstream_transport(&config),
+                            attempt,
+                            elapsed_ms = reprobe_started.elapsed().as_millis(),
+                            kind = "upstream_reprobe_failed",
                             error = %error,
                             "upstream reprobe failed"
                         );
@@ -742,6 +985,17 @@ impl UpstreamPool {
     }
 
     async fn reprobe_upstream(&self, config: &UpstreamConfig) -> anyhow::Result<bool> {
+        let started = Instant::now();
+        tracing::debug!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.reprobe",
+            event = "start",
+            operation = "health",
+            upstream = %config.name,
+            transport = upstream_transport(config),
+            "upstream reprobe start"
+        );
         let existing_peer = {
             let connections = self.connections.read().await;
             connections
@@ -755,6 +1009,17 @@ impl UpstreamPool {
                     self.replace_catalog_tools(config, tools).await;
                     self.record_success_for(&config.name, UpstreamCapability::Tools)
                         .await;
+                    tracing::info!(
+                        surface = "dispatch",
+                        service = "upstream.pool",
+                        action = "upstream.reprobe",
+                        event = "heartbeat.finish",
+                        operation = "health",
+                        upstream = %config.name,
+                        transport = upstream_transport(config),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "upstream heartbeat succeeded"
+                    );
                     return Ok(true);
                 }
                 Ok(Err(error)) => {
@@ -764,6 +1029,19 @@ impl UpstreamPool {
                         format!("upstream heartbeat failed: {error}"),
                     )
                     .await;
+                    tracing::warn!(
+                        surface = "dispatch",
+                        service = "upstream.pool",
+                        action = "upstream.reprobe",
+                        event = "heartbeat.error",
+                        operation = "health",
+                        upstream = %config.name,
+                        transport = upstream_transport(config),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        kind = "upstream_heartbeat_failed",
+                        error = %error,
+                        "upstream heartbeat failed"
+                    );
                 }
                 Err(_) => {
                     self.record_failure_for(
@@ -772,8 +1050,34 @@ impl UpstreamPool {
                         "upstream heartbeat timed out",
                     )
                     .await;
+                    tracing::warn!(
+                        surface = "dispatch",
+                        service = "upstream.pool",
+                        action = "upstream.reprobe",
+                        event = "heartbeat.error",
+                        operation = "health",
+                        upstream = %config.name,
+                        transport = upstream_transport(config),
+                        elapsed_ms = started.elapsed().as_millis(),
+                        kind = "timeout",
+                        timeout_secs = DISCOVERY_TIMEOUT.as_secs(),
+                        "upstream heartbeat timed out"
+                    );
                 }
             }
+        } else {
+            tracing::warn!(
+                surface = "dispatch",
+                service = "upstream.pool",
+                action = "upstream.reprobe",
+                event = "empty",
+                operation = "health",
+                upstream = %config.name,
+                transport = upstream_transport(config),
+                elapsed_ms = started.elapsed().as_millis(),
+                kind = "upstream_not_connected",
+                "upstream reprobe found no existing connection"
+            );
         }
 
         let (conn, tools) = connect_upstream(
@@ -791,6 +1095,17 @@ impl UpstreamPool {
         self.replace_catalog_tools(config, tools).await;
         self.record_success_for(&config.name, UpstreamCapability::Tools)
             .await;
+        tracing::info!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.reprobe",
+            event = "reconnect.finish",
+            operation = "health",
+            upstream = %config.name,
+            transport = upstream_transport(config),
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream reprobe reconnect succeeded"
+        );
         Ok(true)
     }
 
@@ -1388,10 +1703,9 @@ impl UpstreamPool {
     ) -> Option<Result<CallToolResult, String>> {
         let start = Instant::now();
         let tool_name = params.name.to_string();
-        let peer = {
-            let connections = self.connections.read().await;
-            connections.get(upstream_name)?.peer.clone()
-        };
+        let peer = self
+            .acquire_peer(upstream_name, UpstreamCapability::Tools, "tool.call")
+            .await?;
         tracing::debug!(
             upstream = %upstream_name,
             capability = "tools",
@@ -1768,10 +2082,13 @@ impl UpstreamPool {
         }
 
         // Clone the peer handle out, then drop the lock before awaiting.
-        let peer = {
-            let connections = self.connections.read().await;
-            connections.get(upstream_name)?.peer.clone()
-        };
+        let peer = self
+            .acquire_peer(
+                upstream_name,
+                UpstreamCapability::Resources,
+                "resource.read",
+            )
+            .await?;
 
         tracing::debug!(
             upstream = %upstream_name,
@@ -2166,10 +2483,9 @@ impl UpstreamPool {
     ) -> Option<Result<GetPromptResult, String>> {
         let start = Instant::now();
         let prompt_name = params.name.to_string();
-        let peer = {
-            let connections = self.connections.read().await;
-            connections.get(upstream_name)?.peer.clone()
-        };
+        let peer = self
+            .acquire_peer(upstream_name, UpstreamCapability::Prompts, "prompt.get")
+            .await?;
 
         tracing::debug!(
             upstream = %upstream_name,
@@ -2371,7 +2687,20 @@ async fn connect_upstream(
     runtime_origin: Option<&str>,
     runtime_owner: Option<&UpstreamRuntimeOwner>,
 ) -> anyhow::Result<(UpstreamConnection, Vec<rmcp::model::Tool>)> {
-    if let Some(ref url) = config.url {
+    let started = Instant::now();
+    tracing::debug!(
+        surface = "dispatch",
+        service = "upstream.pool",
+        action = "upstream.connect",
+        event = "attempt",
+        operation = "connection.acquire",
+        upstream = %config.name,
+        transport = upstream_transport(config),
+        target = %upstream_target_redacted(config),
+        subject_scoped = subject.is_some(),
+        "upstream connection acquire attempt"
+    );
+    let result = if let Some(ref url) = config.url {
         if is_websocket_url(url) {
             connect_websocket_upstream(url, config).await
         } else {
@@ -2380,8 +2709,43 @@ async fn connect_upstream(
     } else if let Some(ref command) = config.command {
         connect_stdio_upstream(command, &config.args, config, runtime_origin, runtime_owner).await
     } else {
-        anyhow::bail!("upstream {} has neither url nor command", config.name)
+        Err(anyhow::anyhow!(
+            "upstream {} has neither url nor command",
+            config.name
+        ))
+    };
+    match &result {
+        Ok((_, tools)) => tracing::info!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.connect",
+            event = "finish",
+            operation = "connection.acquire",
+            upstream = %config.name,
+            transport = upstream_transport(config),
+            target = %upstream_target_redacted(config),
+            subject_scoped = subject.is_some(),
+            tool_count = tools.len(),
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream connection acquire finish"
+        ),
+        Err(error) => tracing::warn!(
+            surface = "dispatch",
+            service = "upstream.pool",
+            action = "upstream.connect",
+            event = "error",
+            operation = "connection.acquire",
+            upstream = %config.name,
+            transport = upstream_transport(config),
+            target = %upstream_target_redacted(config),
+            subject_scoped = subject.is_some(),
+            kind = "upstream_connect_error",
+            error = %error,
+            elapsed_ms = started.elapsed().as_millis(),
+            "upstream connection acquire error"
+        ),
     }
+    result
 }
 
 async fn connect_websocket_upstream(
@@ -2856,7 +3220,10 @@ mod tests {
     fn normalize_bearer_token_rejects_empty_values() {
         assert_eq!(normalize_bearer_token("   "), None);
         assert_eq!(normalize_bearer_token("Bearer   "), None);
-        assert_eq!(normalize_bearer_token(" raw-token "), Some("raw-token".to_string()));
+        assert_eq!(
+            normalize_bearer_token(" raw-token "),
+            Some("raw-token".to_string())
+        );
         assert_eq!(
             normalize_bearer_token("Bearer raw-token"),
             Some("raw-token".to_string())
@@ -3589,5 +3956,27 @@ mod tests {
         let policy = resolve_exposure_policy("github", Some(vec!["   ".to_string()]));
         assert_eq!(policy, ToolExposurePolicy::AllowList(Vec::new()));
         assert!(!policy.matches("search_repos"));
+    }
+
+    #[test]
+    fn observability_source_covers_pool_acquire_reprobe_and_drain_events() {
+        let source = include_str!("pool.rs");
+        for expected in [
+            "action = \"upstream.acquire\"",
+            "elapsed_ms",
+            "pool_size",
+            "connection_count",
+            "action = \"upstream.reprobe\"",
+            "operation = \"health\"",
+            "action = \"upstream.pool.drain\"",
+            "cancelled_probe_count",
+            "kind = \"upstream_pool_empty\"",
+            "kind = \"upstream_not_connected\"",
+        ] {
+            assert!(
+                source.contains(expected),
+                "missing upstream pool observability field `{expected}`"
+            );
+        }
     }
 }

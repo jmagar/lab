@@ -1240,8 +1240,12 @@ impl GatewayManager {
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
+        let started = Instant::now();
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.add",
+            event = "install.start",
             phase = "start",
             gateway = %spec.name,
             target = ?redacted_gateway_target(&spec),
@@ -1272,13 +1276,17 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.add",
+            event = "install.finish",
             phase = "finish",
             gateway = %spec.name,
             target = ?redacted_gateway_target(&spec),
             tools_changed = diff.tools_changed,
             resources_changed = diff.resources_changed,
             prompts_changed = diff.prompts_changed,
+            elapsed_ms = started.elapsed().as_millis(),
             "gateway reconcile"
         );
         self.get(&spec.name).await
@@ -1292,10 +1300,14 @@ impl GatewayManager {
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
+        let started = Instant::now();
         let mut patch = patch;
         let updated_name = patch.name.clone().unwrap_or_else(|| name.to_string());
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.update",
+            event = "install.update.start",
             phase = "start",
             gateway = %name,
             new_gateway = %updated_name,
@@ -1349,13 +1361,17 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.update",
+            event = "install.update.finish",
             phase = "finish",
             gateway = %name,
             new_gateway = %updated_name,
             tools_changed = diff.tools_changed,
             resources_changed = diff.resources_changed,
             prompts_changed = diff.prompts_changed,
+            elapsed_ms = started.elapsed().as_millis(),
             "gateway reconcile"
         );
         self.get(&updated_name).await
@@ -1367,8 +1383,12 @@ impl GatewayManager {
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayView, ToolError> {
+        let started = Instant::now();
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.remove",
+            event = "remove.start",
             phase = "start",
             gateway = %name,
             "gateway reconcile"
@@ -1379,13 +1399,17 @@ impl GatewayManager {
         self.persist_config(cfg).await?;
         let diff = self.reload_with_origin(origin, owner).await?;
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.remove",
+            event = "remove.finish",
             phase = "finish",
             gateway = %name,
             target = ?redacted_gateway_target(&removed),
             tools_changed = diff.tools_changed,
             resources_changed = diff.resources_changed,
             prompts_changed = diff.prompts_changed,
+            elapsed_ms = started.elapsed().as_millis(),
             "gateway reconcile"
         );
         Ok(GatewayView {
@@ -1420,8 +1444,12 @@ impl GatewayManager {
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<GatewayCatalogDiff, ToolError> {
+        let started = Instant::now();
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "catalog.refresh.start",
             phase = "config.load.start",
             "gateway reconcile"
         );
@@ -1440,7 +1468,10 @@ impl GatewayManager {
             self.persist_config(cfg.clone()).await?;
         }
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "catalog.config.loaded",
             phase = "config.load.finish",
             upstream_count = cfg.upstream.len(),
             virtual_server_count = cfg.virtual_servers.len(),
@@ -1477,10 +1508,16 @@ impl GatewayManager {
                 }
             }
         }
-        let before = snapshot_from_pool(self.runtime.current_pool().await).await;
+        let old_pool = self.runtime.current_pool().await;
+        let before = snapshot_from_pool(old_pool.clone()).await;
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "health.schedule",
+            operation = "health",
             phase = "pool.build.start",
+            upstream_count = cfg.upstream.len(),
             "gateway reconcile"
         );
         let fresh_pool = {
@@ -1498,17 +1535,46 @@ impl GatewayManager {
             Some(pool)
         };
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "health.finish",
+            operation = "health",
             phase = "pool.build.finish",
+            elapsed_ms = started.elapsed().as_millis(),
             "gateway reconcile"
         );
         let after = snapshot_from_pool(fresh_pool.clone()).await;
+        let old_pool_present = old_pool.is_some();
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "pool.swap",
             phase = "pool.swap",
+            old_pool_present,
             "gateway reconcile"
         );
         self.runtime.swap(fresh_pool).await;
+        if let Some(old_pool) = old_pool {
+            tracing::info!(
+                surface = "dispatch",
+                service = "gateway",
+                action = "gateway.reload",
+                event = "old_pool.drain.start",
+                phase = "pool.drain.start",
+                "gateway old upstream pool drain start"
+            );
+            old_pool.drain_for_swap("gateway.reload.swap").await;
+            tracing::info!(
+                surface = "dispatch",
+                service = "gateway",
+                action = "gateway.reload",
+                event = "old_pool.drain.finish",
+                phase = "pool.drain.finish",
+                "gateway old upstream pool drain finish"
+            );
+        }
         *self.config.write().await = cfg;
         let current_cfg = self.config.read().await.clone();
         let current_pool = self.runtime.current_pool().await;
@@ -1518,11 +1584,21 @@ impl GatewayManager {
         let diff = diff_catalogs(&before, &after);
         self.notify_catalog_changes(&diff);
         tracing::info!(
+            surface = "dispatch",
+            service = "gateway",
             action = "gateway.reload",
+            event = "catalog.refresh.finish",
             phase = "finish",
             tools_changed = diff.tools_changed,
             resources_changed = diff.resources_changed,
             prompts_changed = diff.prompts_changed,
+            before_tool_count = before.tools.len(),
+            after_tool_count = after.tools.len(),
+            before_resource_count = before.resources.len(),
+            after_resource_count = after.resources.len(),
+            before_prompt_count = before.prompts.len(),
+            after_prompt_count = after.prompts.len(),
+            elapsed_ms = started.elapsed().as_millis(),
             "gateway reconcile"
         );
         Ok(diff)
@@ -1709,10 +1785,26 @@ impl GatewayManager {
 
     fn schedule_tool_search_rebuilds(&self, cfg: &LabConfig, pool: Option<Arc<UpstreamPool>>) {
         if !cfg.tool_search.enabled {
+            tracing::info!(
+                surface = "dispatch",
+                service = "gateway",
+                action = "tool_search.rebuild",
+                event = "disabled",
+                "gateway tool index rebuild disabled"
+            );
             for entry in self.tool_indexes.iter() {
                 if let Ok(mut guard) = entry.in_flight.lock()
                     && let Some(handle) = guard.take()
                 {
+                    tracing::info!(
+                        surface = "dispatch",
+                        service = "gateway",
+                        action = "tool_search.rebuild",
+                        event = "abort",
+                        upstream = %entry.key(),
+                        reason = "disabled",
+                        "gateway tool index rebuild aborted"
+                    );
                     handle.abort();
                 }
             }
@@ -1730,6 +1822,15 @@ impl GatewayManager {
                 if let Ok(mut guard) = state.in_flight.lock()
                     && let Some(handle) = guard.take()
                 {
+                    tracing::info!(
+                        surface = "dispatch",
+                        service = "gateway",
+                        action = "tool_search.rebuild",
+                        event = "abort",
+                        upstream = %name,
+                        reason = "upstream_removed",
+                        "gateway tool index rebuild aborted"
+                    );
                     handle.abort();
                 }
             }
@@ -1737,6 +1838,14 @@ impl GatewayManager {
         });
 
         let Some(pool) = pool else {
+            tracing::warn!(
+                surface = "dispatch",
+                service = "gateway",
+                action = "tool_search.rebuild",
+                event = "skipped",
+                kind = "upstream_pool_empty",
+                "gateway tool index rebuild skipped without pool"
+            );
             self.tool_indexes.clear();
             return;
         };
@@ -1753,16 +1862,47 @@ impl GatewayManager {
             if let Ok(mut guard) = state.in_flight.lock()
                 && let Some(handle) = guard.take()
             {
+                tracing::info!(
+                    surface = "dispatch",
+                    service = "gateway",
+                    action = "tool_search.rebuild",
+                    event = "abort",
+                    upstream = %upstream.name,
+                    reason = "superseded",
+                    "gateway tool index rebuild aborted"
+                );
                 handle.abort();
             }
             let my_generation = state.generation.fetch_add(1, Ordering::Relaxed) + 1;
             let upstream = upstream.clone();
+            let upstream_name = upstream.name.clone();
             let pool = pool.clone();
             let max_tools = cfg.tool_search.max_tools;
             state.warming.store(true, Ordering::Relaxed);
             let state_for_task = state.clone();
+            tracing::info!(
+                surface = "dispatch",
+                service = "gateway",
+                action = "tool_search.rebuild",
+                event = "scheduled",
+                upstream = %upstream.name,
+                generation = my_generation,
+                max_tools,
+                "gateway tool index rebuild scheduled"
+            );
             let handle = tokio::spawn(async move {
-                let healthy_tools = pool.healthy_tools_for_upstream(&upstream.name).await;
+                let started = Instant::now();
+                tracing::debug!(
+                    surface = "dispatch",
+                    service = "gateway",
+                    action = "tool_search.rebuild",
+                    event = "start",
+                    upstream = %upstream_name,
+                    generation = my_generation,
+                    "gateway tool index rebuild start"
+                );
+                let healthy_tools = pool.healthy_tools_for_upstream(&upstream_name).await;
+                let tool_count = healthy_tools.len();
                 let built = tokio::task::spawn_blocking(move || {
                     ToolIndex::build_from_tools(&upstream, healthy_tools, max_tools)
                 })
@@ -1771,6 +1911,29 @@ impl GatewayManager {
                     && let Ok(index) = built
                 {
                     state_for_task.index.store(Some(Arc::new(index)));
+                    tracing::info!(
+                        surface = "dispatch",
+                        service = "gateway",
+                        action = "tool_search.rebuild",
+                        event = "finish",
+                        upstream = %upstream_name,
+                        generation = my_generation,
+                        tool_count,
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "gateway tool index rebuild finish"
+                    );
+                } else {
+                    tracing::warn!(
+                        surface = "dispatch",
+                        service = "gateway",
+                        action = "tool_search.rebuild",
+                        event = "skipped",
+                        upstream = %upstream_name,
+                        generation = my_generation,
+                        kind = "stale_generation",
+                        elapsed_ms = started.elapsed().as_millis(),
+                        "gateway tool index rebuild skipped"
+                    );
                 }
                 state_for_task.warming.store(false, Ordering::Relaxed);
             });
@@ -1791,6 +1954,15 @@ impl GatewayManager {
             return;
         }
         let Some(pool) = self.current_pool().await else {
+            tracing::warn!(
+                surface = "mcp",
+                service = "gateway",
+                action = "tool_search.reprobe",
+                event = "skipped",
+                operation = "health",
+                kind = "upstream_pool_empty",
+                "gateway tool index reprobe skipped without pool"
+            );
             return;
         };
 
@@ -1810,8 +1982,27 @@ impl GatewayManager {
                 .and_then(|guard| *guard)
                 .is_some_and(|t| now.duration_since(t) < TOOL_SEARCH_REPROBE_TTL);
             if fresh {
+                tracing::debug!(
+                    surface = "mcp",
+                    service = "gateway",
+                    action = "tool_search.reprobe",
+                    event = "skipped",
+                    operation = "health",
+                    upstream = %upstream.name,
+                    reason = "fresh",
+                    "gateway tool index reprobe skipped"
+                );
                 continue;
             }
+            tracing::info!(
+                surface = "mcp",
+                service = "gateway",
+                action = "tool_search.reprobe",
+                event = "scheduled",
+                operation = "health",
+                upstream = %upstream.name,
+                "gateway tool index reprobe scheduled"
+            );
             pending.push((upstream, state));
         }
 
@@ -1819,12 +2010,24 @@ impl GatewayManager {
         let tasks = pending.into_iter().map(|(upstream, state)| async move {
             state.warming.store(true, Ordering::Relaxed);
             let reprobe_started = Instant::now();
+            tracing::debug!(
+                surface = "mcp",
+                service = "gateway",
+                action = "tool_search.reprobe",
+                event = "start",
+                operation = "health",
+                upstream = %upstream.name,
+                "gateway tool index reprobe start"
+            );
             if let Err(err) = pool.reprobe_tools_for_upstream(&upstream).await {
                 tracing::warn!(
                     surface = "mcp",
                     service = "gateway",
                     action = "tool_search.reprobe",
+                    event = "error",
+                    operation = "health",
                     elapsed_ms = reprobe_started.elapsed().as_millis(),
+                    kind = "upstream_reprobe_failed",
                     error = %err,
                     upstream = %upstream.name,
                     "gateway tool index reprobe failed"
@@ -1845,6 +2048,29 @@ impl GatewayManager {
                 if should_publish {
                     state.index.store(Some(Arc::new(index)));
                 }
+                tracing::info!(
+                    surface = "mcp",
+                    service = "gateway",
+                    action = "tool_search.reprobe",
+                    event = "finish",
+                    operation = "health",
+                    elapsed_ms = reprobe_started.elapsed().as_millis(),
+                    upstream = %upstream.name,
+                    published = should_publish,
+                    "gateway tool index reprobe finish"
+                );
+            } else {
+                tracing::warn!(
+                    surface = "mcp",
+                    service = "gateway",
+                    action = "tool_search.reprobe",
+                    event = "error",
+                    operation = "health",
+                    elapsed_ms = reprobe_started.elapsed().as_millis(),
+                    kind = "tool_index_build_failed",
+                    upstream = %upstream.name,
+                    "gateway tool index reprobe build failed"
+                );
             }
             if let Ok(mut guard) = state.last_reprobe_at.lock() {
                 *guard = Some(Instant::now());
@@ -4194,5 +4420,28 @@ mod tests {
         assert!(view.warnings.is_empty());
         assert_eq!(view.exposed_resource_count, 2);
         assert_eq!(view.exposed_prompt_count, 4);
+    }
+
+    #[test]
+    fn observability_source_covers_gateway_manager_reconcile_events() {
+        let source = include_str!("manager.rs");
+        for expected in [
+            "event = \"install.start\"",
+            "event = \"remove.finish\"",
+            "event = \"catalog.refresh.finish\"",
+            "before_tool_count",
+            "after_tool_count",
+            "event = \"old_pool.drain.start\"",
+            "action = \"tool_search.rebuild\"",
+            "action = \"tool_search.reprobe\"",
+            "event = \"health.schedule\"",
+            "operation = \"health\"",
+            "kind = \"upstream_reprobe_failed\"",
+        ] {
+            assert!(
+                source.contains(expected),
+                "missing gateway manager observability field `{expected}`"
+            );
+        }
     }
 }

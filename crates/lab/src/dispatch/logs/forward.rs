@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 use super::types::RawLogEvent;
 use crate::node::master_client::MasterClient;
 
+const MAX_FORWARD_RETRIES: u32 = 5;
+
 /// Configuration for a syslog forward session.
 ///
 /// Constructed by the CLI from parsed `ForwardArgs`, but defined here so any
@@ -98,6 +100,7 @@ async fn forward_journald(
 
     let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
     let mut flush_tick = interval(Duration::from_secs(2));
+    let mut retry_count = 0;
     flush_tick.tick().await; // consume the immediate first tick
 
     let exit_ok = loop {
@@ -107,13 +110,13 @@ async fn forward_journald(
                     Ok(Some(l)) => {
                         batch.push(parse_journald_line(&l));
                         if batch.len() >= batch_size {
-                            flush_batch(client, node_id, &mut batch).await?;
+                            flush_batch(client, node_id, &mut batch, &mut retry_count).await?;
                         }
                     }
                     // EOF or read error — flush, then collect child exit status.
                     _ => {
                         if !batch.is_empty() {
-                            flush_batch(client, node_id, &mut batch).await?;
+                            flush_batch(client, node_id, &mut batch, &mut retry_count).await?;
                         }
                         let status = child
                             .wait()
@@ -132,7 +135,7 @@ async fn forward_journald(
             }
             _ = flush_tick.tick() => {
                 if !batch.is_empty() {
-                    flush_batch(client, node_id, &mut batch).await?;
+                    flush_batch(client, node_id, &mut batch, &mut retry_count).await?;
                 }
             }
         }
@@ -222,6 +225,7 @@ async fn forward_syslog_file(
     let mut reader = BufReader::new(file);
     let mut batch: Vec<RawLogEvent> = Vec::with_capacity(batch_size);
     let mut line = String::new();
+    let mut retry_count = 0;
 
     loop {
         line.clear();
@@ -232,7 +236,7 @@ async fn forward_syslog_file(
         if n == 0 {
             // No new data — flush any partial batch, check rotation, then wait.
             if !batch.is_empty() {
-                flush_batch(client, node_id, &mut batch).await?;
+                flush_batch(client, node_id, &mut batch, &mut retry_count).await?;
             }
 
             // Check for file rotation or truncation (logrotate copytruncate).
@@ -268,7 +272,7 @@ async fn forward_syslog_file(
         batch.push(event);
 
         if batch.len() >= batch_size {
-            flush_batch(client, node_id, &mut batch).await?;
+            flush_batch(client, node_id, &mut batch, &mut retry_count).await?;
         }
     }
 }
@@ -331,6 +335,7 @@ async fn flush_batch(
     client: &MasterClient,
     node_id: &str,
     batch: &mut Vec<RawLogEvent>,
+    retry_count: &mut u32,
 ) -> Result<()> {
     // Take ownership so we can return events to the batch on failure.
     let events = std::mem::take(batch);
@@ -340,7 +345,12 @@ async fn flush_batch(
     });
     match client.post_log_ingest(&payload).await {
         Ok(resp) => {
+            *retry_count = 0;
             tracing::debug!(
+                surface = "node",
+                service = "logs",
+                action = "logs.forward",
+                event = "logs.forward.flush",
                 node_id,
                 accepted = resp.get("accepted").and_then(|v| v.as_u64()),
                 dropped = resp.get("dropped").and_then(|v| v.as_u64()),
@@ -349,9 +359,62 @@ async fn flush_batch(
         }
         Err(e) => {
             // Restore events so the next flush attempt can retry them.
-            tracing::warn!(node_id, error = %e, events = events.len(), "failed to flush log batch; will retry");
+            *retry_count = retry_count.saturating_add(1);
+            let destination = client.base_url();
+            if *retry_count >= MAX_FORWARD_RETRIES {
+                tracing::error!(
+                    surface = "node",
+                    service = "logs",
+                    action = "logs.forward",
+                    event = "logs.forward.retry_exhausted",
+                    kind = "forward_retry_exhausted",
+                    node_id,
+                    destination,
+                    retry_count = *retry_count,
+                    max_retries = MAX_FORWARD_RETRIES,
+                    events = events.len(),
+                    error = %e,
+                    "log forward retry budget exhausted",
+                );
+                anyhow::bail!(
+                    "failed to forward log batch to {destination} after {retry_count} retries: {e}"
+                );
+            }
+            tracing::warn!(
+                surface = "node",
+                service = "logs",
+                action = "logs.forward",
+                event = "logs.forward.transient_failure",
+                kind = "forward_failed",
+                node_id,
+                destination,
+                retry_count = *retry_count,
+                max_retries = MAX_FORWARD_RETRIES,
+                events = events.len(),
+                error = %e,
+                "failed to flush log batch; will retry",
+            );
             *batch = events;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn forward_retry_logs_include_retry_and_destination_fields() {
+        let source = include_str!("forward.rs");
+        for field in [
+            "MAX_FORWARD_RETRIES",
+            "event = \"logs.forward.transient_failure\"",
+            "event = \"logs.forward.retry_exhausted\"",
+            "kind = \"forward_failed\"",
+            "kind = \"forward_retry_exhausted\"",
+            "destination",
+            "retry_count",
+        ] {
+            assert!(source.contains(field), "missing forward log field: {field}");
+        }
+    }
 }

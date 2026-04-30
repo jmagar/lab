@@ -1,8 +1,14 @@
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, Networks, RefreshKind, System};
 
 use crate::node::checkin::NodeStatus;
+
+const COLLECTION_WARNING_INTERVAL_SECS: u64 = 60;
+static COLLECTION_WARNINGS: OnceLock<Mutex<std::collections::BTreeMap<String, u64>>> =
+    OnceLock::new();
 
 /// Collect live system metrics.
 ///
@@ -33,9 +39,9 @@ pub fn collect(node_id: &str) -> NodeStatus {
     let total_memory_bytes = non_zero(sys.total_memory());
     let uptime_seconds = Some(System::uptime());
 
-    let (storage_used_bytes, total_storage_bytes) = root_disk_usage();
-    let ips = local_ips();
-    let cpu_temp_c = read_cpu_temp();
+    let (storage_used_bytes, total_storage_bytes) = root_disk_usage(node_id);
+    let ips = local_ips(node_id);
+    let cpu_temp_c = read_cpu_temp(node_id);
 
     NodeStatus {
         node_id: node_id.to_string(),
@@ -63,7 +69,7 @@ fn non_zero(v: u64) -> Option<u64> {
     if v > 0 { Some(v) } else { None }
 }
 
-fn root_disk_usage() -> (Option<u64>, Option<u64>) {
+fn root_disk_usage(node_id: &str) -> (Option<u64>, Option<u64>) {
     let mut disks = Disks::new_with_refreshed_list();
     disks.refresh(false);
 
@@ -79,10 +85,15 @@ fn root_disk_usage() -> (Option<u64>, Option<u64>) {
         let used = total.saturating_sub(avail);
         return (non_zero(used), non_zero(total));
     }
+    warn_collection_failure(
+        node_id,
+        "storage",
+        "root disk mount was not found during metrics collection",
+    );
     (None, None)
 }
 
-fn local_ips() -> Vec<String> {
+fn local_ips(node_id: &str) -> Vec<String> {
     let mut networks = Networks::new_with_refreshed_list();
     networks.refresh(false);
 
@@ -101,48 +112,119 @@ fn local_ips() -> Vec<String> {
     }
     ips.sort();
     ips.dedup();
+    if ips.is_empty() {
+        warn_collection_failure(
+            node_id,
+            "network",
+            "no non-loopback network addresses were found during metrics collection",
+        );
+    }
     ips
 }
 
 /// Read the first CPU temperature from `/sys/class/thermal` on Linux.
-fn read_cpu_temp() -> Option<f32> {
+fn read_cpu_temp(node_id: &str) -> Option<f32> {
     #[cfg(target_os = "linux")]
     {
         use std::fs;
-        if let Ok(entries) = fs::read_dir("/sys/class/thermal") {
-            let mut zones: Vec<_> = entries
-                .flatten()
-                .filter(|e| {
-                    e.file_name()
-                        .to_str()
-                        .is_some_and(|n| n.starts_with("thermal_zone"))
-                })
-                .collect();
-            zones.sort_by_key(|e| e.file_name());
-            for entry in zones {
-                let path = entry.path();
-                let zone_type = fs::read_to_string(path.join("type"))
-                    .unwrap_or_default()
-                    .trim()
-                    .to_ascii_lowercase();
-                // Only cpu/acpi/pkg zones; skip non-thermal sensors
-                if !zone_type.is_empty()
-                    && !["cpu", "x86", "acpi", "pkg", "tzone"]
-                        .iter()
-                        .any(|kw| zone_type.contains(kw))
-                {
-                    continue;
-                }
-                if let Ok(raw) = fs::read_to_string(path.join("temp")) {
-                    if let Ok(millidegrees) = raw.trim().parse::<i64>() {
-                        let celsius = millidegrees as f32 / 1000.0;
-                        if celsius > 0.0 && celsius < 200.0 {
-                            return Some(celsius);
+        match fs::read_dir("/sys/class/thermal") {
+            Ok(entries) => {
+                let mut zones: Vec<_> = entries
+                    .flatten()
+                    .filter(|e| {
+                        e.file_name()
+                            .to_str()
+                            .is_some_and(|n| n.starts_with("thermal_zone"))
+                    })
+                    .collect();
+                zones.sort_by_key(|e| e.file_name());
+                for entry in zones {
+                    let path = entry.path();
+                    let zone_type = fs::read_to_string(path.join("type"))
+                        .unwrap_or_default()
+                        .trim()
+                        .to_ascii_lowercase();
+                    // Only cpu/acpi/pkg zones; skip non-thermal sensors
+                    if !zone_type.is_empty()
+                        && !["cpu", "x86", "acpi", "pkg", "tzone"]
+                            .iter()
+                            .any(|kw| zone_type.contains(kw))
+                    {
+                        continue;
+                    }
+                    if let Ok(raw) = fs::read_to_string(path.join("temp")) {
+                        if let Ok(millidegrees) = raw.trim().parse::<i64>() {
+                            let celsius = millidegrees as f32 / 1000.0;
+                            if celsius > 0.0 && celsius < 200.0 {
+                                return Some(celsius);
+                            }
                         }
                     }
                 }
             }
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                warn_collection_failure(
+                    node_id,
+                    "cpu_temperature",
+                    &format!("failed to read thermal zones: {error}"),
+                );
+            }
+            Err(_) => {}
         }
     }
     None
+}
+
+fn warn_collection_failure(node_id: &str, metric: &str, message: &str) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or_default();
+    let key = format!("{node_id}:{metric}");
+    let warnings = COLLECTION_WARNINGS.get_or_init(|| Mutex::new(Default::default()));
+    let should_log = match warnings.lock() {
+        Ok(mut warnings) => {
+            let last = warnings.get(&key).copied().unwrap_or_default();
+            if now.saturating_sub(last) >= COLLECTION_WARNING_INTERVAL_SECS {
+                warnings.insert(key, now);
+                true
+            } else {
+                false
+            }
+        }
+        Err(_) => true,
+    };
+    if should_log {
+        tracing::warn!(
+            surface = "node",
+            service = "sysmetrics",
+            action = "metrics.collect",
+            event = "metrics.collection_failure",
+            kind = "collection_failed",
+            node_id = %node_id,
+            metric = %metric,
+            message = %message,
+            "node metrics collection failed",
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn collection_failure_logs_are_rate_limited_and_structured() {
+        let source = include_str!("sysmetrics.rs");
+        for field in [
+            "COLLECTION_WARNING_INTERVAL_SECS",
+            "event = \"metrics.collection_failure\"",
+            "kind = \"collection_failed\"",
+            "node_id = %node_id",
+            "metric = %metric",
+        ] {
+            assert!(
+                source.contains(field),
+                "missing sysmetrics log field: {field}"
+            );
+        }
+    }
 }
