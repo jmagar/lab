@@ -297,6 +297,139 @@ async fn http_acp_handlers_scope_sessions_to_authenticated_principal() {
 }
 
 #[tokio::test]
+async fn http_acp_action_route_uses_shared_action_params_contract() {
+    let _test_guard = test_lock().lock().await;
+    let _launch_guard = install_fake_provider();
+
+    let (app, _registry) = acp_test_app();
+
+    let provider_list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "action": "provider.list",
+                        "params": {}
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(provider_list.status(), StatusCode::OK);
+    let provider_list_json = json_body(provider_list).await;
+    assert!(provider_list_json["providers"].is_array());
+
+    let create = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "action": "session.start",
+                        "params": {
+                            "principal": "alice",
+                            "title": "action route session"
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(create.status(), StatusCode::OK);
+    let created = json_body(create).await;
+    let session_id = created["id"].as_str().expect("session id");
+
+    let list = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(json!({ "action": "session.list" }).to_string()))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(list.status(), StatusCode::OK);
+    let list_json = json_body(list).await;
+    let sessions = list_json["sessions"].as_array().expect("sessions array");
+    assert!(sessions.iter().any(|session| session["id"] == session_id));
+}
+
+#[tokio::test]
+async fn http_acp_action_route_returns_shared_error_envelopes() {
+    let _test_guard = test_lock().lock().await;
+
+    let (app, _registry) = acp_test_app();
+
+    let unknown = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "action": "not.real",
+                        "params": {}
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(unknown.status(), StatusCode::BAD_REQUEST);
+    let unknown_json = json_body(unknown).await;
+    assert_eq!(unknown_json["kind"], "unknown_action");
+    assert!(unknown_json["valid"].is_array());
+
+    let missing_confirmation = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/acp")
+                .header(header::AUTHORIZATION, "Bearer secret-token")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(
+                    json!({
+                        "action": "session.cancel",
+                        "params": {
+                            "session_id": "sess-123"
+                        }
+                    })
+                    .to_string(),
+                ))
+                .expect("request"),
+        )
+        .await
+        .expect("response");
+    assert_eq!(
+        missing_confirmation.status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let missing_confirmation_json = json_body(missing_confirmation).await;
+    assert_eq!(missing_confirmation_json["kind"], "confirmation_required");
+}
+
+#[tokio::test]
 async fn subscribe_ticket_validation_covers_success_and_failure_paths() {
     let _test_guard = test_lock().lock().await;
     let _launch_guard = install_fake_provider();

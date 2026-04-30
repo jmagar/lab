@@ -68,6 +68,36 @@ Key locked decisions:
 - ACP Registry compatibility should remain a first-class direction so users can
   install additional agents/providers over time
 
+## HTTP API
+
+The preferred machine-facing HTTP entrypoint is the shared service dispatch
+route:
+
+```http
+POST /v1/acp
+Content-Type: application/json
+
+{
+  "action": "session.start",
+  "params": {
+    "provider": "codex",
+    "cwd": "/home/example/project",
+    "title": "Investigate build"
+  }
+}
+```
+
+The request body matches the MCP service contract: `action` is one ACP action
+name from the catalog and `params` is the action-specific object. Authenticated
+HTTP session actions are scoped to the caller principal by the API adapter.
+Destructive actions use the shared HTTP confirmation gate and require
+`params.confirm: true`.
+
+The REST-shaped browser compatibility routes under `/v1/acp/sessions/*` remain
+available for the hosted chat UI. SSE event delivery is the transport exception:
+browser clients still stream events from
+`GET /v1/acp/sessions/{session_id}/events?ticket=...`.
+
 ## Status
 
 Today ACP exists as a product-local browser/API surface, but not yet as a fully

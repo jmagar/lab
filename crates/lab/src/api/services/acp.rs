@@ -3,7 +3,7 @@ use std::convert::Infallible;
 use axum::{
     Extension, Json, Router,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{
         IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
@@ -12,10 +12,13 @@ use axum::{
 };
 use futures::StreamExt;
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 
+use crate::api::ActionRequest;
 use crate::api::oauth::AuthContext;
+use crate::api::services::helpers::handle_action;
 use crate::api::state::AppState;
+use crate::dispatch::acp::catalog::ACTIONS;
 use crate::dispatch::acp::dispatch::dispatch_with_registry;
 use crate::dispatch::acp::dispatch::validate_subscribe_ticket;
 use crate::dispatch::error::ToolError;
@@ -36,6 +39,7 @@ fn required_principal(auth: Option<Extension<AuthContext>>) -> Result<String, To
 
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new()
+        .route("/", post(handle))
         .route("/provider", get(provider_health))
         .route("/sessions", get(list_sessions).post(create_session))
         .route("/sessions/{session_id}/prompt", post(prompt_session))
@@ -53,6 +57,54 @@ pub fn routes(_state: AppState) -> Router<AppState> {
             post(subscribe_ticket),
         )
         .route("/sessions/{session_id}/events", get(stream_events))
+}
+
+async fn handle(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    auth: Option<Extension<AuthContext>>,
+    Json(mut req): Json<ActionRequest>,
+) -> Result<Json<Value>, ToolError> {
+    let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
+    if req.action.starts_with("session.") {
+        let principal = required_principal(auth)?;
+        match req.params {
+            Value::Object(ref mut params) => {
+                params.insert("principal".to_string(), Value::String(principal));
+            }
+            Value::Null => {
+                req.params = json!({ "principal": principal });
+            }
+            _ => {
+                return Err(ToolError::InvalidParam {
+                    message: "params must be an object".to_string(),
+                    param: "params".to_string(),
+                });
+            }
+        }
+    }
+
+    handle_action(
+        "acp",
+        "api",
+        request_id,
+        req,
+        ACTIONS,
+        move |action, mut params| {
+            let registry = state.acp_registry;
+            async move {
+                if ACTIONS
+                    .iter()
+                    .any(|spec| spec.name == action && spec.destructive)
+                    && let Value::Object(ref mut params) = params
+                {
+                    params.insert("confirm".to_string(), Value::Bool(true));
+                }
+                dispatch_with_registry(&registry, &action, params).await
+            }
+        },
+    )
+    .await
 }
 
 async fn provider_health(State(state): State<AppState>) -> impl IntoResponse {

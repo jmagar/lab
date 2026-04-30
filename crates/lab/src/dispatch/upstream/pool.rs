@@ -400,12 +400,14 @@ fn normalize_resource_result_uri(
 /// Strips any embedded upstream name from existing `lab://upstream/…` URIs
 /// and re-prefixes with the caller's `upstream_name`.
 fn rewrite_resource_uri(resource: &mut Resource, upstream_name: &str) {
-    let bare_uri = resource
-        .uri
-        .strip_prefix("lab://upstream/")
-        .and_then(|rest| rest.split_once('/').map(|x| x.1).or(Some(rest)))
-        .unwrap_or(resource.uri.as_str());
+    let bare_uri = bare_upstream_resource_uri(&resource.uri);
     resource.uri = format!("lab://upstream/{upstream_name}/{bare_uri}");
+}
+
+fn bare_upstream_resource_uri(uri: &str) -> &str {
+    uri.strip_prefix("lab://upstream/")
+        .and_then(|rest| rest.split_once('/').map(|x| x.1).or(Some(rest)))
+        .unwrap_or(uri)
 }
 
 /// Upstream connection pool — holds live connections and discovered tool catalogs.
@@ -1958,10 +1960,16 @@ impl UpstreamPool {
                 Ok(result) => {
                     self.record_success_for(&name, UpstreamCapability::Resources)
                         .await;
+                    let resource_uris = result
+                        .resources
+                        .iter()
+                        .map(|resource| bare_upstream_resource_uri(&resource.uri).to_string())
+                        .collect();
                     {
                         let mut catalog = self.catalog.write().await;
                         if let Some(entry) = catalog.get_mut(&name) {
                             entry.resource_count = result.resources.len();
+                            entry.resource_uris = resource_uris;
                         }
                     }
                     for mut resource in result.resources {
@@ -1980,6 +1988,7 @@ impl UpstreamPool {
                         let mut catalog = self.catalog.write().await;
                         if let Some(entry) = catalog.get_mut(&name) {
                             entry.resource_count = 0;
+                            entry.resource_uris.clear();
                         }
                     }
                     tracing::warn!(
@@ -2323,11 +2332,13 @@ impl UpstreamPool {
         }
 
         let mut upstream_prompts = Vec::new();
+        let mut prompt_name_updates: HashMap<String, Vec<String>> = HashMap::new();
         while let Some((name, result)) = futures.next().await {
             match result {
                 Ok(result) => {
                     self.record_success_for(&name, UpstreamCapability::Prompts)
                         .await;
+                    prompt_name_updates.insert(name.clone(), Vec::new());
                     {
                         let mut catalog = self.catalog.write().await;
                         if let Some(entry) = catalog.get_mut(&name) {
@@ -2347,6 +2358,7 @@ impl UpstreamPool {
                         let mut catalog = self.catalog.write().await;
                         if let Some(entry) = catalog.get_mut(&name) {
                             entry.prompt_count = 0;
+                            entry.prompt_names.clear();
                         }
                     }
                     tracing::warn!(
@@ -2358,7 +2370,24 @@ impl UpstreamPool {
             }
         }
 
-        merge_upstream_prompts(builtin_names, upstream_prompts)
+        let (prompts, owners) = merge_upstream_prompts(builtin_names, upstream_prompts);
+        if !prompt_name_updates.is_empty() {
+            for prompt in &prompts {
+                if let Some(upstream_name) = owners.get(prompt.name.as_str())
+                    && let Some(names) = prompt_name_updates.get_mut(upstream_name)
+                {
+                    names.push(prompt.name.to_string());
+                }
+            }
+            let mut catalog = self.catalog.write().await;
+            for (upstream_name, names) in prompt_name_updates {
+                if let Some(entry) = catalog.get_mut(&upstream_name) {
+                    entry.prompt_names = names;
+                }
+            }
+        }
+
+        (prompts, owners)
     }
 
     /// List prompts from all healthy upstreams, filtering built-in and cross-upstream collisions.
@@ -3165,6 +3194,13 @@ fn resolve_exposure_policy(
 mod tests {
     use super::*;
     use crate::config::{UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration};
+    use crate::mcp::server::LabMcpServer;
+    use rmcp::model::{
+        AnnotateAble, ErrorData, ListPromptsResult, ListResourcesResult, PaginatedRequestParams,
+        RawResource, ServerCapabilities, ServerInfo,
+    };
+    use rmcp::service::RequestContext;
+    use rmcp::{RoleServer, ServerHandler};
 
     fn test_upstream_config() -> UpstreamConfig {
         UpstreamConfig {
@@ -3518,6 +3554,193 @@ mod tests {
         let pool = UpstreamPool::new();
         assert!(pool.healthy_tools().await.is_empty());
         assert_eq!(pool.upstream_count().await, 0);
+    }
+
+    struct StaticCatalogServer;
+
+    impl ServerHandler for StaticCatalogServer {
+        fn get_info(&self) -> ServerInfo {
+            ServerInfo::new(
+                ServerCapabilities::builder()
+                    .enable_resources()
+                    .enable_prompts()
+                    .build(),
+            )
+        }
+
+        async fn list_resources(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListResourcesResult, ErrorData> {
+            Ok(ListResourcesResult::with_all_items(vec![
+                RawResource::new("file:///tmp/upstream-one", "upstream-one").no_annotation(),
+                RawResource::new(
+                    "lab://upstream/old-name/file:///tmp/upstream-two",
+                    "upstream-two",
+                )
+                .no_annotation(),
+            ]))
+        }
+
+        async fn list_prompts(
+            &self,
+            _request: Option<PaginatedRequestParams>,
+            _context: RequestContext<RoleServer>,
+        ) -> Result<ListPromptsResult, ErrorData> {
+            Ok(ListPromptsResult::with_all_items(vec![
+                Prompt::new("upstream.prompt.one", Some("first prompt"), None),
+                Prompt::new("upstream.prompt.two", Some("second prompt"), None),
+            ]))
+        }
+    }
+
+    async fn static_catalog_pool(upstream_name: &str) -> Arc<UpstreamPool> {
+        let (server_transport, client_transport) = tokio::io::duplex(IN_PROCESS_PEER_BUFFER_BYTES);
+        let server_task = tokio::spawn(async move {
+            let running = StaticCatalogServer
+                .serve(server_transport)
+                .await
+                .expect("static catalog server starts");
+            running.waiting().await.expect("static catalog server runs");
+        });
+        let client_service: rmcp::service::RunningService<RoleClient, ()> = ()
+            .serve(client_transport)
+            .await
+            .expect("static catalog client starts");
+        let peer = client_service.peer().clone();
+
+        let pool = Arc::new(UpstreamPool::new());
+        let upstream_name_arc: Arc<str> = Arc::from(upstream_name);
+        pool.catalog.write().await.insert(
+            upstream_name.to_string(),
+            UpstreamEntry {
+                name: Arc::clone(&upstream_name_arc),
+                tools: HashMap::new(),
+                exposure_policy: ToolExposurePolicy::All,
+                prompt_count: 0,
+                resource_count: 0,
+                prompt_names: Vec::new(),
+                resource_uris: Vec::new(),
+                tool_health: UpstreamHealth::Healthy,
+                prompt_health: UpstreamHealth::Healthy,
+                resource_health: UpstreamHealth::Healthy,
+                tool_unhealthy_since: None,
+                prompt_unhealthy_since: None,
+                resource_unhealthy_since: None,
+                tool_last_error: None,
+                prompt_last_error: None,
+                resource_last_error: None,
+            },
+        );
+        pool.connections.write().await.insert(
+            upstream_name.to_string(),
+            UpstreamConnection {
+                _client_service: client_service,
+                _server_task: Some(server_task),
+                peer,
+                runtime: UpstreamRuntimeMetadata::default(),
+            },
+        );
+        pool.resource_upstreams
+            .write()
+            .await
+            .push(upstream_name.to_string());
+
+        pool
+    }
+
+    #[tokio::test]
+    async fn successful_resource_listing_populates_snapshot_cache() {
+        let pool = static_catalog_pool("static").await;
+
+        let resources = pool.list_upstream_resources().await;
+        let listed_uris: Vec<_> = resources
+            .iter()
+            .map(|resource| resource.uri.as_str())
+            .collect();
+        assert_eq!(
+            listed_uris,
+            vec![
+                "lab://upstream/static/file:///tmp/upstream-one",
+                "lab://upstream/static/file:///tmp/upstream-two",
+            ]
+        );
+
+        let cached = pool.cached_upstream_resource_uris().await;
+        assert_eq!(
+            cached,
+            vec![(
+                "static".to_string(),
+                vec![
+                    "file:///tmp/upstream-one".to_string(),
+                    "file:///tmp/upstream-two".to_string(),
+                ],
+            )]
+        );
+
+        let runtime = crate::dispatch::gateway::manager::GatewayRuntimeHandle::default();
+        runtime.swap(Some(Arc::clone(&pool))).await;
+        let manager = Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            std::path::PathBuf::from("config.toml"),
+            runtime,
+        ));
+        let server = LabMcpServer {
+            registry: Arc::new(ToolRegistry::new()),
+            gateway_manager: Some(manager),
+            node_role: None,
+            peers: Arc::new(RwLock::new(Vec::new())),
+            logging_level: Arc::new(AtomicU8::new(logging_level_rank(LoggingLevel::Info))),
+        };
+
+        let snapshot = server.snapshot_catalog().await;
+        assert!(
+            snapshot
+                .resources
+                .contains("lab://upstream/static/file:///tmp/upstream-one")
+        );
+        assert!(
+            snapshot
+                .resources
+                .contains("lab://upstream/static/file:///tmp/upstream-two")
+        );
+    }
+
+    #[tokio::test]
+    async fn successful_prompt_listing_populates_snapshot_cache() {
+        let pool = static_catalog_pool("static").await;
+
+        let prompts = pool.list_upstream_prompts(&[]).await;
+        let prompt_names: Vec<&str> = prompts.iter().map(|prompt| prompt.name.as_str()).collect();
+        assert_eq!(
+            prompt_names,
+            vec!["upstream.prompt.one", "upstream.prompt.two"]
+        );
+        assert_eq!(
+            pool.cached_upstream_prompt_names(&[]).await,
+            vec![
+                "upstream.prompt.one".to_string(),
+                "upstream.prompt.two".to_string()
+            ]
+        );
+
+        let runtime = crate::dispatch::gateway::manager::GatewayRuntimeHandle::default();
+        runtime.swap(Some(Arc::clone(&pool))).await;
+        let manager = Arc::new(crate::dispatch::gateway::manager::GatewayManager::new(
+            std::path::PathBuf::from("config.toml"),
+            runtime,
+        ));
+        let server = LabMcpServer {
+            registry: Arc::new(ToolRegistry::new()),
+            gateway_manager: Some(manager),
+            node_role: None,
+            peers: Arc::new(RwLock::new(Vec::new())),
+            logging_level: Arc::new(AtomicU8::new(logging_level_rank(LoggingLevel::Info))),
+        };
+
+        let snapshot = server.snapshot_catalog().await;
+        assert!(snapshot.prompts.contains("upstream.prompt.one"));
+        assert!(snapshot.prompts.contains("upstream.prompt.two"));
     }
 
     #[tokio::test]

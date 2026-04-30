@@ -7,7 +7,7 @@ use std::time::Duration;
 use arc_swap::ArcSwapOption;
 #[cfg(unix)]
 use nix::errno::Errno;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::AbortHandle;
 use tokio::time::Instant;
 use url::Url;
@@ -154,6 +154,7 @@ pub struct GatewayManager {
     path: PathBuf,
     runtime: GatewayRuntimeHandle,
     config: Arc<RwLock<LabConfig>>,
+    config_mutation: Arc<Mutex<()>>,
     service_clients: Option<SharedServiceClients>,
     notifier: Option<CatalogChangeNotifier>,
     oauth_client_cache: Option<OauthClientCache>,
@@ -199,6 +200,7 @@ impl GatewayManager {
             path,
             runtime,
             config: Arc::new(RwLock::new(LabConfig::default())),
+            config_mutation: Arc::new(Mutex::new(())),
             service_clients: None,
             notifier: None,
             oauth_client_cache: None,
@@ -650,40 +652,35 @@ impl GatewayManager {
             "upstream oauth callback: tokens stored"
         );
 
-        let updated_cfg = {
-            let probe_oauth = manager.upstream_config().oauth.clone();
-            if let Some(oauth_config) = probe_oauth {
-                let mut cfg = self.config.read().await.clone();
-                if let Some(existing) = cfg.upstream.iter_mut().find(|u| u.name == upstream) {
-                    if existing.oauth.is_none() {
-                        tracing::info!(
-                            service = "upstream_oauth",
-                            action = "callback",
-                            upstream,
-                            "upstream oauth callback: persisting oauth config for probe-created manager"
-                        );
-                        existing.oauth = Some(oauth_config);
-                        Some(cfg)
-                    } else {
-                        None
-                    }
-                } else {
-                    tracing::debug!(
-                        service = "upstream_oauth",
-                        action = "callback",
-                        upstream,
-                        "upstream oauth callback: no matching gateway in config; skipping oauth persistence"
-                    );
-                    None
-                }
-            } else {
-                None
-            }
-        };
-        if let Some(cfg) = updated_cfg {
+        if let Some(oauth_config) = manager.upstream_config().oauth.clone() {
             let manager_for_persist = self.clone();
             let upstream_for_persist = upstream.to_string();
             tokio::spawn(async move {
+                let _mutation_guard = manager_for_persist.config_mutation.lock().await;
+                let mut cfg = manager_for_persist.config.read().await.clone();
+                let Some(existing) = cfg
+                    .upstream
+                    .iter_mut()
+                    .find(|u| u.name == upstream_for_persist.as_str())
+                else {
+                    tracing::debug!(
+                        service = "upstream_oauth",
+                        action = "callback",
+                        upstream = %upstream_for_persist,
+                        "upstream oauth callback: no matching gateway in config; skipping oauth persistence"
+                    );
+                    return;
+                };
+                if existing.oauth.is_some() {
+                    return;
+                }
+                tracing::info!(
+                    service = "upstream_oauth",
+                    action = "callback",
+                    upstream = %upstream_for_persist,
+                    "upstream oauth callback: persisting oauth config for probe-created manager"
+                );
+                existing.oauth = Some(oauth_config);
                 if let Err(e) = manager_for_persist.persist_config(cfg).await {
                     tracing::warn!(
                         service = "upstream_oauth",
@@ -1071,6 +1068,7 @@ impl GatewayManager {
     }
 
     pub async fn remove_virtual_server(&self, id: &str) -> Result<ServerView, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let index = cfg
             .virtual_servers
@@ -1108,6 +1106,7 @@ impl GatewayManager {
         &self,
         id: &str,
     ) -> Result<ServerView, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let index = cfg
             .quarantined_virtual_servers
@@ -1155,6 +1154,7 @@ impl GatewayManager {
         surface: &str,
         enabled: bool,
     ) -> Result<ServerView, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let virtual_server = cfg
             .virtual_servers
@@ -1209,6 +1209,7 @@ impl GatewayManager {
         id: &str,
         allowed_actions: &[String],
     ) -> Result<VirtualServerMcpPolicyView, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let virtual_server = cfg
             .virtual_servers
@@ -1251,6 +1252,7 @@ impl GatewayManager {
             target = ?redacted_gateway_target(&spec),
             "gateway reconcile"
         );
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
 
         // Trim and validate bearer_token_env unconditionally so whitespace typos
@@ -1274,7 +1276,7 @@ impl GatewayManager {
             insert_upstream(&mut cfg, spec.clone())?;
         }
         self.persist_config(cfg).await?;
-        let diff = self.reload_with_origin(origin, owner).await?;
+        let diff = self.reload_with_origin_unlocked(origin, owner).await?;
         tracing::info!(
             surface = "dispatch",
             service = "gateway",
@@ -1313,6 +1315,7 @@ impl GatewayManager {
             new_gateway = %updated_name,
             "gateway reconcile"
         );
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
 
         // Trim and validate bearer_token_env unconditionally so whitespace typos
@@ -1359,7 +1362,7 @@ impl GatewayManager {
             update_upstream(&mut cfg, name, patch)?;
         }
         self.persist_config(cfg).await?;
-        let diff = self.reload_with_origin(origin, owner).await?;
+        let diff = self.reload_with_origin_unlocked(origin, owner).await?;
         tracing::info!(
             surface = "dispatch",
             service = "gateway",
@@ -1393,11 +1396,12 @@ impl GatewayManager {
             gateway = %name,
             "gateway reconcile"
         );
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let tool_search = cfg.tool_search.clone();
         let removed = remove_upstream(&mut cfg, name)?;
         self.persist_config(cfg).await?;
-        let diff = self.reload_with_origin(origin, owner).await?;
+        let diff = self.reload_with_origin_unlocked(origin, owner).await?;
         tracing::info!(
             surface = "dispatch",
             service = "gateway",
@@ -1432,14 +1436,24 @@ impl GatewayManager {
         owner: Option<UpstreamRuntimeOwner>,
     ) -> Result<ToolSearchConfig, ToolError> {
         validate_tool_search(&next)?;
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         cfg.tool_search = next;
         self.persist_config(cfg).await?;
-        self.reload_with_origin(origin, owner).await?;
+        self.reload_with_origin_unlocked(origin, owner).await?;
         Ok(self.tool_search_config().await)
     }
 
     pub async fn reload_with_origin(
+        &self,
+        origin: Option<&str>,
+        owner: Option<UpstreamRuntimeOwner>,
+    ) -> Result<GatewayCatalogDiff, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
+        self.reload_with_origin_unlocked(origin, owner).await
+    }
+
+    async fn reload_with_origin_unlocked(
         &self,
         origin: Option<&str>,
         owner: Option<UpstreamRuntimeOwner>,
@@ -2105,6 +2119,7 @@ impl GatewayManager {
         id: &str,
         enabled: bool,
     ) -> Result<ServerView, ToolError> {
+        let _mutation_guard = self.config_mutation.lock().await;
         let mut cfg = self.config.read().await.clone();
         let existing_index = cfg
             .virtual_servers
@@ -3227,6 +3242,24 @@ mod tests {
         Arc::new(AuthClient::new(reqwest::Client::new(), manager))
     }
 
+    fn fixture_stdio_upstream(name: &str) -> UpstreamConfig {
+        UpstreamConfig {
+            enabled: true,
+            name: name.to_string(),
+            url: None,
+            bearer_token_env: None,
+            command: Some("true".to_string()),
+            args: Vec::new(),
+            proxy_resources: false,
+            proxy_prompts: false,
+            expose_tools: None,
+            expose_resources: None,
+            expose_prompts: None,
+            oauth: None,
+            tool_search: ToolSearchConfig::default(),
+        }
+    }
+
     #[test]
     fn catalog_diff_detects_removed_tool_provider() {
         let before = GatewayCatalogSnapshot {
@@ -3812,6 +3845,81 @@ mod tests {
             values.get("LAB_GW_GITHUB_AUTH_HEADER").map(String::as_str),
             Some("Bearer ghp_secret")
         );
+    }
+
+    #[tokio::test]
+    async fn concurrent_gateway_adds_persist_both_gateways() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path.clone(), GatewayRuntimeHandle::default());
+
+        let first = manager.clone();
+        let second = manager.clone();
+        let (first_result, second_result) = tokio::join!(
+            first.add(fixture_stdio_upstream("alpha"), None, None, None),
+            second.add(fixture_stdio_upstream("bravo"), None, None, None),
+        );
+
+        first_result.expect("add alpha");
+        second_result.expect("add bravo");
+
+        let persisted = load_gateway_config(&path).expect("load persisted config");
+        let names = persisted
+            .upstream
+            .iter()
+            .map(|upstream| upstream.name.as_str())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(names, BTreeSet::from(["alpha", "bravo"]));
+    }
+
+    #[tokio::test]
+    async fn concurrent_root_and_virtual_server_mutations_both_persist() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("config.toml");
+        let manager = GatewayManager::new(path.clone(), GatewayRuntimeHandle::default());
+        manager
+            .seed_config(LabConfig {
+                virtual_servers: vec![VirtualServerConfig {
+                    id: "plex".to_string(),
+                    service: "plex".to_string(),
+                    enabled: true,
+                    surfaces: VirtualServerSurfacesConfig {
+                        cli: false,
+                        api: false,
+                        mcp: false,
+                        webui: false,
+                    },
+                    mcp_policy: None,
+                }],
+                ..LabConfig::default()
+            })
+            .await;
+
+        let root = manager.clone();
+        let virtual_server = manager.clone();
+        let (root_result, virtual_result) = tokio::join!(
+            root.set_tool_search_config(
+                ToolSearchConfig {
+                    enabled: true,
+                    ..ToolSearchConfig::default()
+                },
+                None,
+                None,
+            ),
+            virtual_server.set_virtual_server_surface("plex", "mcp", true),
+        );
+
+        root_result.expect("set root tool search config");
+        virtual_result.expect("set virtual server surface");
+
+        let persisted = load_gateway_config(&path).expect("load persisted config");
+        assert!(persisted.tool_search.enabled);
+        let plex = persisted
+            .virtual_servers
+            .iter()
+            .find(|server| server.id == "plex")
+            .expect("plex virtual server persisted");
+        assert!(plex.surfaces.mcp);
     }
 
     #[tokio::test]
