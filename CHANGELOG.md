@@ -4,8 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+(empty)
+
+---
+
+## [0.12.1] — 2026-04-30
+
 | Commit | Change |
 |--------|--------|
+| _pending_ | chore(release): v0.12.1 — binary build fix |
+| `bcc59e4f` | fix: declare observability module in main.rs and add stash to router parity test |
+
+### Highlights
+
+- **Binary build fix** — `main.rs` was missing `mod observability;`, so `crate::observability::activity::ActorKey{,Deriver}` references in `api/state.rs` and `api/router.rs` failed to resolve when compiling the binary (lib.rs already declared the module, so library-only callers were unaffected). Five E0433 errors gone. Also adds `stash` to the `registry_and_router_service_sets_are_identical` parity test, which had been silently asserting an outdated set since `lab-qz6a.8` landed stash in the HTTP router.
+
+### Version bumps
+
+- Rust workspace: `0.12.0 → 0.12.1`
+
+---
+
+## [0.12.0] — 2026-04-30
+
+| Commit | Change |
+|--------|--------|
+| `3244fb7c` | chore(release): v0.12.0 — ACP review remediation epic close-out |
 | `e2ade2b9` | docs(BD-lab-j04j.16): refresh ACP docs against landed first-class state |
 | `f8e88fda` | feat(BD-lab-j04j.11): structured AcpProviderEntry args/cwd/env |
 | `90b16a48` | feat(BD-lab-j04j.10): bound ACP event channel to 1024 with await-on-send |
@@ -30,11 +54,12 @@ All notable changes to this project will be documented in this file.
 - **Stdio gateway admin ack** — `gateway.test`/`add`/`update` require explicit `allow_stdio: true` when the upstream spec uses stdio. Stdio specs spawn local subprocesses, so admin operations against them are gated through `ensure_stdio_admin_ack` to prevent silent process launches via remote dispatch. CLI mirrors with `--allow-stdio` flags; catalog publishes `allow_stdio` as a documented param.
 - **Provider prompt idle timeout (.19)** — operator-facing section in `docs/acp/README.md` documenting the 5 s default, `LAB_ACP_PROMPT_IDLE_TIMEOUT_MS` override, and the observable firing behavior (`session_state` Completed + `provider_info` `idle_completion`).
 - **ACP docs match landed first-class state (.16)** — README inventories the landed pieces (lab-apis::acp module, dispatch/acp/, registry registration, HTTP routes), enumerates landed protections, and lists remaining gaps (Bridge\* compat, typed CLI shim, provider workspace jail) without claiming deferred work.
+- **Pre-existing unreleased work** — earlier commits (`0221b23f` … `4ae40caf`) accumulated in the previous Unreleased section before the epic close-out and ride along with this release: tool-search config + settings UI for gateway-admin, MCP server install modal with gateway selection, marketplace and product docs expansion, dev review-finding fixes.
 
 ### Version bumps
 
 - Rust workspace: `0.11.1 → 0.12.0`
-- gateway-admin: `0.5.1 → 0.6.0`
+- gateway-admin: `0.5.1 → 0.6.0` (bumped during the Unreleased window prior to this release)
 
 ---
 
