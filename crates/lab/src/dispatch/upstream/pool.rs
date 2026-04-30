@@ -96,10 +96,16 @@ fn is_websocket_url(url: &str) -> bool {
 }
 
 fn configured_bearer_token(env_name: &str) -> Option<String> {
+    let dotenv_path = crate::config::dotenv_path();
+    configured_bearer_token_with_dotenv(env_name, dotenv_path.as_deref())
+}
+
+fn configured_bearer_token_with_dotenv(
+    env_name: &str,
+    dotenv_path: Option<&Path>,
+) -> Option<String> {
     let token = std::env::var(env_name).ok().or_else(|| {
-        crate::config::dotenv_path()
-            .as_deref()
-            .and_then(|path| configured_bearer_token_from_dotenv_path(env_name, path))
+        dotenv_path.and_then(|path| configured_bearer_token_from_dotenv_path(env_name, path))
     })?;
     normalize_bearer_token(&token)
 }
@@ -131,8 +137,27 @@ fn normalize_bearer_token(token: &str) -> Option<String> {
     (!raw.is_empty()).then(|| raw.to_string())
 }
 
-fn configured_authorization_header(env_name: &str) -> Option<String> {
-    configured_bearer_token(env_name).map(|token| format!("Bearer {token}"))
+fn configured_authorization_header_with_dotenv(
+    env_name: &str,
+    dotenv_path: Option<&Path>,
+) -> Option<String> {
+    configured_bearer_token_with_dotenv(env_name, dotenv_path)
+        .map(|token| format!("Bearer {token}"))
+}
+
+fn websocket_authorization_header(config: &UpstreamConfig) -> Option<String> {
+    let dotenv_path = crate::config::dotenv_path();
+    websocket_authorization_header_with_dotenv(config, dotenv_path.as_deref())
+}
+
+fn websocket_authorization_header_with_dotenv(
+    config: &UpstreamConfig,
+    dotenv_path: Option<&Path>,
+) -> Option<String> {
+    config
+        .bearer_token_env
+        .as_deref()
+        .and_then(|env_name| configured_authorization_header_with_dotenv(env_name, dotenv_path))
 }
 
 /// Strip query strings and fragments from resource URIs before logging.
@@ -2928,10 +2953,7 @@ async fn connect_websocket_upstream(
     }
 
     let parsed = parse_ws_url(url).map_err(|error| anyhow::anyhow!(error.to_string()))?;
-    let authorization = config
-        .bearer_token_env
-        .as_deref()
-        .and_then(configured_authorization_header);
+    let authorization = websocket_authorization_header(config);
     let transport = connect_websocket_transport(
         WebSocketTransportConfig::new(parsed.to_string()).with_authorization(authorization),
     );
@@ -3388,6 +3410,22 @@ mod tests {
         assert_eq!(
             configured_bearer_token_from_dotenv_path("WS_TOKEN", &path),
             Some("dotenv-secret".to_string())
+        );
+    }
+
+    #[test]
+    fn websocket_authorization_uses_dotenv_only_bearer_token() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join(".env");
+        std::fs::write(&path, "WS_TOKEN=dotenv-secret\n").expect("write env");
+
+        let mut config = test_upstream_config();
+        config.url = Some("wss://upstream.example.com/mcp".into());
+        config.bearer_token_env = Some("WS_TOKEN".into());
+
+        assert_eq!(
+            websocket_authorization_header_with_dotenv(&config, Some(&path)),
+            Some("Bearer dotenv-secret".to_string())
         );
     }
 
