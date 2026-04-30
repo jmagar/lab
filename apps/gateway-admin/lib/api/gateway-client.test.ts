@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { __setBrowserSessionStateForTests, getBrowserSessionState } from '../auth/session-store.ts'
 import { GatewayApiError, gatewayApi } from './gateway-client.ts'
+import { EXPOSE_NONE_PATTERN } from './tool-exposure-draft.ts'
 
 type RecordedRequest = {
   action: string
@@ -309,6 +310,29 @@ test('gatewayApi.setExposurePolicy sends confirm=true when updating a gateway co
         requests.find((request) => request.action === 'gateway.update')?.params.confirm,
         true,
       )
+    },
+  )
+})
+
+test('gatewayApi.getExposurePolicy preserves expose-none sentinel as empty allowlist', async () => {
+  await withGatewayFetch(
+    {
+      'gateway.server.get': () => ({
+        id: 'github-chat',
+        name: 'github-chat',
+        source: 'in_process',
+      }),
+      'gateway.virtual_server.get_mcp_policy': () => ({
+        allowed_actions: [EXPOSE_NONE_PATTERN],
+      }),
+    },
+    async () => {
+      const policy = await gatewayApi.getExposurePolicy('github-chat')
+
+      assert.deepEqual(policy, {
+        mode: 'allowlist',
+        patterns: [],
+      })
     },
   )
 })

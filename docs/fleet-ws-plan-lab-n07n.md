@@ -233,7 +233,7 @@ Rationale: without these, a hostile or buggy device can exhaust master RAM via f
 - [ ] Reprobe storm under induced failure: 100 concurrent connections, kill upstream, verify reprobes backoff exponentially (not all firing at T+30s).
 
 ### Risks
-- **HIGH (perf)** — UpstreamPool RwLock contention at 100x+ is real but out of P1 scope. Defer to Deferred tracker.
+- **HIGH (perf)** — UpstreamPool RwLock contention at 100x+ is real and is in P1 scope via the DashMap swap required by the Engineering Review Addendum. Do not defer this to P4 or the Deferred tracker.
 - **MEDIUM (correctness)** — If `max_message_size` is unset, a single rogue upstream can OOM the master. Always set config limits before accepting frames.
 - **MEDIUM (impl risk)** — `IntoTransport` adapter over `tokio-tungstenite` is the intended path but unvalidated in this codebase. First task: spike a minimal round-trip `initialize` → `initialized` against a wiremock WS server to prove the adapter shape before building the reprobe loop on top.
 
@@ -805,7 +805,7 @@ Deny-by-default for destructive actions regardless of action glob match.
 - `ToolExposurePolicy` (types.rs:50-71) already implements the exact-name + `*` glob match. Factor out `GlobMatcher` into a shared helper rather than duplicating logic inside fleet policy. Keeps one source of truth for glob semantics.
 
 ### UpstreamPool mutation API (new)
-- `insert_upstream` and `revoke_upstream` must be **atomic relative to discovery**: a device in mid-enroll must not appear half-registered in `connections` while missing from the catalog, and vice versa. Wrap the insert in a single write-lock critical section that covers both maps.
+- `insert_upstream` and `revoke_upstream` must be **atomic relative to discovery**: a device in mid-enroll must not appear half-registered in `connections` while missing from the catalog, and vice versa. Use the P1 concurrent-map baseline and a single pool-level mutation API so callers never update `connections` and the catalog independently.
 - Revocation flips health to `Unhealthy` and clears the entry from the routing table, but leaves the WS connection live. Reconnect-after-revoke requires the device to re-enroll (explicit, not automatic).
 - At 100x+ scale, `RwLock<HashMap>` contention on `catalog` is a known bottleneck (10–30% CPU at 1000x). The `DashMap` swap was pulled forward into Phase 1 by the Engineering Review Addendum, so Phase 4 should assume the concurrent-map baseline is already in place rather than re-scoping it here.
 
@@ -824,13 +824,13 @@ Deny-by-default for destructive actions regardless of action glob match.
 ### Additional tests (append to Testing)
 - [ ] Confused-deputy: policy allows `(tootie → squirts, radarr.*)` with `allow_destructive=false`; invoking `radarr.movie.delete` returns `denied` with `reason: destructive_not_permitted`.
 - [ ] Hot-reload race: start a long-running `fleet/peer.invoke`; reload policy mid-flight; request completes under the snapshot it started with, subsequent requests see new policy.
-- [ ] DashMap swap: concurrent 1000-device enrollment bench — no deadlocks, no lost updates, clippy clean.
+- [ ] Concurrent-map baseline regression: with the P1 DashMap swap already in place, concurrent 1000-device enrollment bench shows no deadlocks, no lost updates, and clippy remains clean.
 - [ ] Semaphore backpressure: spam 10k peer.invoke from one source; concurrent in-flight caps at 64; excess returns `rate_limited` kind, not 503.
 - [ ] Audit log completeness: every allow/deny/offline/rate-limited path emits exactly one audit entry; entry contains all required fields.
 
 ### Risks
 - **CRITICAL (security)** — destructive-action gate is non-negotiable. Without it, `fleet/peer.invoke` is a privilege-escalation channel across the fleet.
-- **HIGH (perf)** — without DashMap swap, dynamic enrollment amplifies the existing RwLock contention on pool catalog. Fix here or we ship a regression.
+- **HIGH (perf)** — dynamic enrollment depends on the P1 DashMap swap being complete; if the concurrent-map baseline is missing, block P4 rather than re-scoping the swap here.
 - **MEDIUM (op)** — policy hot-reload TOCTOU is subtle and easy to miss in tests; the async integration test is the load-bearing gate.
 
 ## CEO Review Addendum (Phase 5a)
