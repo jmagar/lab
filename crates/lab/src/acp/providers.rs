@@ -1,5 +1,6 @@
 //! Installed ACP provider metadata shared by marketplace install and chat runtime.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -12,7 +13,28 @@ pub struct AcpProviderEntry {
     pub name: String,
     pub version: String,
     pub distribution: String,
+    /// Argv[0] for the provider subprocess. Always a single binary name or
+    /// absolute path — never a quoted command line. Structured `args` carry
+    /// the rest.
     pub command: String,
+    /// Argv[1..] for the provider subprocess. Each entry is one literal
+    /// argument; spaces and quoting in entries are preserved verbatim.
+    /// Empty for legacy entries written before this field existed — readers
+    /// fall back to whitespace-splitting `command` in that case (legacy
+    /// only, no quote handling).
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Working directory for the provider subprocess. `None` keeps the
+    /// session-level cwd from `StartSessionInput`, which is the previous
+    /// behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<PathBuf>,
+    /// Per-provider environment overrides applied on top of the global
+    /// subprocess allowlist (see `provider_subprocess_env`). Use this for
+    /// tokens or settings that must be scoped to one provider rather than
+    /// leaking from the lab process environment.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub env: BTreeMap<String, String>,
     pub installed_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
@@ -97,4 +119,86 @@ pub fn remove_provider(id: &str) -> Result<bool, ToolError> {
         write_providers(&entries)?;
     }
     Ok(removed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn structured_entry_round_trips_quoted_args_and_spaces() {
+        let mut env = BTreeMap::new();
+        env.insert("CODEX_TOKEN".to_string(), "sk-with-spaces and quotes".to_string());
+
+        let entry = AcpProviderEntry {
+            id: "test-provider".to_string(),
+            name: "Test".to_string(),
+            version: "1.0.0".to_string(),
+            distribution: "binary".to_string(),
+            command: "/opt/with spaces/bin/codex".to_string(),
+            args: vec![
+                "--config".to_string(),
+                "value with spaces".to_string(),
+                "--quoted=\"already-quoted\"".to_string(),
+                "".to_string(),
+            ],
+            cwd: Some(PathBuf::from("/var/lib/with spaces")),
+            env,
+            installed_at: "2026-04-30T00:00:00Z".to_string(),
+            sha256: None,
+        };
+
+        let json = serde_json::to_string(&entry).expect("serialize");
+        let round: AcpProviderEntry = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(round.command, "/opt/with spaces/bin/codex");
+        assert_eq!(round.args, entry.args);
+        assert_eq!(round.cwd.as_deref(), Some(PathBuf::from("/var/lib/with spaces").as_path()));
+        assert_eq!(round.env.get("CODEX_TOKEN").map(String::as_str), Some("sk-with-spaces and quotes"));
+    }
+
+    #[test]
+    fn legacy_entry_without_args_field_deserializes_with_empty_args() {
+        // Legacy on-disk shape: no args/cwd/env keys.
+        let legacy = serde_json::json!({
+            "id": "old-provider",
+            "name": "Old",
+            "version": "0.9.0",
+            "distribution": "npx",
+            "command": "npx -y @scope/old-acp --flag",
+            "installed_at": "2026-01-01T00:00:00Z",
+        });
+
+        let entry: AcpProviderEntry = serde_json::from_value(legacy).expect("deserialize legacy");
+        assert!(entry.args.is_empty(), "legacy entries default to empty args");
+        assert!(entry.cwd.is_none());
+        assert!(entry.env.is_empty());
+        // The whitespace-joined command survives verbatim — it is the
+        // launcher's responsibility to fall back to whitespace-splitting.
+        assert_eq!(entry.command, "npx -y @scope/old-acp --flag");
+    }
+
+    #[test]
+    fn structured_entry_omits_optional_fields_when_empty() {
+        let entry = AcpProviderEntry {
+            id: "min".to_string(),
+            name: "Minimal".to_string(),
+            version: "1.0".to_string(),
+            distribution: "binary".to_string(),
+            command: "/usr/bin/min".to_string(),
+            args: Vec::new(),
+            cwd: None,
+            env: BTreeMap::new(),
+            installed_at: "2026-04-30T00:00:00Z".to_string(),
+            sha256: None,
+        };
+        let json = serde_json::to_value(&entry).expect("serialize");
+        // cwd/env/sha256 are skip_if_empty/None — must not appear in JSON.
+        assert!(json.get("cwd").is_none(), "cwd must be omitted when None");
+        assert!(json.get("env").is_none(), "env must be omitted when empty");
+        assert!(json.get("sha256").is_none(), "sha256 must be omitted when None");
+        // args is `default` not `skip_if_empty` — empty vec serializes as []
+        // so explicit consumers can distinguish "no args" from "legacy".
+        assert_eq!(json.get("args"), Some(&serde_json::json!([])));
+    }
 }

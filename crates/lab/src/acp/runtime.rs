@@ -352,6 +352,11 @@ struct ProviderLaunch {
     id: String,
     command: String,
     args: Vec<String>,
+    /// Working directory override for the subprocess. `None` falls back to
+    /// the session-level cwd from `StartSessionInput`.
+    cwd: Option<std::path::PathBuf>,
+    /// Per-provider env overrides merged on top of the global allowlist.
+    env: std::collections::BTreeMap<String, String>,
 }
 
 fn codex_launch_override() -> &'static Mutex<Option<CodexLaunch>> {
@@ -541,6 +546,11 @@ fn resolve_codex_launch() -> (String, Vec<String>) {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
     {
+        // ACP_CODEX_ARGS is whitespace-split. Env vars cannot carry quoted
+        // arguments faithfully, so this path does not preserve quoting or
+        // arguments containing spaces. For complex provider configs, install
+        // the provider via `lab acp install` (or `marketplace.acp.install`)
+        // and let the structured args field carry the literal argv vector.
         let args = std::env::var("ACP_CODEX_ARGS")
             .unwrap_or_default()
             .split_whitespace()
@@ -554,13 +564,25 @@ fn resolve_codex_launch() -> (String, Vec<String>) {
 }
 
 fn launch_from_provider_entry(provider: &AcpProviderEntry) -> ProviderLaunch {
-    let mut parts = provider.command.split_whitespace();
-    let command = parts.next().unwrap_or("").to_string();
-    let args = parts.map(ToOwned::to_owned).collect();
+    let (command, args) = if provider.args.is_empty() {
+        // Legacy entry without structured args. Fall back to
+        // whitespace-splitting the joined command string. This path cannot
+        // round-trip quoted arguments — a one-time read fidelity gap that
+        // only affects providers installed before structured args landed.
+        // Re-installing the provider migrates the on-disk entry.
+        let mut parts = provider.command.split_whitespace();
+        let command = parts.next().unwrap_or("").to_string();
+        let args = parts.map(ToOwned::to_owned).collect();
+        (command, args)
+    } else {
+        (provider.command.clone(), provider.args.clone())
+    };
     ProviderLaunch {
         id: provider.id.clone(),
         command,
         args,
+        cwd: provider.cwd.clone(),
+        env: provider.env.clone(),
     }
 }
 
@@ -777,6 +799,8 @@ fn resolve_provider_launch(provider: Option<&str>) -> Result<ProviderLaunch, Str
             id: provider_id,
             command,
             args,
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
         });
     }
 
@@ -851,11 +875,19 @@ async fn run_codex_session(
     let launch = resolve_provider_launch(input.provider.as_deref())?;
     let provider_id = launch.id.clone();
     let mut command = tokio::process::Command::new(&launch.command);
+    let cwd: &Path = launch
+        .cwd
+        .as_deref()
+        .unwrap_or_else(|| Path::new(&input.cwd));
     command
         .args(&launch.args)
-        .current_dir(Path::new(&input.cwd))
+        .current_dir(cwd)
         .env_clear()
         .envs(provider_subprocess_env(std::env::vars()))
+        // Per-provider env applied AFTER the global allowlist so structured
+        // provider configs can override or extend the base set without
+        // widening the allowlist itself.
+        .envs(launch.env.iter())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -895,16 +927,20 @@ async fn run_codex_session(
         let mut reader = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = reader.next_line().await {
             let (text, truncated) = redact_provider_stderr_line(&line);
-            drop(stderr_tx.send(provider_info_event(
-                stderr_session.clone(),
-                &stderr_provider,
-                json!({
-                    "type": "stderr",
-                    "title": format!("{stderr_provider} stderr"),
-                    "text": text,
-                    "truncated": truncated,
-                }),
-            )));
+            drop(
+                stderr_tx
+                    .send(provider_info_event(
+                        stderr_session.clone(),
+                        &stderr_provider,
+                        json!({
+                            "type": "stderr",
+                            "title": format!("{stderr_provider} stderr"),
+                            "text": text,
+                            "truncated": truncated,
+                        }),
+                    ))
+                    .await,
+            );
         }
     });
 
@@ -1753,6 +1789,65 @@ mod tests {
         AvailableCommandsUpdate, PermissionOptionId, TextContent, ToolCall, ToolCallUpdate,
         ToolCallUpdateFields,
     };
+
+    #[test]
+    fn launch_uses_structured_args_when_present() {
+        let mut env = std::collections::BTreeMap::new();
+        env.insert("CODEX_TOKEN".into(), "spaces and quotes".into());
+
+        let entry = AcpProviderEntry {
+            id: "p".into(),
+            name: "P".into(),
+            version: "1".into(),
+            distribution: "binary".into(),
+            command: "/opt/with spaces/codex".into(),
+            args: vec![
+                "--config".into(),
+                "value with spaces".into(),
+                "--quoted=\"x\"".into(),
+            ],
+            cwd: Some(std::path::PathBuf::from("/work dir")),
+            env: env.clone(),
+            installed_at: "2026-04-30T00:00:00Z".into(),
+            sha256: None,
+        };
+        let launch = launch_from_provider_entry(&entry);
+        // Structured args round-trip verbatim — no whitespace-splitting.
+        assert_eq!(launch.command, "/opt/with spaces/codex");
+        assert_eq!(launch.args, entry.args);
+        assert_eq!(launch.cwd.as_deref(), Some(std::path::Path::new("/work dir")));
+        assert_eq!(launch.env, env);
+    }
+
+    #[test]
+    fn launch_falls_back_to_whitespace_split_for_legacy_entries() {
+        // Legacy: empty args, command carries the whole argv joined with spaces.
+        let entry = AcpProviderEntry {
+            id: "old".into(),
+            name: "Old".into(),
+            version: "0.9".into(),
+            distribution: "npx".into(),
+            command: "npx -y @scope/old-acp --flag".into(),
+            args: Vec::new(),
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            installed_at: "2026-01-01T00:00:00Z".into(),
+            sha256: None,
+        };
+        let launch = launch_from_provider_entry(&entry);
+        assert_eq!(launch.command, "npx");
+        assert_eq!(
+            launch.args,
+            vec!["-y", "@scope/old-acp", "--flag"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+        // Legacy entries have no cwd/env override — caller falls back to
+        // session cwd and the bare allowlist.
+        assert!(launch.cwd.is_none());
+        assert!(launch.env.is_empty());
+    }
 
     fn text_chunk(text: &str) -> ContentChunk {
         ContentChunk::new(ContentBlock::Text(TextContent::new(text)))

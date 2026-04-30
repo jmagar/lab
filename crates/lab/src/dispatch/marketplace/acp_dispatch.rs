@@ -282,6 +282,9 @@ async fn install_local(
             version: agent.version.clone(),
             distribution: "binary".to_string(),
             command: cmd_path.to_string_lossy().into_owned(),
+            args: Vec::new(),
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
             installed_at: jiff::Timestamp::now().to_string(),
             sha256: Some(digest),
         };
@@ -290,28 +293,25 @@ async fn install_local(
             .map_err(|e| ToolError::internal_message(format!("serialize provider: {e}")));
     }
 
-    let (distribution_kind, command, sha256) = if let Some(asset) = &agent.distribution.npx {
+    // Build structured (command, args) per distribution kind. Quoted args
+    // and paths-with-spaces survive the JSON round-trip because each entry
+    // in `args` is one literal argv element — no whitespace-joining.
+    let (distribution_kind, command, args, sha256) = if let Some(asset) = &agent.distribution.npx {
         let pkg = match &asset.version {
             Some(v) => format!("{}@{}", asset.package, v),
             None => asset.package.clone(),
         };
-        let mut cmd = format!("npx -y {pkg}");
-        for arg in &asset.args {
-            cmd.push(' ');
-            cmd.push_str(arg);
-        }
-        ("npx", cmd, None)
+        let mut args = vec!["-y".to_string(), pkg];
+        args.extend(asset.args.iter().cloned());
+        ("npx", "npx".to_string(), args, None)
     } else if let Some(asset) = &agent.distribution.uvx {
         let pkg = match &asset.version {
             Some(v) => format!("{}=={}", asset.package, v),
             None => asset.package.clone(),
         };
-        let mut cmd = format!("uvx {pkg}");
-        for arg in &asset.args {
-            cmd.push(' ');
-            cmd.push_str(arg);
-        }
-        ("uvx", cmd, None)
+        let mut args = vec![pkg];
+        args.extend(asset.args.iter().cloned());
+        ("uvx", "uvx".to_string(), args, None)
     } else {
         return Err(ToolError::Sdk {
             sdk_kind: "not_supported".to_string(),
@@ -328,6 +328,9 @@ async fn install_local(
         version: agent.version.clone(),
         distribution: distribution_kind.to_string(),
         command,
+        args,
+        cwd: None,
+        env: std::collections::BTreeMap::new(),
         installed_at: jiff::Timestamp::now().to_string(),
         sha256,
     };
