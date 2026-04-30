@@ -123,21 +123,13 @@ export function FloatingChatPopover({
 
   // ---- Local state ----
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)
-  const [size, setSize] = React.useState<Size>(() => {
-    const persisted = readPersistedState()
-    if (persisted.size) {
-      return clampSize(persisted.size.w, persisted.size.h)
-    }
-    return DEFAULT_SIZE
-  })
+  const [size, setSize] = React.useState<Size>(DEFAULT_SIZE)
   const [position, setPosition] = React.useState<Position>({ x: 0, y: 0 })
   const [positionInitialized, setPositionInitialized] = React.useState(false)
   const [gearOpen, setGearOpen] = React.useState(false)
-  const [config, setConfig] = React.useState<ChatConfig>(() => {
-    const persisted = readPersistedState()
-    return persisted.config ?? DEFAULT_CONFIG
-  })
-  const [docked, setDocked] = React.useState<boolean>(() => readPersistedState().docked ?? false)
+  const [config, setConfig] = React.useState<ChatConfig>(DEFAULT_CONFIG)
+  const [docked, setDocked] = React.useState(false)
+  const [persistedStateLoaded, setPersistedStateLoaded] = React.useState(false)
 
   // Sync external config if provided
   const effectiveConfig = externalConfig ?? config
@@ -176,8 +168,20 @@ export function FloatingChatPopover({
     return () => media.removeEventListener('change', sync)
   }, [])
 
+  // ---- Hydrate persisted state after mount to keep SSR and first client render identical ----
+  React.useEffect(() => {
+    const persisted = readPersistedState()
+    if (persisted.size) {
+      setSize(clampSize(persisted.size.w, persisted.size.h))
+    }
+    setConfig(persisted.config ?? DEFAULT_CONFIG)
+    setDocked(Boolean(persisted.docked))
+    setPersistedStateLoaded(true)
+  }, [])
+
   // ---- Initialize position after hydration ----
   React.useEffect(() => {
+    if (!persistedStateLoaded) return
     if (positionInitialized) return
     const persisted = readPersistedState()
     if (persisted.position) {
@@ -197,7 +201,7 @@ export function FloatingChatPopover({
       ))
     }
     setPositionInitialized(true)
-  }, [positionInitialized, size.w, size.h])
+  }, [persistedStateLoaded, positionInitialized, size.w, size.h])
 
   // ---- Window resize clamp (debounced) ----
   React.useEffect(() => {

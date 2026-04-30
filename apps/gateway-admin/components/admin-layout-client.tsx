@@ -26,21 +26,22 @@ export function AdminLayoutClient({
 }: {
   children: React.ReactNode
 }) {
-  const [open, setOpen] = React.useState(() => {
-    try {
-      return Boolean(readPersistedState().open)
-    } catch {
-      return false
-    }
-  })
+  const [open, setOpen] = React.useState(false)
+  const [config, setConfig] = React.useState<ChatConfig>(DEFAULT_CONFIG)
+  const [persistedStateLoaded, setPersistedStateLoaded] = React.useState(false)
 
-  const [config, setConfig] = React.useState<ChatConfig>(() => {
+  React.useEffect(() => {
     try {
-      return readPersistedState().config ?? DEFAULT_CONFIG
+      const persisted = readPersistedState()
+      setOpen(Boolean(persisted.open))
+      setConfig(persisted.config ?? DEFAULT_CONFIG)
     } catch {
-      return DEFAULT_CONFIG
+      setOpen(false)
+      setConfig(DEFAULT_CONFIG)
+    } finally {
+      setPersistedStateLoaded(true)
     }
-  })
+  }, [])
 
   // openModals ref — shared between FAB and CommandPalette
   const openModals = React.useRef<Set<string>>(new Set())
@@ -64,8 +65,9 @@ export function AdminLayoutClient({
   }, [])
 
   React.useEffect(() => {
+    if (!persistedStateLoaded) return
     patchPersistedState({ open })
-  }, [open])
+  }, [open, persistedStateLoaded])
 
   const handleToggle = React.useCallback(() => {
     setOpen((prev) => !prev)
