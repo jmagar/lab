@@ -47,6 +47,19 @@ pub const MAX_CONCURRENT_SESSIONS: usize = 20;
 /// Maximum backlog events returned from SQLite on subscribe.
 const BACKFILL_CAP: u64 = 10_000;
 
+/// Capacity of the per-session producer-side AcpEvent channel.
+///
+/// The channel feeds `spawn_event_forwarder`, which awaits on persistence.
+/// When persistence stalls the bound back-pressures all the way to the
+/// provider's stdio reader; the choice to await on full (rather than drop)
+/// preserves the seq contiguity that SSE backfill depends on.
+///
+/// Sized to absorb typical SQLite batch-flush stalls (single-digit ms each)
+/// at high event rates without blocking the provider in steady state. Larger
+/// values delay the moment back-pressure kicks in but do not change the
+/// failure mode.
+pub const ACP_EVENT_CHANNEL_CAPACITY: usize = 1024;
+
 /// Circuit breaker: max new sessions in STORM_WINDOW_SECS.
 pub const STORM_MAX_CREATIONS: usize = 10;
 
@@ -303,7 +316,7 @@ impl AcpSessionRegistry {
         );
 
         // Launch the codex runtime.
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
+        let (event_tx, event_rx) = mpsc::channel::<AcpEvent>(ACP_EVENT_CHANNEL_CAPACITY);
         let (runtime, started) = launch_codex_runtime(
             session_id.clone(),
             StartSessionInput {
@@ -841,7 +854,7 @@ impl AcpSessionRegistry {
     fn spawn_event_forwarder(
         &self,
         session: Arc<Session>,
-        mut rx: mpsc::UnboundedReceiver<AcpEvent>,
+        mut rx: mpsc::Receiver<AcpEvent>,
     ) {
         let registry = self.clone();
         tokio::spawn(async move {
@@ -927,7 +940,7 @@ impl AcpSessionRegistry {
                 summary.title.clone(),
             )
         };
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<AcpEvent>();
+        let (event_tx, event_rx) = mpsc::channel::<AcpEvent>(ACP_EVENT_CHANNEL_CAPACITY);
         let (runtime, started) = launch_codex_runtime(
             session.id.clone(),
             StartSessionInput {
