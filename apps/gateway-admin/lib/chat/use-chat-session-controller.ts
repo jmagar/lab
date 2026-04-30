@@ -17,7 +17,7 @@ import {
   errorMessageFromPayload,
 } from './acp-normalizers'
 import type { ACPAgent, ACPRun } from '@/components/chat/types'
-import type { BridgeSessionSummary, ProviderHealth } from '@/lib/acp/types'
+import type { ProviderHealth } from '@/lib/acp/types'
 import type { AttachmentRef } from '@/lib/fs/types'
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
@@ -264,7 +264,6 @@ export function useChatSessionController(options: {
       await createSessionForIntent(createSessionBootstrapRef.current, 'bootstrap', false)
     })()
   // Intentionally omit createSession — use ref above to avoid re-firing on identity changes.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [providerHealth?.ready, runs.length, selectedRunId])
 
   React.useEffect(() => {

@@ -8,7 +8,7 @@
  * - Resize via react-resizable-panels (bottom-right handle)
  * - Viewport hard-clamp on drag commit and window resize
  * - Position/size/open-state persisted to localStorage
- * - Accessibility: role=dialog, aria-modal, focus trap, Escape closes, HTML inert
+ * - Accessibility: non-modal dialog widget, initial focus, Escape closes
  * - Mobile: full-screen Sheet (viewport < 768px)
  * - CSS-hidden (visibility:hidden) when on /chat route — NOT unmounted
  * - Respects prefers-reduced-motion
@@ -219,60 +219,26 @@ export function FloatingChatPopover({
     }
   }, [size.w, size.h])
 
-  // ---- Focus trap ----
+  // ---- Desktop focus + Escape handling ----
   React.useEffect(() => {
     if (!open || isMobileViewport) return
     const panel = panelRef.current
     if (!panel) return
 
-    // Focus the panel itself
+    // Focus the panel itself so keyboard users land in the newly opened widget.
+    // The floating chat is intentionally non-modal: page controls, toasts, and
+    // other portal roots remain interactive while it is open.
     panel.focus()
-
-    // Inert all direct body children except the panel itself (App Router compatible).
-    // document.body.inert would block the panel too since it's a descendant.
-    const toRestore: HTMLElement[] = []
-    for (const child of Array.from(document.body.children)) {
-      const el = child as HTMLElement
-      if (el !== panel && !el.contains(panel)) {
-        el.inert = true
-        toRestore.push(el)
-      }
-    }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onClose()
-      }
-
-      // Tab trap
-      if (event.key !== 'Tab') return
-      const focusable = panel?.querySelectorAll<HTMLElement>(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-      )
-      if (!focusable || focusable.length === 0) return
-
-      const first = focusable[0]
-      const last = focusable[focusable.length - 1]
-
-      if (event.shiftKey) {
-        if (document.activeElement === first) {
-          event.preventDefault()
-          last.focus()
-        }
-      } else {
-        if (document.activeElement === last) {
-          event.preventDefault()
-          first.focus()
-        }
       }
     }
 
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      for (const el of toRestore) {
-        el.inert = false
-      }
     }
   }, [open, onClose, isMobileViewport])
 
@@ -448,7 +414,6 @@ export function FloatingChatPopover({
       id="floating-chat-panel"
       ref={panelRef}
       role="dialog"
-      aria-modal="true"
       aria-labelledby="floating-chat-title"
       tabIndex={-1}
       style={docked ? dockedStyle : floatingStyle}

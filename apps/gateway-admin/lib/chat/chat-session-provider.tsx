@@ -52,10 +52,8 @@ import {
   ACP_AGENT,
   integrateCreatedRun,
   shouldAutoCreateInitialRun,
-  ensurePromptRunId,
   type CreateSessionFn,
   type CreateSessionOptions,
-  type SessionCreationIntent,
 } from './use-chat-session-controller'
 
 const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
