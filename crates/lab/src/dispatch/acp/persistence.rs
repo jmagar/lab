@@ -257,7 +257,7 @@ impl AcpPersistence for SqliteAcpPersistence {
         let sid = session_id.to_owned();
         let hmac_key = Arc::clone(&self.hmac_key);
         self.blocking_read("load_events", move |c| {
-            db_load_events(c, &sid, None, hmac_key.as_slice())
+            db_load_events(c, &sid, None, None, hmac_key.as_slice())
         })
         .await
     }
@@ -270,7 +270,21 @@ impl AcpPersistence for SqliteAcpPersistence {
         let sid = session_id.to_owned();
         let hmac_key = Arc::clone(&self.hmac_key);
         self.blocking_read("load_events_since", move |c| {
-            db_load_events(c, &sid, Some(since_seq), hmac_key.as_slice())
+            db_load_events(c, &sid, Some(since_seq), None, hmac_key.as_slice())
+        })
+        .await
+    }
+
+    async fn load_events_since_capped(
+        &self,
+        session_id: &str,
+        since_seq: u64,
+        limit: u64,
+    ) -> Result<Vec<AcpEvent>, AcpError> {
+        let sid = session_id.to_owned();
+        let hmac_key = Arc::clone(&self.hmac_key);
+        self.blocking_read("load_events_since_capped", move |c| {
+            db_load_events(c, &sid, Some(since_seq), Some(limit), hmac_key.as_slice())
         })
         .await
     }
@@ -529,22 +543,51 @@ fn db_load_events(
     conn: &Connection,
     session_id: &str,
     since_seq: Option<u64>,
+    limit: Option<u64>,
     hmac_key: &[u8],
 ) -> rusqlite::Result<Vec<AcpEvent>> {
-    let (sql, args): (&str, Vec<rusqlite::types::Value>) = match since_seq {
-        None => (
+    // When a limit is set we want the most recent `limit` events (preserving
+    // the "last N" backfill contract), so we order DESC + LIMIT inside a
+    // subquery and re-sort ASC outside. Without a limit we return everything
+    // ordered ASC directly.
+    let (sql, args): (&str, Vec<rusqlite::types::Value>) = match (since_seq, limit) {
+        (None, None) => (
             "SELECT id, seq, kind, created_at, payload
              FROM acp_session_events
              WHERE session_id = ?1
              ORDER BY seq ASC",
             vec![session_id.to_owned().into()],
         ),
-        Some(since) => (
+        (None, Some(n)) => (
+            "SELECT id, seq, kind, created_at, payload FROM (
+                 SELECT id, seq, kind, created_at, payload
+                 FROM acp_session_events
+                 WHERE session_id = ?1
+                 ORDER BY seq DESC
+                 LIMIT ?2
+             ) ORDER BY seq ASC",
+            vec![session_id.to_owned().into(), (n as i64).into()],
+        ),
+        (Some(since), None) => (
             "SELECT id, seq, kind, created_at, payload
              FROM acp_session_events
              WHERE session_id = ?1 AND seq > ?2
              ORDER BY seq ASC",
             vec![session_id.to_owned().into(), (since as i64).into()],
+        ),
+        (Some(since), Some(n)) => (
+            "SELECT id, seq, kind, created_at, payload FROM (
+                 SELECT id, seq, kind, created_at, payload
+                 FROM acp_session_events
+                 WHERE session_id = ?1 AND seq > ?2
+                 ORDER BY seq DESC
+                 LIMIT ?3
+             ) ORDER BY seq ASC",
+            vec![
+                session_id.to_owned().into(),
+                (since as i64).into(),
+                (n as i64).into(),
+            ],
         ),
     };
 
@@ -837,6 +880,124 @@ fn generate_ephemeral_hmac_key(pid: u32, now_nanos: u128) -> Vec<u8> {
     use sha2::Digest;
     let input = format!("lab-acp-hmac-ephemeral:{pid}:{now_nanos}");
     Sha256::digest(input.as_bytes()).to_vec()
+}
+
+#[cfg(test)]
+mod db_load_events_tests {
+    use super::*;
+
+    fn fresh_in_memory_conn() -> Connection {
+        let conn = Connection::open_in_memory().expect("open in-memory");
+        migrate(&conn).expect("migrate");
+        conn.execute(
+            "INSERT INTO acp_sessions
+             (id, provider, title, cwd, state, created_at, updated_at, principal)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                "sess-cap",
+                "codex",
+                "test",
+                "/tmp",
+                "active",
+                "2026-04-30T00:00:00Z",
+                "2026-04-30T00:00:00Z",
+                "test-principal",
+            ],
+        )
+        .expect("insert session");
+        conn
+    }
+
+    fn insert_message_chunks(conn: &Connection, session_id: &str, count: u64) {
+        for n in 1..=count {
+            let event = AcpEvent::MessageChunk {
+                id: format!("evt-{n}"),
+                session_id: session_id.to_string(),
+                seq: n,
+                created_at: "2026-04-30T00:00:00Z".to_string(),
+                role: "assistant".to_string(),
+                text: format!("chunk-{n}"),
+                message_id: "msg-1".to_string(),
+            };
+            let payload = serde_json::to_string(&event).expect("serialize");
+            conn.execute(
+                "INSERT INTO acp_session_events
+                 (id, session_id, seq, kind, created_at, payload)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    format!("evt-{n}"),
+                    session_id,
+                    n as i64,
+                    "message_chunk",
+                    "2026-04-30T00:00:00Z",
+                    payload,
+                ],
+            )
+            .expect("insert event");
+        }
+    }
+
+    fn event_seq(event: &AcpEvent) -> u64 {
+        match event {
+            AcpEvent::MessageChunk { seq, .. } => *seq,
+            _ => panic!("expected MessageChunk in test fixture"),
+        }
+    }
+
+    #[test]
+    fn capped_load_returns_last_n_events_in_ascending_order() {
+        let conn = fresh_in_memory_conn();
+        insert_message_chunks(&conn, "sess-cap", 25);
+
+        let events = db_load_events(&conn, "sess-cap", Some(0), Some(10), &[0u8; 32])
+            .expect("load events");
+
+        assert_eq!(events.len(), 10, "cap of 10 must be applied at SQL layer");
+        let seqs: Vec<u64> = events.iter().map(event_seq).collect();
+        assert_eq!(
+            seqs,
+            (16..=25).collect::<Vec<u64>>(),
+            "must return the last 10 events ordered ascending — the existing SSE backfill contract",
+        );
+    }
+
+    #[test]
+    fn capped_load_respects_since_seq_cursor() {
+        let conn = fresh_in_memory_conn();
+        insert_message_chunks(&conn, "sess-cap", 25);
+
+        // since_seq = 5 narrows to seqs 6..=25 (20 events); cap of 5 keeps the
+        // last 5 of those (seqs 21..=25).
+        let events = db_load_events(&conn, "sess-cap", Some(5), Some(5), &[0u8; 32])
+            .expect("load events");
+
+        let seqs: Vec<u64> = events.iter().map(event_seq).collect();
+        assert_eq!(seqs, vec![21, 22, 23, 24, 25]);
+    }
+
+    #[test]
+    fn capped_load_returns_all_when_under_cap() {
+        let conn = fresh_in_memory_conn();
+        insert_message_chunks(&conn, "sess-cap", 7);
+
+        let events = db_load_events(&conn, "sess-cap", Some(0), Some(100), &[0u8; 32])
+            .expect("load events");
+
+        assert_eq!(events.len(), 7);
+        let seqs: Vec<u64> = events.iter().map(event_seq).collect();
+        assert_eq!(seqs, (1..=7).collect::<Vec<u64>>());
+    }
+
+    #[test]
+    fn uncapped_load_still_works_with_no_limit() {
+        let conn = fresh_in_memory_conn();
+        insert_message_chunks(&conn, "sess-cap", 12);
+
+        let events = db_load_events(&conn, "sess-cap", Some(0), None, &[0u8; 32])
+            .expect("load events");
+
+        assert_eq!(events.len(), 12, "passing None for limit must not cap");
+    }
 }
 
 #[cfg(test)]

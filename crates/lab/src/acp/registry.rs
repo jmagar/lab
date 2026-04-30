@@ -726,11 +726,11 @@ impl AcpSessionRegistry {
         }
 
         let backlog: Vec<Arc<AcpEvent>> = if let Some(db) = self.persistence().await {
-            match db.load_events_since(session_id, since_seq).await {
-                Ok(events) => {
-                    let start = events.len().saturating_sub(BACKFILL_CAP as usize);
-                    events[start..].iter().cloned().map(Arc::new).collect()
-                }
+            match db
+                .load_events_since_capped(session_id, since_seq, BACKFILL_CAP)
+                .await
+            {
+                Ok(events) => events.into_iter().map(Arc::new).collect(),
                 Err(error) => {
                     tracing::warn!(
                         surface = "acp", service = "registry", action = "subscribe.backfill",

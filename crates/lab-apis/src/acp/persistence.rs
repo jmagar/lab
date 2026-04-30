@@ -37,6 +37,20 @@ pub trait AcpPersistence: Send + Sync + Clone + 'static {
         since_seq: u64,
     ) -> impl Future<Output = Result<Vec<AcpEvent>, AcpError>> + Send;
 
+    /// Return at most `limit` events with `seq > since_seq` for the given
+    /// session, preserving "last N" semantics — when more events than `limit`
+    /// would match, the most recent `limit` events are returned, ordered by
+    /// `seq` ascending. Implementations must apply the cap at the storage
+    /// layer (e.g. `LIMIT` in SQL) rather than truncating in memory; the
+    /// purpose of this method is to avoid materialising the full event range
+    /// for large sessions during SSE backfill.
+    fn load_events_since_capped(
+        &self,
+        session_id: &str,
+        since_seq: u64,
+        limit: u64,
+    ) -> impl Future<Output = Result<Vec<AcpEvent>, AcpError>> + Send;
+
     /// Upsert (INSERT OR REPLACE) a session summary row.
     fn save_session(
         &self,
