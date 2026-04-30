@@ -93,6 +93,37 @@ Preview the exported assets locally:
 pnpm start
 ```
 
+## Module and Test Tooling Contract
+
+This app is authored as a Next.js bundler-style ESM project. The canonical module
+model is:
+
+- `package.json` sets `"type": "module"`
+- `tsconfig.json` uses `"module": "esnext"` and `"moduleResolution": "bundler"`
+- absolute app imports use the `@/*` alias from `tsconfig.json`
+- local relative imports may omit extensions when they are consumed by Next or
+  the `tsx` test runner
+
+The default verification path follows that same model:
+
+```bash
+pnpm test
+```
+
+`pnpm test` runs the Node-compatible unit suite through `tsx`, which honors the
+same TypeScript and ESM assumptions used by the app. Browser-only checks remain
+under `pnpm run test:browser`; they are intentionally separate from the default
+unit gate.
+
+Full `tsc --noEmit -p tsconfig.json` is not yet the default gate because older
+UI surfaces still have unrelated strict-type debt. Do not add a package-level
+`typecheck` script until that full command is green; otherwise contributors get
+a verification command whose failures are unrelated to the module contract.
+
+`lib/tooling-contract.test.ts` guards this contract so future script or
+`tsconfig.json` changes do not silently split authoring, typecheck, and test
+resolution semantics.
+
 ## Notes
 
 - The imported UI code was originally developed as its own repository and is now tracked as normal source under this repo.
