@@ -36,11 +36,23 @@ fn acp_internal_error(message: impl Into<String>) -> agent_client_protocol::Erro
     agent_client_protocol::Error::internal_error().data(message.into())
 }
 
+// Provider prompt idle timeout. Once the runtime has seen at least one
+// assistant output chunk, the prompt read loop arms a timer of this duration;
+// if no further provider update arrives in that window, the runtime emits an
+// `idle_completion` provider_info event, transitions the session to
+// `Completed`, and breaks the read loop. Override at runtime via
+// `LAB_ACP_PROMPT_IDLE_TIMEOUT_MS` (milliseconds; zero/invalid falls back to
+// this default).
+//
+// Operator-facing documentation: `docs/acp/README.md` ("Provider prompt idle
+// timeout"). Keep that section in sync when the default or behavior changes.
 const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_PERMISSION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROVIDER_STDERR_CHARS: usize = 2_048;
 const SESSION_COMMAND_QUEUE_CAPACITY: usize = 8;
 
+// See `docs/acp/README.md` ("Provider prompt idle timeout") for the
+// operator-facing description of this knob.
 fn acp_prompt_idle_timeout() -> Duration {
     std::env::var("LAB_ACP_PROMPT_IDLE_TIMEOUT_MS")
         .ok()

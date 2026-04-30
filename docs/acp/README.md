@@ -98,6 +98,39 @@ available for the hosted chat UI. SSE event delivery is the transport exception:
 browser clients still stream events from
 `GET /v1/acp/sessions/{session_id}/events?ticket=...`.
 
+## Provider prompt idle timeout
+
+The ACP runtime watches for provider updates while a prompt is in flight and
+will close the prompt loop on its own if the provider goes silent after it has
+already started speaking.
+
+- **Purpose.** Some providers stream assistant output but never emit a terminal
+  `StopReason`, leaving the prompt loop blocked on `read_update()` forever.
+  Once at least one assistant chunk has been seen, the runtime arms an idle
+  timer; if no further provider update arrives within that window, the runtime
+  treats the prompt as completed and tears the loop down.
+- **Default.** 5 seconds (`Duration::from_secs(5)`). Defined in
+  `crates/lab/src/acp/runtime.rs` as `DEFAULT_PROMPT_IDLE_TIMEOUT`.
+- **Override.** Set `LAB_ACP_PROMPT_IDLE_TIMEOUT_MS` to a positive integer
+  number of milliseconds. Zero, missing, and unparseable values fall back to
+  the default. The override is read per-tick from the environment, so changes
+  take effect for new prompts without restarting the binary.
+- **Behavior when it fires.** The runtime emits two SSE events on the session
+  stream and then exits the prompt read loop:
+  1. a `session_state` update transitioning the session to `Completed`, and
+  2. a `provider_info` event with
+     `{"type":"idle_completion","title":"Prompt completed after provider idle timeout","status":"completed","timeout_ms":<value>}`.
+  The prompt lifecycle is marked finished; the session itself remains
+  registered and can accept a new prompt. The timer only arms after the first
+  assistant output chunk — providers that never produce output are not
+  short-circuited by this timeout (cancellation and process-level supervision
+  cover that case).
+- **Tuning guidance.** Raise this value when working with slow providers that
+  pause mid-response (for example, large tool batches or long thinking
+  pauses). Lower it for snappier UX with chatty providers that reliably emit
+  a stop reason. The companion `LAB_ACP_PERMISSION_TIMEOUT_MS` controls a
+  different timer (permission decisions) and is documented separately.
+
 ## Status
 
 Today ACP exists as a product-local browser/API surface, but not yet as a fully
