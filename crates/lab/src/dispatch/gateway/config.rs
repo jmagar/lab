@@ -17,9 +17,7 @@ pub fn load_gateway_config(path: &Path) -> Result<LabConfig, ToolError> {
                 sdk_kind: "internal_error".to_string(),
                 message: format!("failed to parse {}: {e}", path.display()),
             })?;
-            cfg.normalize_legacy_tool_search_with_root_presence(
-                crate::config::root_tool_search_present(&raw),
-            );
+            cfg.normalize_legacy_tool_search(crate::config::root_tool_search_present(&raw));
             validate_config(&cfg)?;
             Ok(cfg)
         }

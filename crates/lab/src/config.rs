@@ -183,14 +183,7 @@ pub struct ResolvedDeviceRuntime {
 }
 
 impl LabConfig {
-    pub fn normalize_legacy_tool_search(&mut self) {
-        self.normalize_legacy_tool_search_with_root_presence(false);
-    }
-
-    pub fn normalize_legacy_tool_search_with_root_presence(
-        &mut self,
-        root_tool_search_present: bool,
-    ) {
+    pub fn normalize_legacy_tool_search(&mut self, root_tool_search_present: bool) {
         if root_tool_search_present || self.tool_search.enabled {
             return;
         }
@@ -809,7 +802,7 @@ pub fn load_toml(candidates: &[PathBuf]) -> Result<LabConfig> {
             Ok(raw) => {
                 let mut cfg = toml::from_str::<LabConfig>(&raw)
                     .with_context(|| format!("failed to parse {}", path.display()))?;
-                cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(&raw));
+                cfg.normalize_legacy_tool_search(root_tool_search_present(&raw));
                 // Validate all upstream configs eagerly at startup so that
                 // invalid configuration (conflicting auth, bad URL scheme, etc.)
                 // is discovered immediately rather than at first OAuth attempt.
@@ -1903,7 +1896,7 @@ max_tools = 750
         )
         .expect("legacy upstream tool_search parses");
 
-        cfg.normalize_legacy_tool_search();
+        cfg.normalize_legacy_tool_search(false);
 
         assert!(cfg.tool_search.enabled);
         assert_eq!(cfg.tool_search.top_k_default, 15);
@@ -1928,7 +1921,36 @@ max_tools = 750
         let mut cfg = toml::from_str::<LabConfig>(raw)
             .expect("explicit root and legacy upstream tool_search parse");
 
-        cfg.normalize_legacy_tool_search_with_root_presence(root_tool_search_present(raw));
+        cfg.normalize_legacy_tool_search(root_tool_search_present(raw));
+
+        assert!(!cfg.tool_search.enabled);
+        assert_eq!(cfg.tool_search.top_k_default, 10);
+        assert_eq!(cfg.tool_search.max_tools, 5000);
+    }
+
+    #[test]
+    fn load_toml_preserves_explicit_root_tool_search_disable_with_legacy_upstream() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            r#"
+[tool_search]
+enabled = false
+
+[[upstream]]
+name = "acme"
+url = "https://acme.example.com/mcp"
+
+[upstream.tool_search]
+enabled = true
+top_k_default = 15
+max_tools = 750
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_toml(&[path]).expect("config loads");
 
         assert!(!cfg.tool_search.enabled);
         assert_eq!(cfg.tool_search.top_k_default, 10);

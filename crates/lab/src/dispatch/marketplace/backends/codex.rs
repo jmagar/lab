@@ -18,6 +18,11 @@ use crate::dispatch::marketplace::params::parse_plugin_id;
 
 pub struct CodexMarketplaceBackend;
 
+#[cfg(test)]
+static TEST_CODEX_HOME_OVERRIDE: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(None);
+#[cfg(test)]
+static TEST_CODEX_HOME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[derive(Clone)]
 struct CatalogSource {
     marketplace: Marketplace,
@@ -26,6 +31,33 @@ struct CatalogSource {
 }
 
 impl CodexMarketplaceBackend {
+    fn home_dir() -> Result<PathBuf, ToolError> {
+        #[cfg(test)]
+        if let Some(home) = TEST_CODEX_HOME_OVERRIDE.lock().unwrap().clone() {
+            return Ok(home);
+        }
+
+        client::home_dir()
+    }
+
+    fn codex_config_path() -> Result<PathBuf, ToolError> {
+        Ok(Self::home_dir()?.join(".codex").join("config.toml"))
+    }
+
+    fn codex_cache_root() -> Result<PathBuf, ToolError> {
+        Ok(Self::home_dir()?.join(".codex").join("cache"))
+    }
+
+    fn absolute_path(path: PathBuf) -> PathBuf {
+        if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .unwrap_or_else(|_| PathBuf::from("."))
+                .join(path)
+        }
+    }
+
     fn read_json(path: &Path) -> Result<Value, ToolError> {
         let bytes = std::fs::read(path).map_err(|e| ToolError::Sdk {
             sdk_kind: "internal_error".into(),
@@ -38,7 +70,7 @@ impl CodexMarketplaceBackend {
     }
 
     fn installed_plugin_names(&self) -> Vec<String> {
-        let Ok(path) = client::codex_config_path() else {
+        let Ok(path) = Self::codex_config_path() else {
             return Vec::new();
         };
         let Ok(data) = std::fs::read_to_string(path) else {
@@ -55,7 +87,7 @@ impl CodexMarketplaceBackend {
 
     fn read_catalog_sources(&self) -> Result<Vec<CatalogSource>, ToolError> {
         let mut out = Vec::new();
-        let home_catalog = client::home_dir()?.join(".agents/plugins/marketplace.json");
+        let home_catalog = Self::home_dir()?.join(".agents/plugins/marketplace.json");
         if home_catalog.exists() {
             out.push(self.catalog_from_path(
                 "codex-personal",
@@ -146,16 +178,17 @@ impl CodexMarketplaceBackend {
             .and_then(Value::as_str)
             .map(PathBuf::from);
         if let Some(path) = explicit {
-            return Some(if path.is_absolute() {
+            let path = if path.is_absolute() {
                 path
             } else {
                 base_dir.unwrap_or_else(|| Path::new(".")).join(path)
-            });
+            };
+            return Some(Self::absolute_path(path));
         }
         if marketplace == "codex-repo" || marketplace == "codex-compat" {
             if let Some(base_dir) = base_dir {
                 if base_dir.join(".codex-plugin/plugin.json").exists() {
-                    return Some(base_dir.to_path_buf());
+                    return Some(Self::absolute_path(base_dir.to_path_buf()));
                 }
             }
         }
@@ -176,12 +209,12 @@ impl CodexMarketplaceBackend {
         name: &str,
         version: Option<&str>,
     ) -> Option<PathBuf> {
-        let cache_root = client::codex_cache_root().ok()?;
+        let cache_root = Self::codex_cache_root().ok()?;
         let base = cache_root.join(marketplace).join(name);
         if let Some(version) = version {
             let candidate = base.join(version);
             if candidate.exists() {
-                return Some(candidate);
+                return Some(Self::absolute_path(candidate));
             }
         }
         let Ok(entries) = std::fs::read_dir(&base) else {
@@ -193,7 +226,7 @@ impl CodexMarketplaceBackend {
             .filter(|p| p.is_dir())
             .collect();
         dirs.sort();
-        dirs.pop()
+        dirs.pop().map(Self::absolute_path)
     }
 
     fn plugin_from_catalog(&self, catalog: &CatalogSource, plugin_json: &Value) -> Option<Plugin> {
@@ -249,9 +282,9 @@ impl CodexMarketplaceBackend {
                 installed_at: None,
                 updated_at: None,
             }),
-            // Store raw filesystem paths — `list_artifacts` reads these
-            // back as `PathBuf`. `redact_home` is applied at the response
-            // boundary instead so logs/UI don't leak `$HOME`.
+            // Store raw absolute filesystem paths — `list_artifacts` reads these
+            // back as `PathBuf`. Display/log callers should apply `redact_home`
+            // before exposing paths.
             source_path: source_path.map(|p| p.to_string_lossy().into_owned()),
             cache_path: cache_path.map(|p| p.to_string_lossy().into_owned()),
         })
@@ -282,7 +315,7 @@ impl CodexMarketplaceBackend {
 
 impl MarketplaceBackend for CodexMarketplaceBackend {
     fn is_available(&self) -> bool {
-        client::home_dir().is_ok_and(|home| {
+        Self::home_dir().is_ok_and(|home| {
             home.join(".agents/plugins/marketplace.json").exists()
                 || home.join(".codex/config.toml").exists()
                 || std::env::current_dir().ok().is_some_and(|cwd| {
@@ -343,5 +376,110 @@ impl MarketplaceBackend for CodexMarketplaceBackend {
     ) -> Result<Vec<lab_apis::marketplace::PluginComponent>, ToolError> {
         let plugin = self.find_plugin(id)?;
         Ok(plugin.components.unwrap_or_default())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    fn with_home<T>(home: &Path, run: impl FnOnce() -> T) -> T {
+        let _guard = TEST_CODEX_HOME_LOCK.lock().unwrap();
+        let previous = {
+            let mut slot = TEST_CODEX_HOME_OVERRIDE.lock().unwrap();
+            std::mem::replace(&mut *slot, Some(home.to_path_buf()))
+        };
+        let result = run();
+        let mut slot = TEST_CODEX_HOME_OVERRIDE.lock().unwrap();
+        *slot = previous;
+        result
+    }
+
+    fn seed_home_catalog(home: &Path, plugins: Value) {
+        let catalog = home.join(".agents/plugins/marketplace.json");
+        std::fs::create_dir_all(catalog.parent().unwrap()).unwrap();
+        std::fs::write(catalog, json!({ "plugins": plugins }).to_string()).unwrap();
+    }
+
+    #[test]
+    fn codex_source_path_is_absolute_and_usable_for_artifacts() {
+        let dir = tempdir().unwrap();
+        let home = dir.path();
+        let source = home.join(".agents/plugins/demo-plugin");
+        std::fs::create_dir_all(source.join(".codex-plugin")).unwrap();
+        std::fs::write(
+            source.join(".codex-plugin/plugin.json"),
+            json!({ "name": "demo-plugin", "version": "1.0.0" }).to_string(),
+        )
+        .unwrap();
+        std::fs::write(source.join("README.md"), "# Demo\n").unwrap();
+        seed_home_catalog(
+            home,
+            json!([
+                {
+                    "name": "demo-plugin",
+                    "version": "1.0.0",
+                    "description": "demo",
+                    "path": source
+                }
+            ]),
+        );
+
+        with_home(home, || {
+            let backend = CodexMarketplaceBackend;
+            let plugin = backend.get_plugin("demo-plugin@codex-personal").unwrap();
+            let source_path = plugin.source_path.as_deref().unwrap();
+
+            assert!(Path::new(source_path).is_absolute());
+            assert!(!source_path.starts_with("~/"));
+
+            let artifacts = backend
+                .list_artifacts("demo-plugin@codex-personal")
+                .unwrap();
+            assert!(
+                artifacts
+                    .iter()
+                    .any(|artifact| artifact.path == "README.md")
+            );
+        });
+    }
+
+    #[test]
+    fn codex_cache_path_is_absolute_and_usable_for_artifacts() {
+        let dir = tempdir().unwrap();
+        let home = dir.path();
+        let cache = home.join(".codex/cache/codex-personal/cache-plugin/1.0.0");
+        std::fs::create_dir_all(&cache).unwrap();
+        std::fs::write(cache.join("plugin.toml"), "name = \"cache-plugin\"\n").unwrap();
+        seed_home_catalog(
+            home,
+            json!([
+                {
+                    "name": "cache-plugin",
+                    "version": "1.0.0",
+                    "description": "cache only"
+                }
+            ]),
+        );
+
+        with_home(home, || {
+            let backend = CodexMarketplaceBackend;
+            let plugin = backend.get_plugin("cache-plugin@codex-personal").unwrap();
+            let cache_path = plugin.cache_path.as_deref().unwrap();
+
+            assert!(Path::new(cache_path).is_absolute());
+            assert!(!cache_path.starts_with("~/"));
+
+            let artifacts = backend
+                .list_artifacts("cache-plugin@codex-personal")
+                .unwrap();
+            assert!(
+                artifacts
+                    .iter()
+                    .any(|artifact| artifact.path == "plugin.toml")
+            );
+        });
     }
 }

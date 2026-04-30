@@ -120,11 +120,20 @@ fn collect_channel_components(obj: &Map<String, Value>, out: &mut Vec<PluginComp
         }
         Value::Object(items) => {
             for (name, item) in items {
-                out.push(component_from_inline_config(
-                    PluginComponentKind::Channels,
-                    name,
-                    item,
-                ));
+                if let Value::String(path) = item {
+                    out.push(PluginComponent {
+                        kind: PluginComponentKind::Channels,
+                        path: path.clone(),
+                        name: name.clone(),
+                        metadata: None,
+                    });
+                } else {
+                    out.push(component_from_inline_config(
+                        PluginComponentKind::Channels,
+                        name,
+                        item,
+                    ));
+                }
             }
         }
         Value::String(path) => out.push(PluginComponent {
@@ -567,16 +576,49 @@ mod tests {
     #[test]
     fn components_from_manifest_preserves_string_channel_entries() {
         let manifest = serde_json::json!({
-            "channels": ["channels/stable.json"]
+            "channels": [
+                "channels/stable.json",
+                { "name": "team-chat", "path": "channels/team.json" }
+            ]
         });
 
         let components = components_from_manifest_and_layout(None, Some(&manifest));
         let channel = components
             .iter()
-            .find(|component| component.kind == PluginComponentKind::Channels)
+            .find(|component| component.path == "channels/stable.json")
             .expect("channel component");
 
         assert_eq!(channel.path, "channels/stable.json");
         assert_eq!(channel.name, "stable.json");
+
+        let object_channel = components
+            .iter()
+            .find(|component| component.path == "channels/team.json")
+            .expect("object channel component");
+        assert_eq!(object_channel.name, "team-chat");
+    }
+
+    #[test]
+    fn components_from_manifest_preserves_string_channel_map_values() {
+        let manifest = serde_json::json!({
+            "channels": {
+                "team": "channels/team.json",
+                "alerts": { "path": "channels/alerts.json" }
+            }
+        });
+
+        let components = components_from_manifest_and_layout(None, Some(&manifest));
+
+        let team = components
+            .iter()
+            .find(|component| component.path == "channels/team.json")
+            .expect("string channel map value");
+        assert_eq!(team.name, "team");
+
+        let alerts = components
+            .iter()
+            .find(|component| component.path == "channels/alerts.json")
+            .expect("object channel map value");
+        assert_eq!(alerts.name, "alerts");
     }
 }
