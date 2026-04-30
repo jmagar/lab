@@ -153,13 +153,18 @@ mismatch. A unified `Provider` trait must either make these fields `Option<T>` o
 distinct session lifecycle models.
 
 **Best-practices finding:** `async fn in trait` is stable (Rust 1.75+) but `dyn Trait` with `async
-fn` is NOT object-safe (no stable solution as of 2026). Recommended approach: **enum dispatch** for
-the known provider set (Codex, Claude, Gemini, Copilot, OpenCode) via the `enum_dispatch` crate.
+fn` is NOT object-safe (no stable solution as of 2026). Recommended approach: **concrete types or
+generics** for the known provider set (Codex, Claude, Gemini, Copilot, OpenCode), with **enum
+dispatch** (`enum_dispatch` crate) as an ergonomic option for the closed set.
 
-The repository rule in `CLAUDE.md` forbids `Box<dyn ServiceClient>` and `#[async_trait]`: prefer
-generics or concrete types over dynamic dispatch. For a dynamic-registry path, keep enum dispatch
-for the closed provider set and use a dedicated extension-boundary adapter (for example, a
-`dynosaur`-style erased trait) instead of widening this into `Box<dyn ServiceClient>`.
+Repository conventions in `CLAUDE.md` are precise about what is forbidden: `Box<dyn ServiceClient>`
+is banned outright, `#[async_trait]` is banned, and `Box<dyn Trait>` is disfavored where `impl
+Trait` or generics are sufficient. These rules do not ban all dynamic dispatch — they ban the
+`ServiceClient` trait in particular from being object-erased. For a dynamic-registry extension path
+(third-party or plugin providers not in the closed set), an erased-trait adapter using a crate like
+`dynosaur` is acceptable at the extension boundary, precisely because it is not a `Box<dyn
+ServiceClient>`. Use concrete/enum dispatch for all known providers; reserve the erased adapter for
+the extension slot only.
 
 ---
 

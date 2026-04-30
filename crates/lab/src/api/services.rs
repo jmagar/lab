@@ -10,6 +10,9 @@
 /// Shared dispatch wrapper: confirmation gate, timing, logging.
 pub mod helpers;
 
+/// Admin-only allowlist management (`/v1/auth/allowed-emails`).
+pub mod auth_admin;
+
 pub mod acp;
 pub mod doctor;
 pub mod extract;

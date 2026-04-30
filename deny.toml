@@ -33,6 +33,41 @@ allow = [
 multiple-versions = "warn"
 wildcards = "allow"
 
+# Convention enforcement — codifies rules from /CLAUDE.md and
+# crates/lab-apis/CLAUDE.md that clippy can't enforce on its own.
+# `wrappers` whitelists *direct* dep-graph parents allowed to pull the
+# banned crate in. Any other crate in the workspace doing so fails.
+#
+# Note: `async-trait` is *not* banned here because `rmcp` pulls it in
+# transitively. Writing `#[async_trait]` in our own code is forbidden
+# via `clippy::disallowed_macros` instead — see clippy.toml at the
+# workspace root.
+
+[[bans.deny]]
+name = "clap"
+wrappers = ["lab", "clap_complete"]
+reason = "Binary-only: lab-apis must stay pure. CLI parsing lives in `lab`."
+
+[[bans.deny]]
+name = "rmcp"
+wrappers = ["lab", "agent-client-protocol"]
+reason = "Binary-only: lab-apis must stay pure. MCP server lives in `lab`."
+
+[[bans.deny]]
+name = "ratatui"
+wrappers = ["lab"]
+reason = "Binary-only: lab-apis must stay pure. TUI lives in `lab`."
+
+[[bans.deny]]
+name = "anyhow"
+wrappers = ["lab", "agent-client-protocol", "agent-client-protocol-schema"]
+reason = "lab-apis uses `thiserror`. anyhow is for the binary only."
+
+[[bans.deny]]
+name = "tabled"
+wrappers = ["lab"]
+reason = "Binary-only: table formatting happens in `lab/src/output.rs`, not lab-apis."
+
 [sources]
 unknown-registry = "deny"
 unknown-git = "warn"

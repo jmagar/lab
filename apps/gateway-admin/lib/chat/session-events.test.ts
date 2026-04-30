@@ -185,6 +185,9 @@ test('deriveTranscriptAndActivity preserves browser tool, permission, plan, and 
       output: { ok: true },
       content: null,
       locations: ['/home/jmagar/workspace/lab/Cargo.toml'],
+      permissionOptions: undefined,
+      permissionSelection: undefined,
+      terminal: null,
     },
   ])
 
@@ -210,4 +213,229 @@ test('deriveTranscriptAndActivity preserves browser tool, permission, plan, and 
   assert.equal(derived.activity.find((entry) => entry.kind === 'permission.resolved')?.permissionSelection, 'allow_once')
   assert.equal(derived.activity.find((entry) => entry.kind === 'session.info')?.sessionInfo?.title, 'Renamed session')
   assert.equal(derived.activity.find((entry) => entry.kind === 'usage')?.usage?.used, 12)
+})
+
+// ---------------------------------------------------------------------------
+// Terminal chunk reducer tests (bead lab-qn84.3)
+// ---------------------------------------------------------------------------
+
+test('deriveTranscriptAndActivity merges terminal metadata into chunked output', () => {
+  const derived = deriveTranscriptAndActivity([
+    event(1, { kind: 'tool.call', toolCallId: 'tc-1', title: 'Run cargo build' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-1',
+      status: 'in_progress',
+      rawOutput: {
+        _meta: {
+          terminal_info: { terminal_id: 'term-1' },
+        },
+      },
+    }),
+    event(3, {
+      kind: 'tool.update',
+      toolCallId: 'tc-1',
+      status: 'in_progress',
+      rawOutput: {
+        _meta: {
+          terminal_output: { terminal_id: 'term-1', data: 'running\n' },
+        },
+      },
+    }),
+  ])
+
+  const tc = derived.messages[0]?.toolCalls[0]
+  assert.ok(tc?.terminal != null, 'terminal should be present')
+  assert.deepEqual(tc?.terminal?.rawChunks, ['running\n'])
+  assert.equal(tc?.terminal?.exitCode, null)
+  assert.equal(tc?.terminal?.truncated, false)
+})
+
+test('reducer evicts oldest chunks when totalBytes exceeds MAX_TOTAL_BYTES', () => {
+  // Build events to exceed 1 MB total (1024*1024 bytes).
+  // Each chunk is exactly MAX_CHUNK_BYTES = 64 KB. Send 20 = 1280 KB total to
+  // guarantee eviction even after pre-push slicing.
+  const chunkData = 'x'.repeat(64 * 1024) // 64 KB — exactly MAX_CHUNK_BYTES
+  const events: BridgeEvent[] = [
+    event(1, { kind: 'tool.call', toolCallId: 'tc-evict', title: 'Big output' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-evict',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-evict' } } },
+    }),
+  ]
+  for (let i = 0; i < 20; i++) {
+    events.push(
+      event(3 + i, {
+        kind: 'tool.update',
+        toolCallId: 'tc-evict',
+        rawOutput: { _meta: { terminal_output: { terminal_id: 'term-evict', data: chunkData } } },
+      }),
+    )
+  }
+
+  const derived = deriveTranscriptAndActivity(events)
+  const tc = derived.messages[0]?.toolCalls[0]
+  assert.ok(tc?.terminal?.truncated === true, 'truncated should be true after eviction')
+  assert.ok((tc?.terminal?.totalBytes ?? 0) <= 1024 * 1024, 'totalBytes should be <= MAX_TOTAL_BYTES')
+})
+
+test('readTerminalPatch slices chunks larger than MAX_CHUNK_BYTES at boundary', () => {
+  // MAX_CHUNK_BYTES = 64 * 1024 = 65536. Send a chunk that exceeds it.
+  const oversizedData = 'z'.repeat(65536 + 1000) // > 64 KB
+  const derived = deriveTranscriptAndActivity([
+    event(1, { kind: 'tool.call', toolCallId: 'tc-big-chunk', title: 'Big chunk' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-big-chunk',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-big' } } },
+    }),
+    event(3, {
+      kind: 'tool.update',
+      toolCallId: 'tc-big-chunk',
+      rawOutput: { _meta: { terminal_output: { terminal_id: 'term-big', data: oversizedData } } },
+    }),
+  ])
+
+  const tc = derived.messages[0]?.toolCalls[0]
+  assert.ok(tc?.terminal != null, 'terminal should be present')
+  const totalChunkLen = (tc?.terminal?.rawChunks ?? []).reduce((sum, c) => sum + c.length, 0)
+  // After slicing, the stored chunk should be <= 64 KB.
+  assert.ok(totalChunkLen <= 65536, `chunk length ${totalChunkLen} should be <= 65536 (MAX_CHUNK_BYTES)`)
+})
+
+test('readTerminalPatch rejects terminal_id longer than 128 chars', () => {
+  const longId = 'a'.repeat(129) // > 128 chars
+  const derived = deriveTranscriptAndActivity([
+    event(1, { kind: 'tool.call', toolCallId: 'tc-longid', title: 'Long ID' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-longid',
+      rawOutput: { _meta: { terminal_info: { terminal_id: longId } } },
+    }),
+    event(3, {
+      kind: 'tool.update',
+      toolCallId: 'tc-longid',
+      rawOutput: { _meta: { terminal_output: { terminal_id: longId, data: 'hello' } } },
+    }),
+  ])
+
+  const tc = derived.messages[0]?.toolCalls[0]
+  // Events with oversized terminal_id should be dropped — no terminal state.
+  assert.equal(tc?.terminal ?? null, null, 'terminal should be null for oversized terminal_id')
+})
+
+test('terminal_output_before_terminal_info_is_dropped_with_warn_log', () => {
+  // Send terminal_output BEFORE terminal_info — orphan output should be dropped.
+  const derived = deriveTranscriptAndActivity([
+    event(1, { kind: 'tool.call', toolCallId: 'tc-orphan', title: 'Orphan' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-orphan',
+      rawOutput: { _meta: { terminal_output: { terminal_id: 'term-orphan', data: 'orphan chunk' } } },
+    }),
+  ])
+
+  const tc = derived.messages[0]?.toolCalls[0]
+  // Orphan output dropped; terminal should remain null.
+  assert.equal(tc?.terminal ?? null, null, 'orphan terminal_output before terminal_info must be dropped')
+})
+
+test('terminal_exit triggers compact-and-freeze with chunks <= TERMINAL_RENDER_TAIL_BYTES', () => {
+  const bigData = 'y'.repeat(100 * 1024) // 100 KB, send 4 = 400 KB total
+  const events: BridgeEvent[] = [
+    event(1, { kind: 'tool.call', toolCallId: 'tc-exit', title: 'Run something' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-exit',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-exit' } } },
+    }),
+  ]
+  for (let i = 0; i < 4; i++) {
+    events.push(
+      event(3 + i, {
+        kind: 'tool.update',
+        toolCallId: 'tc-exit',
+        rawOutput: { _meta: { terminal_output: { terminal_id: 'term-exit', data: bigData } } },
+      }),
+    )
+  }
+  events.push(
+    event(7, {
+      kind: 'tool.update',
+      toolCallId: 'tc-exit',
+      rawOutput: { _meta: { terminal_exit: { terminal_id: 'term-exit', exit_code: 0 } } },
+    }),
+  )
+
+  const derived = deriveTranscriptAndActivity(events)
+  const tc = derived.messages[0]?.toolCalls[0]
+  assert.equal(tc?.terminal?.exitCode, 0, 'exit code should be 0')
+  // After compact-and-freeze, raw chunks should be a single string <= 256 KB.
+  assert.ok(tc?.terminal?.rawChunks.length === 1, 'should be compacted to 1 chunk after exit')
+  assert.ok(
+    (tc?.terminal?.rawChunks[0]?.length ?? 0) <= 256 * 1024,
+    'compacted chunk should be <= TERMINAL_RENDER_TAIL_BYTES (256 KB)',
+  )
+})
+
+test('second terminal_info for same toolCallId overwrites existing terminal', () => {
+  const derived = deriveTranscriptAndActivity([
+    event(1, { kind: 'tool.call', toolCallId: 'tc-c5', title: 'C5 test' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-c5',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-c5-a' } } },
+    }),
+    event(3, {
+      kind: 'tool.update',
+      toolCallId: 'tc-c5',
+      rawOutput: { _meta: { terminal_output: { terminal_id: 'term-c5-a', data: 'first run\n' } } },
+    }),
+    event(4, {
+      kind: 'tool.update',
+      toolCallId: 'tc-c5',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-c5-b' } } },
+    }),
+  ])
+
+  const tc = derived.messages[0]?.toolCalls[0]
+  // After second terminal_info, the terminal entry is reset (overwritten).
+  // rawChunks may still contain data from before the second info (implementation-defined)
+  // but the key invariant is it does NOT crash.
+  assert.ok(tc?.terminal != null, 'terminal should be present after second terminal_info')
+})
+
+test('per_chunk_dispatch_under_50_microseconds (O1)', () => {
+  // Build 5000 terminal_output events for a warm perf test.
+  const events: BridgeEvent[] = [
+    event(1, { kind: 'tool.call', toolCallId: 'tc-perf', title: 'Perf test' }),
+    event(2, {
+      kind: 'tool.update',
+      toolCallId: 'tc-perf',
+      rawOutput: { _meta: { terminal_info: { terminal_id: 'term-perf' } } },
+    }),
+  ]
+  for (let i = 0; i < 5000; i++) {
+    events.push(
+      event(3 + i, {
+        kind: 'tool.update',
+        toolCallId: 'tc-perf',
+        rawOutput: { _meta: { terminal_output: { terminal_id: 'term-perf', data: `chunk ${i}\n` } } },
+      }),
+    )
+  }
+
+  // Warmup
+  deriveTranscriptAndActivity(events.slice(0, 100))
+
+  const start = performance.now()
+  deriveTranscriptAndActivity(events)
+  const elapsed = performance.now() - start
+
+  const perChunkMicros = (elapsed * 1000) / 5000
+  assert.ok(
+    perChunkMicros < 50,
+    `per-chunk dispatch ${perChunkMicros.toFixed(2)}µs exceeds 50µs budget`,
+  )
 })

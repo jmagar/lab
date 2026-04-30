@@ -191,21 +191,36 @@ impl LabConfig {
         &mut self,
         root_tool_search_present: bool,
     ) {
-        if root_tool_search_present {
+        if root_tool_search_present || self.tool_search.enabled {
             return;
         }
 
-        if self.tool_search.enabled {
-            return;
-        }
-
-        if let Some(legacy) = self
+        let enabled: Vec<_> = self
             .upstream
             .iter()
-            .map(|upstream| &upstream.tool_search)
-            .find(|tool_search| tool_search.enabled)
-        {
-            self.tool_search = legacy.clone();
+            .filter(|u| u.tool_search.enabled)
+            .collect();
+
+        let Some(first) = enabled.first() else {
+            return;
+        };
+
+        self.tool_search = first.tool_search.clone();
+
+        let conflicting: Vec<&str> = enabled[1..]
+            .iter()
+            .filter(|u| u.tool_search != first.tool_search)
+            .map(|u| u.name.as_str())
+            .collect();
+
+        if !conflicting.is_empty() {
+            tracing::warn!(
+                promoted = first.name.as_str(),
+                discarded = ?conflicting,
+                "normalize_legacy_tool_search: multiple upstreams had different \
+                 tool_search configs; promoting first, discarding others — \
+                 add a root [tool_search] section to config.toml to pin the value"
+            );
         }
     }
 
@@ -253,7 +268,7 @@ fn default_tool_search_max_tools() -> usize {
     5000
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolSearchConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -545,6 +560,9 @@ pub struct AuthFileConfig {
     /// Optional authorization-code lifetime override in seconds.
     #[serde(default)]
     pub auth_code_ttl_secs: Option<u64>,
+    /// Bootstrap admin Google email — required in oauth mode.
+    #[serde(default)]
+    pub admin_email: Option<String>,
 }
 
 /// Resolve auth configuration from config file + environment variables.
@@ -616,6 +634,11 @@ pub fn resolve_auth(config: Option<&AuthFileConfig>) -> Result<auth_config::Auth
             &mut merged,
             "LAB_AUTH_CODE_TTL_SECS",
             config.auth_code_ttl_secs.map(|value| value.to_string()),
+        );
+        insert_if_some(
+            &mut merged,
+            "LAB_AUTH_ADMIN_EMAIL",
+            config.admin_email.clone(),
         );
     }
 
@@ -1378,6 +1401,7 @@ mod tests {
             access_token_ttl_secs: Some(120),
             refresh_token_ttl_secs: Some(3600),
             auth_code_ttl_secs: Some(45),
+            admin_email: Some("admin@example.com".to_string()),
         };
 
         let resolved = resolve_auth(Some(&cfg)).expect("auth config should resolve");

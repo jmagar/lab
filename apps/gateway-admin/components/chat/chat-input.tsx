@@ -209,7 +209,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           placeholder={disabled ? 'ACP provider unavailable…' : 'Message the assistant… (Shift+Enter for newline)'}
           rows={1}
           className={cn(
-            'w-full resize-none bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',
+            'w-full resize-none overflow-hidden bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',
             'text-aurora-text-primary placeholder:text-aurora-text-muted/50',
             'outline-none disabled:opacity-50',
           )}

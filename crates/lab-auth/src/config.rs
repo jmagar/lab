@@ -78,6 +78,11 @@ pub struct AuthConfig {
     pub key_path: PathBuf,
     pub bootstrap_secret: Option<String>,
     pub allowed_client_redirect_uris: Vec<String>,
+    /// Single bootstrap admin email permitted to log in via Google OAuth.
+    /// Required when `mode == AuthMode::OAuth`. Additional users will be
+    /// granted access through a future SQLite-backed allowlist managed via
+    /// the web UI.
+    pub admin_email: String,
     pub google: GoogleConfig,
     pub access_token_ttl: Duration,
     pub refresh_token_ttl: Duration,
@@ -97,6 +102,7 @@ impl Default for AuthConfig {
             key_path: base_dir.join(DEFAULT_KEY_NAME),
             bootstrap_secret: None,
             allowed_client_redirect_uris: Vec::new(),
+            admin_email: String::new(),
             google: GoogleConfig::default(),
             access_token_ttl: Duration::from_secs(DEFAULT_ACCESS_TOKEN_TTL_SECS),
             refresh_token_ttl: Duration::from_secs(DEFAULT_REFRESH_TOKEN_TTL_SECS),
@@ -114,6 +120,9 @@ impl AuthConfig {
     ) -> Result<Self, AuthError> {
         let vars = normalize(vars);
         let mode = AuthMode::parse(vars.get("LAB_AUTH_MODE").map(String::as_str))?;
+        let admin_email = read_string(&vars, "LAB_AUTH_ADMIN_EMAIL")
+            .map(|raw| raw.trim().to_ascii_lowercase())
+            .unwrap_or_default();
         let config = Self {
             mode,
             public_url: read_url(&vars, "LAB_PUBLIC_URL")?,
@@ -124,6 +133,7 @@ impl AuthConfig {
             bootstrap_secret: read_string(&vars, "LAB_AUTH_BOOTSTRAP_SECRET"),
             allowed_client_redirect_uris: read_csv(&vars, "LAB_AUTH_ALLOWED_REDIRECT_URIS")
                 .unwrap_or_default(),
+            admin_email,
             google: GoogleConfig {
                 client_id: read_string(&vars, "LAB_GOOGLE_CLIENT_ID").unwrap_or_default(),
                 client_secret: read_string(&vars, "LAB_GOOGLE_CLIENT_SECRET").unwrap_or_default(),
@@ -179,6 +189,14 @@ impl AuthConfig {
             if self.google.client_secret.is_empty() {
                 return Err(AuthError::Config(
                     "LAB_GOOGLE_CLIENT_SECRET is required when LAB_AUTH_MODE=oauth".to_string(),
+                ));
+            }
+            if self.admin_email.is_empty() {
+                return Err(AuthError::Config(
+                    "LAB_AUTH_ADMIN_EMAIL is required when LAB_AUTH_MODE=oauth — \
+                     set the Google email of the bootstrap admin so no account \
+                     can log in unless explicitly permitted"
+                        .to_string(),
                 ));
             }
         }
@@ -314,11 +332,37 @@ mod tests {
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
         ]))
         .unwrap();
         assert_eq!(cfg.sqlite_path.file_name().unwrap(), "auth.db");
         assert_eq!(cfg.key_path.file_name().unwrap(), "auth-jwt.pem");
         assert_eq!(cfg.google.callback_path, "/auth/google/callback");
+    }
+
+    #[test]
+    fn oauth_mode_requires_admin_email() {
+        let err = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+        ]))
+        .unwrap_err();
+        assert!(err.to_string().contains("LAB_AUTH_ADMIN_EMAIL"));
+    }
+
+    #[test]
+    fn admin_email_normalizes_case_and_trims_whitespace() {
+        let cfg = AuthConfig::from_sources(fake_env_with_many([
+            ("LAB_AUTH_MODE", "oauth"),
+            ("LAB_PUBLIC_URL", "https://lab.example.com"),
+            ("LAB_GOOGLE_CLIENT_ID", "id"),
+            ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "  Admin@Example.COM  "),
+        ]))
+        .unwrap();
+        assert_eq!(cfg.admin_email, "admin@example.com");
     }
 
     #[test]
@@ -328,6 +372,7 @@ mod tests {
             ("LAB_PUBLIC_URL", "https://lab.example.com"),
             ("LAB_GOOGLE_CLIENT_ID", "id"),
             ("LAB_GOOGLE_CLIENT_SECRET", "secret"),
+            ("LAB_AUTH_ADMIN_EMAIL", "admin@example.com"),
             (
                 "LAB_AUTH_ALLOWED_REDIRECT_URIS",
                 "https://callback.tootie.tv/callback/*,https://claude.ai/api/mcp/auth_callback",

@@ -11,6 +11,7 @@ import { ControlsSection } from './controls-section'
 import { CommandPaletteSection } from './command-palette-section'
 import { DataDisplaySection } from './data-display-section'
 import { FeedbackSection } from './feedback-section'
+import { FloatingChatSection } from './floating-chat-section'
 import { FoundationsSection } from './foundations-section'
 import { NavigationSection } from './navigation-section'
 import { PatternsSection } from './patterns-section'
@@ -50,6 +51,9 @@ export function DesignSystemShell() {
           </div>
           <div className="xl:col-span-2">
             <CommandPaletteSection />
+          </div>
+          <div className="xl:col-span-2">
+            <FloatingChatSection />
           </div>
           <div className="xl:col-span-2">
             <DataDisplaySection />

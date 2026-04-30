@@ -277,7 +277,7 @@ HTTP auth modes:
 | Mode | Required config | Notes |
 | --- | --- | --- |
 | Bearer | `LAB_AUTH_MODE=bearer` or default, plus `LAB_MCP_HTTP_TOKEN` for protected deployments | Uses constant-time static bearer-token comparison |
-| OAuth | `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, `LAB_GOOGLE_CLIENT_ID`, `LAB_GOOGLE_CLIENT_SECRET` | Enables Lab's Google-backed auth server, JWT validation, metadata, browser sessions, and callback handling |
+| OAuth | `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, `LAB_GOOGLE_CLIENT_ID`, `LAB_GOOGLE_CLIENT_SECRET`, `LAB_AUTH_ADMIN_EMAIL` | Enables Lab's Google-backed auth server, JWT validation, metadata, browser sessions, and callback handling. `LAB_AUTH_ADMIN_EMAIL` is the bootstrap admin Google email; startup fails closed if unset so no Google account can authenticate without explicit permission. Additional users will be granted via a SQLite-backed allowlist managed in the Labby web UI (planned). |
 
 Protected route behavior:
 
@@ -518,6 +518,7 @@ Server and runtime env:
 | `LAB_GOOGLE_CLIENT_ID` / `LAB_GOOGLE_CLIENT_SECRET` | Google OAuth credentials for OAuth mode |
 | `LAB_GOOGLE_CALLBACK_PATH` | Optional Google callback path override |
 | `LAB_AUTH_ALLOWED_REDIRECT_URIS` | Optional non-loopback MCP OAuth callback allowlist |
+| `LAB_AUTH_ADMIN_EMAIL` | Bootstrap admin Google email; required for OAuth mode (fail-closed default) |
 | `LAB_WEB_ASSETS_DIR` | Static Labby export directory override |
 | `LAB_WEB_UI_DISABLE_AUTH` | Development-only bypass for Labby browser auth |
 | `LAB_LOG` / `LAB_LOG_FORMAT` | Tracing filter and text/json log format |

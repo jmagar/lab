@@ -54,6 +54,7 @@ impl std::fmt::Debug for GoogleProvider {
 pub struct GoogleExchange {
     pub subject: String,
     pub email: Option<String>,
+    pub email_verified: Option<bool>,
     pub access_token: String,
     pub refresh_token: Option<String>,
     pub expires_in: Option<u64>,
@@ -76,6 +77,8 @@ struct GoogleIdTokenClaims {
     sub: String,
     #[serde(default)]
     email: Option<String>,
+    #[serde(default)]
+    email_verified: Option<bool>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -351,6 +354,7 @@ impl GoogleProvider {
         Ok(GoogleExchange {
             subject: claims.sub,
             email: claims.email,
+            email_verified: claims.email_verified,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,
@@ -394,6 +398,7 @@ impl GoogleProvider {
         Ok(GoogleExchange {
             subject: claims.sub,
             email: claims.email,
+            email_verified: claims.email_verified,
             access_token: payload.access_token,
             refresh_token: payload.refresh_token,
             expires_in: payload.expires_in,

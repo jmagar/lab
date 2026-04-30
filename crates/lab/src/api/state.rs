@@ -89,6 +89,14 @@ impl AppState {
     ///
     /// `enabled_services` is derived from the registry entries so the router
     /// can skip mounting handlers for services that were filtered out.
+    ///
+    /// # ACP registry invariant
+    ///
+    /// `acp_registry` is initialized to a fresh, uninstalled registry.
+    /// When ACP dispatch actions are in scope, call `.with_acp_registry(arc)` with
+    /// the same `Arc` passed to `dispatch::acp::install_registry()` in `cli/serve.rs`.
+    /// Skipping this step causes HTTP handlers and MCP dispatch to use different
+    /// registry instances, silently losing session visibility.
     #[must_use]
     pub fn from_registry(registry: ToolRegistry) -> Self {
         let enabled_services: HashSet<String> = registry
@@ -238,6 +246,18 @@ impl AppState {
     #[must_use]
     pub fn is_master(&self) -> bool {
         !matches!(self.node_role, Some(NodeRole::NonMaster))
+    }
+
+    /// Attach a pre-built ACP session registry so `AppState` shares the same `Arc`
+    /// as the process-global dispatch slot installed in `cli/serve.rs`.
+    ///
+    /// **Must be called** after `dispatch::acp::install_registry()` with the same `Arc`
+    /// whenever ACP dispatch actions are in scope. See the invariant note on
+    /// `from_registry()`.
+    #[must_use]
+    pub fn with_acp_registry(mut self, registry: Arc<AcpSessionRegistry>) -> Self {
+        self.acp_registry = registry;
+        self
     }
 
     /// Attach the shared MCP registry store for `/v0.1` read endpoints.
