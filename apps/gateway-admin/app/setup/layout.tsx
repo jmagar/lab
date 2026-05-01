@@ -18,13 +18,27 @@ export default function SetupLayout({
   // - .env already complete (state.kind === 'ready') and we landed on
   //   /setup with no last_completed_step → redirect to /settings.
   // - last_completed_step > 0 → resume there.
+  //
+  // Race guards: AbortController.signal.aborted only flips when the
+  // layout itself unmounts. If the user clicks a wizard step link the
+  // pathname changes but the layout stays mounted, so we additionally
+  // re-check window.location.pathname after the await — the user may
+  // have navigated mid-fetch and we must not stomp their intent.
   useEffect(() => {
-    if (!pathname.endsWith('/setup') && !pathname.endsWith('/setup/')) return
+    const isIndexRoute = pathname === '/setup' || pathname === '/setup/'
+    if (!isIndexRoute) return
     const controller = new AbortController()
+
+    function stillOnIndex(): boolean {
+      if (typeof window === 'undefined') return true
+      const p = window.location.pathname
+      return p === '/setup' || p === '/setup/'
+    }
+
     setupApi
       .state(controller.signal)
       .then((snapshot) => {
-        if (controller.signal.aborted) return
+        if (controller.signal.aborted || !stillOnIndex()) return
         if (!snapshot.first_run && snapshot.state.kind === 'ready') {
           router.replace('/settings/')
           return
@@ -37,7 +51,8 @@ export default function SetupLayout({
         router.replace('/setup/welcome/')
       })
       .catch(() => {
-        if (!controller.signal.aborted) router.replace('/setup/welcome/')
+        if (controller.signal.aborted || !stillOnIndex()) return
+        router.replace('/setup/welcome/')
       })
     return () => controller.abort()
   }, [pathname, router])
