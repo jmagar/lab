@@ -22,6 +22,7 @@ export default function ConfigurationPage(): React.ReactElement {
   const [services, setServices] = useState<ServiceState[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
+  const [activeTab, setActiveTab] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     if (wizard.selectedServices.length === 0) {
@@ -107,7 +108,11 @@ export default function ConfigurationPage(): React.ReactElement {
       ) : null}
 
       {services.length > 0 ? (
-        <Tabs defaultValue={services[0]!.schema.name} className="w-full">
+        <Tabs
+          value={activeTab ?? services[0]!.schema.name}
+          onValueChange={setActiveTab}
+          className="w-full"
+        >
           <TabsList className="flex w-full flex-wrap">
             {services.map((s) => (
               <TabsTrigger key={s.schema.name} value={s.schema.name}>
@@ -115,17 +120,25 @@ export default function ConfigurationPage(): React.ReactElement {
               </TabsTrigger>
             ))}
           </TabsList>
-          {services.map((s) => (
-            <TabsContent key={s.schema.name} value={s.schema.name} className="pt-4">
-              <ServiceForm
-                service={s.schema.name}
-                fields={s.fields}
-                defaultValues={s.defaultValues}
-                onSave={saveService}
-                onProbe={(_values, signal) => probeService(s.schema.name, signal)}
-              />
-            </TabsContent>
-          ))}
+          {services.map((s) => {
+            const current = (activeTab ?? services[0]!.schema.name) === s.schema.name
+            // Radix Tabs mounts every TabsContent by default. Mounting 22
+            // ServiceForms simultaneously means 22 useForm + zodResolver
+            // builds up front. Only render the active tab's form to keep
+            // mount cost O(1) regardless of selected-service count.
+            if (!current) return null
+            return (
+              <TabsContent key={s.schema.name} value={s.schema.name} className="pt-4">
+                <ServiceForm
+                  service={s.schema.name}
+                  fields={s.fields}
+                  defaultValues={s.defaultValues}
+                  onSave={saveService}
+                  onProbe={(_values, signal) => probeService(s.schema.name, signal)}
+                />
+              </TabsContent>
+            )
+          })}
         </Tabs>
       ) : null}
 
