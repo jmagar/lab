@@ -71,29 +71,10 @@ pub async fn run(args: SetupArgs) -> Result<ExitCode> {
         eprintln!("lab is already configured. Opening Settings.");
     }
     eprintln!();
-    if !args.no_browser && !is_headless() {
-        eprintln!("→ Run `lab serve` (in another terminal) and open: {url}");
-    } else {
-        eprintln!("→ Run `lab serve` and visit: {url}");
-    }
+    eprintln!("→ Run `lab serve` and visit: {url}");
     eprintln!();
     eprintln!("Tip: set LAB_SKIP_SETUP=1 to suppress this message in CI.");
     Ok(ExitCode::SUCCESS)
-}
-
-/// Returns `true` for environments where opening a browser is unlikely to
-/// succeed: SSH sessions, missing display, etc. Used to decide between
-/// "open browser automatically" (future) and "print URL".
-#[must_use]
-fn is_headless() -> bool {
-    // SSH session: skip browser.
-    if std::env::var_os("SSH_TTY").is_some() || std::env::var_os("SSH_CLIENT").is_some() {
-        return true;
-    }
-    // No display server.
-    let has_display = std::env::var_os("DISPLAY").is_some()
-        || std::env::var_os("WAYLAND_DISPLAY").is_some();
-    !has_display
 }
 
 #[cfg(test)]
