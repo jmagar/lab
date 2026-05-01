@@ -90,15 +90,30 @@ impl SetupClient {
                 Ok(())
             }
             FieldKind::FilePath => {
-                // Reject path traversal here regardless of safe_root presence.
                 use std::path::{Component, Path};
-                if Path::new(value)
-                    .components()
-                    .any(|c| c == Component::ParentDir)
-                {
+                let path = Path::new(value);
+                let mut saw_root = false;
+                let mut saw_prefix = false;
+                for component in path.components() {
+                    match component {
+                        Component::ParentDir => {
+                            return Err(SetupError::InvalidValue {
+                                field: field.to_owned(),
+                                reason: "path traversal (..) is not allowed".into(),
+                            });
+                        }
+                        Component::RootDir => saw_root = true,
+                        Component::Prefix(_) => saw_prefix = true,
+                        _ => {}
+                    }
+                }
+                // Absolute paths are only allowed when the schema explicitly
+                // declares a safe_root (the wizard validates the result lives
+                // inside that root). Otherwise reject defensively.
+                if (saw_root || saw_prefix) && schema.validation.safe_root.is_none() {
                     return Err(SetupError::InvalidValue {
                         field: field.to_owned(),
-                        reason: "path traversal (..) is not allowed".into(),
+                        reason: "absolute paths require a configured safe_root".into(),
                     });
                 }
                 Ok(())

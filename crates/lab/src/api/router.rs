@@ -1025,6 +1025,13 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
     let dev_mode_enabled =
         std::env::var("LAB_DEV_MODE").as_deref() == Ok("1");
     if dev_mode_enabled {
+        // One-shot WARN at startup so an operator who has LAB_DEV_MODE=1 in
+        // their shell rc can see the wider CORS surface in production logs.
+        tracing::warn!(
+            subsystem = "api_server",
+            phase = "cors.dev_mode_enabled",
+            "LAB_DEV_MODE=1 — additional CORS origins enabled (3000/5173/8080); unset for production"
+        );
         origins.extend([
             HeaderValue::from_static("http://localhost:3000"),
             HeaderValue::from_static("http://localhost:5173"),

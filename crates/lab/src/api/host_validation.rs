@@ -55,6 +55,15 @@ pub async fn host_validation_layer(
     next: Next,
 ) -> Result<Response<Body>, StatusCode> {
     if std::env::var("LAB_HOST_VALIDATION_DISABLED").as_deref() == Ok("1") {
+        // Loud per-request warn so accidental production use of the test
+        // bypass cannot hide. If you see this in your logs and you're not
+        // running tests, unset LAB_HOST_VALIDATION_DISABLED immediately.
+        tracing::warn!(
+            surface = "api",
+            kind = "host_validation_bypassed",
+            path = %req.uri().path(),
+            "LAB_HOST_VALIDATION_DISABLED=1 — DNS-rebinding mitigation skipped"
+        );
         return Ok(next.run(req).await);
     }
     let host = req

@@ -64,6 +64,26 @@ pub fn cached_secret_keys() -> &'static HashSet<&'static str> {
     })
 }
 
+/// Suffixes that mark a key as secret-by-naming-convention. Used by
+/// [`super::secret_mask::is_secret_key`] to mask values for keys that are
+/// not in the explicit registry — third-party env vars pasted into the
+/// draft, or services compiled out via feature flags whose secret flag
+/// would otherwise be lost.
+pub const SECRET_SUFFIX_DEFAULT_MASK: &[&str] = &[
+    "_API_KEY",
+    "_TOKEN",
+    "_PASSWORD",
+    "_SECRET",
+];
+
+/// Returns `true` when `key` ends with any of [`SECRET_SUFFIX_DEFAULT_MASK`].
+#[must_use]
+pub fn key_matches_secret_suffix(key: &str) -> bool {
+    SECRET_SUFFIX_DEFAULT_MASK
+        .iter()
+        .any(|suffix| key.ends_with(suffix))
+}
+
 /// Returns a `HashMap` from env var name to the registered `EnvVar` declaration.
 /// O(1) lookup replaces the per-entry registry rebuild in
 /// `validate_against_registry`.
