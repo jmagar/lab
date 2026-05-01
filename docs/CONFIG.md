@@ -24,7 +24,7 @@ Preferences live in (first found wins):
 - `~/.lab/config.toml` (user-level, next to `.env`)
 - `~/.config/lab/config.toml` (XDG-style fallback)
 
-A reference file is provided at `config/config.example.toml`.
+Copy `config/config.example.toml` to `~/.lab/config.toml` and uncomment sections as needed.
 
 ## Load Order
 
@@ -124,6 +124,10 @@ Rules:
 - non-controller nodes use this hostname plus `mcp.port` to reach `http://<controller>:<port>`
 - the node runtime uses this for websocket node sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab nodes list`
 - legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`
+- Docker/Compose deployments should expose the host hostname to the container.
+  The bundled Compose file mounts `/etc/hostname` at `/run/host/hostname`, which
+  is checked before the container's own `HOSTNAME`. Set `LAB_HOST_HOSTNAME`
+  only when that host-file mount is unavailable.
 
 ### `[web]`
 
@@ -560,9 +564,8 @@ env_file:
 
 - Changes to `~/.lab/config.toml` take effect on the next container restart
   (`docker compose restart lab-master`).
-- `config/config.example.toml` is the canonical reference for all available
-  TOML options. Copy it to `~/.lab/config.toml` to bootstrap your personal
-  config, then edit as needed.
+- Copy `config/config.example.toml` to `~/.lab/config.toml` and uncomment
+  sections as needed.
 - The container overrides two env vars that would be wrong inside the container
   even if set in `~/.lab/.env`:
   - `LAB_WEB_ASSETS_DIR=""` — clears any host filesystem path so the binary
