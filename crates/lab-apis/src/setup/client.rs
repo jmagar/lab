@@ -81,12 +81,10 @@ impl SetupClient {
                 }),
             },
             FieldKind::Number => {
-                value
-                    .parse::<f64>()
-                    .map_err(|e| SetupError::InvalidValue {
-                        field: field.to_owned(),
-                        reason: format!("not a number: {e}"),
-                    })?;
+                value.parse::<f64>().map_err(|e| SetupError::InvalidValue {
+                    field: field.to_owned(),
+                    reason: format!("not a number: {e}"),
+                })?;
                 Ok(())
             }
             FieldKind::FilePath => {
@@ -124,10 +122,7 @@ impl SetupClient {
                 } else {
                     Err(SetupError::InvalidValue {
                         field: field.to_owned(),
-                        reason: format!(
-                            "must be one of: {}",
-                            values.join(", ")
-                        ),
+                        reason: format!("must be one of: {}", values.join(", ")),
                     })
                 }
             }
@@ -154,12 +149,14 @@ mod tests {
             &schema(FieldKind::Url),
         )
         .unwrap();
-        assert!(SetupClient::validate_against_ui_schema(
-            "FOO_URL",
-            "not a url",
-            &schema(FieldKind::Url)
-        )
-        .is_err());
+        assert!(
+            SetupClient::validate_against_ui_schema(
+                "FOO_URL",
+                "not a url",
+                &schema(FieldKind::Url)
+            )
+            .is_err()
+        );
     }
 
     #[test]

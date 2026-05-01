@@ -394,27 +394,27 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
             // rebinding mitigation for the v1 wizard, lab-bg3e.3.3).
             .nest(
                 "/extract",
-                services::extract::routes(state.clone()).layer(
-                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
-                ),
+                services::extract::routes(state.clone()).layer(axum::middleware::from_fn(
+                    crate::api::host_validation::host_validation_layer,
+                )),
             )
             .nest(
                 "/marketplace",
-                services::marketplace::routes(state.clone()).layer(
-                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
-                ),
+                services::marketplace::routes(state.clone()).layer(axum::middleware::from_fn(
+                    crate::api::host_validation::host_validation_layer,
+                )),
             )
             .nest(
                 "/doctor",
-                services::doctor::routes(state.clone()).layer(
-                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
-                ),
+                services::doctor::routes(state.clone()).layer(axum::middleware::from_fn(
+                    crate::api::host_validation::host_validation_layer,
+                )),
             )
             .nest(
                 "/setup",
-                services::setup::routes(state.clone()).layer(
-                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
-                ),
+                services::setup::routes(state.clone()).layer(axum::middleware::from_fn(
+                    crate::api::host_validation::host_validation_layer,
+                )),
             )
             .nest("/stash", services::stash::routes(state.clone()))
             .nest(
@@ -487,6 +487,15 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
         mount_if_enabled!(v1, state, "tei", "tei", tei);
         mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
+        mount_if_enabled!(v1, state, "dozzle", "dozzle", dozzle);
+        mount_if_enabled!(v1, state, "immich", "immich", immich);
+        mount_if_enabled!(v1, state, "navidrome", "navidrome", navidrome);
+        mount_if_enabled!(v1, state, "scrutiny", "scrutiny", scrutiny);
+        mount_if_enabled!(v1, state, "freshrss", "freshrss", freshrss);
+        mount_if_enabled!(v1, state, "loggifly", "loggifly", loggifly);
+        mount_if_enabled!(v1, state, "adguard", "adguard", adguard);
+        mount_if_enabled!(v1, state, "glances", "glances", glances);
+        mount_if_enabled!(v1, state, "uptime_kuma", "uptime_kuma", uptime_kuma);
         // [lab-scaffold: api-routes]
     }
 
@@ -1022,8 +1031,7 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
     // a malicious npm postinstall HTTP server (or rogue browser extension on
     // those origins) from reading Setup API responses on a v1 unauthed lab
     // (lab-bg3e.3 security hardening).
-    let dev_mode_enabled =
-        std::env::var("LAB_DEV_MODE").as_deref() == Ok("1");
+    let dev_mode_enabled = std::env::var("LAB_DEV_MODE").as_deref() == Ok("1");
     if dev_mode_enabled {
         // One-shot WARN at startup so an operator who has LAB_DEV_MODE=1 in
         // their shell rc can see the wider CORS surface in production logs.

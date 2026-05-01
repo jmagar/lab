@@ -92,3 +92,30 @@ pub mod apprise;
 
 #[cfg(feature = "fs")]
 pub mod fs;
+
+#[cfg(feature = "dozzle")]
+pub mod dozzle;
+
+#[cfg(feature = "immich")]
+pub mod immich;
+
+#[cfg(feature = "navidrome")]
+pub mod navidrome;
+
+#[cfg(feature = "scrutiny")]
+pub mod scrutiny;
+
+#[cfg(feature = "freshrss")]
+pub mod freshrss;
+
+#[cfg(feature = "loggifly")]
+pub mod loggifly;
+
+#[cfg(feature = "adguard")]
+pub mod adguard;
+
+#[cfg(feature = "glances")]
+pub mod glances;
+
+#[cfg(feature = "uptime_kuma")]
+pub mod uptime_kuma;

@@ -73,11 +73,7 @@ fn is_allowed(rel_path: &Path) -> bool {
         .any(|allowed| rel == *allowed || rel.starts_with(allowed))
 }
 
-fn walk_rs_files(
-    root: &Path,
-    base: &Path,
-    visit: &mut dyn FnMut(&Path, &str),
-) {
+fn walk_rs_files(root: &Path, base: &Path, visit: &mut dyn FnMut(&Path, &str)) {
     let Ok(entries) = std::fs::read_dir(root) else {
         return;
     };

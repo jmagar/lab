@@ -36,10 +36,10 @@ use crate::registry::service_meta;
 
 use super::catalog::ACTIONS;
 use super::client::{cached_env_var_index, cached_registry, draft_path, env_path};
+use super::draft;
 use super::params::{parse_entries, parse_force, parse_services_filter};
 use super::secret_mask;
 use super::state;
-use super::draft;
 
 /// Top-level action dispatch.
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
@@ -112,7 +112,11 @@ fn service_schema(meta: &PluginMeta) -> Value {
         .iter()
         .map(|v| env_var_to_schema(true, v))
         .collect();
-    env_array.extend(meta.optional_env.iter().map(|v| env_var_to_schema(false, v)));
+    env_array.extend(
+        meta.optional_env
+            .iter()
+            .map(|v| env_var_to_schema(false, v)),
+    );
     json!({
         "name": meta.name,
         "display_name": meta.display_name,
@@ -191,12 +195,12 @@ fn validate_against_registry(entries: &[DraftEntry]) -> Result<(), ToolError> {
         if let Some(var) = index.get(entry.key.as_str())
             && let Some(ui) = var.ui
         {
-            SetupClient::validate_against_ui_schema(&entry.key, &entry.value, ui).map_err(
-                |e| ToolError::InvalidParam {
+            SetupClient::validate_against_ui_schema(&entry.key, &entry.value, ui).map_err(|e| {
+                ToolError::InvalidParam {
                     message: format!("validation failed for {}: {e}", entry.key),
                     param: entry.key.clone(),
-                },
-            )?;
+                }
+            })?;
         }
     }
     Ok(())
@@ -281,7 +285,10 @@ async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
         audit_pass_count,
         audit_total_count,
         written = result.written,
-        backup_path = result.backup_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+        backup_path = result
+            .backup_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned()),
         "setup commit success"
     );
 

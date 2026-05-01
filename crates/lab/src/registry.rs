@@ -487,6 +487,24 @@ pub fn build_default_registry() -> ToolRegistry {
         dispatch: dispatch_fn!(crate::mcp::services::fs::dispatch),
     });
 
+    register_service!(reg, "dozzle", dozzle);
+
+    register_service!(reg, "immich", immich);
+
+    register_service!(reg, "navidrome", navidrome);
+
+    register_service!(reg, "scrutiny", scrutiny);
+
+    register_service!(reg, "freshrss", freshrss);
+
+    register_service!(reg, "loggifly", loggifly);
+
+    register_service!(reg, "adguard", adguard);
+
+    register_service!(reg, "glances", glances);
+
+    register_service!(reg, "uptime_kuma", uptime_kuma);
+
     reg
 }
 

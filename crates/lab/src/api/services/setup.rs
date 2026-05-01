@@ -28,9 +28,7 @@ async fn handle(
         request_id,
         req,
         ACTIONS,
-        |action, params| async move {
-            crate::dispatch::setup::dispatch(&action, params).await
-        },
+        |action, params| async move { crate::dispatch::setup::dispatch(&action, params).await },
     )
     .await
 }

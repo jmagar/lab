@@ -76,6 +76,23 @@ Category: `bootstrap`  Status: `available`
 | `audit.full` | Probe all configured services plus system checks; streams results | false | - | `stream<Finding>` |
 | `auth.check` | Check auth/OAuth configuration: env vars, file presence, and Unix file permissions | false | - | `DoctorReport` |
 
+## `setup`
+
+First-run + draft-commit configuration flow
+
+Category: `bootstrap`  Status: `available`
+
+| Action | Description | Destructive | Params | Returns |
+|---|---|---:|---|---|
+| `help` | Show this action catalog | false | - | `Catalog` |
+| `schema` | Return the parameter schema for a named action | false | `action*: string` | `Schema` |
+| `state` | First-run + draft snapshot for the wizard / settings UI | false | - | `SetupSnapshot` |
+| `schema.get` | UiSchema projection for all (or filtered) services | false | `services: string[]` | `ServiceSchemaMap` |
+| `draft.get` | Read .env.draft with secret values masked to '***' | false | - | `DraftEntry[]` |
+| `draft.set` | Write a key (or section) into .env.draft (validated server-side) | false | `entries*: DraftEntry[]`<br>`force: bool` | `DraftSetOutcome` |
+| `draft.commit` | Run audit and atomically merge .env.draft into .env | true | `force: bool` | `CommitOutcome` |
+| `finalize` | Alias for draft.commit; same params, same returns | true | `force: bool` | `CommitOutcome` |
+
 ## `logs`
 
 Search and stream local-master runtime logs
@@ -1003,3 +1020,18 @@ Category: `bootstrap`  Status: `available`
 |---|---|---:|---|---|
 | `fs.list` | List immediate entries of a directory inside the configured workspace root | false | `path: string` | `{entries: [{name, path, kind, size, modified, accessible}], truncated: bool}` |
 
+## `dozzle`
+
+Read-only container log observation through Dozzle
+
+Category: `bootstrap`  Status: `available`
+
+| Action | Description | Destructive | Params | Returns |
+|---|---|---:|---|---|
+| `help` | Show this action catalog | false | - | `Catalog` |
+| `schema` | Return the parameter schema for a named action | false | `action*: string` | `Schema` |
+| `server.health` | Probe Dozzle health | false | - | `HealthResponse` |
+| `server.version` | Fetch Dozzle version | false | - | `VersionResponse` |
+| `containers.list` | Return the first bounded Dozzle container inventory event | false | `max_events: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `ContainersListResponse` |
+| `logs.fetch` | Fetch bounded container logs as parsed JSONL events | false | `host*: string`<br>`container_id*: string`<br>`stdout: bool`<br>`stderr: bool`<br>`max_lines: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `LogFetchResponse` |
+| `logs.fetch-plain` | Fetch bounded container logs as plain text | false | `host*: string`<br>`container_id*: string`<br>`stdout: bool`<br>`stderr: bool`<br>`max_lines: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `PlainLogFetchResponse` |

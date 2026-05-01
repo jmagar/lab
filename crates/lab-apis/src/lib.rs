@@ -140,3 +140,21 @@ pub mod mcpregistry;
 /// ACP Agent Registry client — discover and install ACP-compatible AI coding agents.
 #[cfg(feature = "acp_registry")]
 pub mod acp_registry;
+#[cfg(feature = "dozzle")]
+pub mod dozzle;
+#[cfg(feature = "freshrss")]
+pub mod freshrss;
+#[cfg(feature = "immich")]
+pub mod immich;
+#[cfg(feature = "loggifly")]
+pub mod loggifly;
+#[cfg(feature = "navidrome")]
+pub mod navidrome;
+#[cfg(feature = "scrutiny")]
+pub mod scrutiny;
+#[cfg(feature = "adguard")]
+pub mod adguard;
+#[cfg(feature = "glances")]
+pub mod glances;
+#[cfg(feature = "uptime_kuma")]
+pub mod uptime_kuma;

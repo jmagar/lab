@@ -63,6 +63,24 @@ pub struct ServiceClients {
     pub arcane: Option<Arc<lab_apis::arcane::ArcaneClient>>,
     #[cfg(feature = "qbittorrent")]
     pub qbittorrent: Option<Arc<lab_apis::qbittorrent::QbittorrentClient>>,
+    #[cfg(feature = "dozzle")]
+    pub dozzle: Option<Arc<lab_apis::dozzle::DozzleClient>>,
+    #[cfg(feature = "immich")]
+    pub immich: Option<Arc<lab_apis::immich::ImmichClient>>,
+    #[cfg(feature = "navidrome")]
+    pub navidrome: Option<Arc<lab_apis::navidrome::NavidromeClient>>,
+    #[cfg(feature = "scrutiny")]
+    pub scrutiny: Option<Arc<lab_apis::scrutiny::ScrutinyClient>>,
+    #[cfg(feature = "freshrss")]
+    pub freshrss: Option<Arc<lab_apis::freshrss::FreshrssClient>>,
+    #[cfg(feature = "loggifly")]
+    pub loggifly: Option<Arc<lab_apis::loggifly::LoggiflyClient>>,
+    #[cfg(feature = "adguard")]
+    pub adguard: Option<Arc<lab_apis::adguard::AdguardClient>>,
+    #[cfg(feature = "glances")]
+    pub glances: Option<Arc<lab_apis::glances::GlancesClient>>,
+    #[cfg(feature = "uptime_kuma")]
+    pub uptime_kuma: Option<Arc<lab_apis::uptime_kuma::UptimeKumaClient>>,
     // [lab-scaffold: state-fields]
 }
 
@@ -117,6 +135,24 @@ impl ServiceClients {
             arcane: crate::dispatch::arcane::client_from_env().map(Arc::new),
             #[cfg(feature = "qbittorrent")]
             qbittorrent: crate::dispatch::qbittorrent::client_from_env().map(Arc::new),
+            #[cfg(feature = "dozzle")]
+            dozzle: crate::dispatch::dozzle::client_from_env().map(Arc::new),
+            #[cfg(feature = "immich")]
+            immich: crate::dispatch::immich::client_from_env().map(Arc::new),
+            #[cfg(feature = "navidrome")]
+            navidrome: crate::dispatch::navidrome::client_from_env().map(Arc::new),
+            #[cfg(feature = "scrutiny")]
+            scrutiny: crate::dispatch::scrutiny::client_from_env().map(Arc::new),
+            #[cfg(feature = "freshrss")]
+            freshrss: crate::dispatch::freshrss::client_from_env().map(Arc::new),
+            #[cfg(feature = "loggifly")]
+            loggifly: crate::dispatch::loggifly::client_from_env().map(Arc::new),
+            #[cfg(feature = "adguard")]
+            adguard: crate::dispatch::adguard::client_from_env().map(Arc::new),
+            #[cfg(feature = "glances")]
+            glances: crate::dispatch::glances::client_from_env().map(Arc::new),
+            #[cfg(feature = "uptime_kuma")]
+            uptime_kuma: crate::dispatch::uptime_kuma::client_from_env().map(Arc::new),
             // [lab-scaffold: state-from-env]
         }
     }

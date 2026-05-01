@@ -44,3 +44,45 @@ Rules:
 - `LAB_AUTH_ADMIN_EMAIL` is the bootstrap admin Google email; startup fails closed if unset under oauth mode so no Google account can authenticate without explicit permission. Future SQLite-backed allowlist (web-UI managed) will grant access to additional users.
 - the old external issuer variables (`LAB_OAUTH_ISSUER`, `LAB_OAUTH_AUDIENCE`, `LAB_OAUTH_CLIENT_ID`) are no longer used
 - `LAB_PUBLIC_URL` also feeds RFC 9728 metadata, JWT issuer/audience, and HTTP allowed-host derivation
+
+## Requested Homelab Services
+
+Immich:
+
+```env
+IMMICH_URL=http://localhost:2283
+IMMICH_API_KEY=replace-me
+```
+
+Navidrome:
+
+```env
+NAVIDROME_URL=http://localhost:4533
+NAVIDROME_USERNAME=admin
+NAVIDROME_TOKEN=precomputed-subsonic-token
+NAVIDROME_SALT=randomsalt
+```
+
+FreshRSS:
+
+```env
+FRESHRSS_URL=https://rss.example.com/api/greader.php
+FRESHRSS_USERNAME=admin
+FRESHRSS_API_PASSWORD=replace-me
+```
+
+Scrutiny:
+
+```env
+SCRUTINY_URL=http://localhost:8080
+# Optional if protected by a reverse proxy or future upstream auth:
+SCRUTINY_TOKEN=replace-me
+```
+
+LoggiFly is intentionally implementation-deferred in v1 and exposes only
+`contract.status`. Optional documentation/config planning hints:
+
+```env
+LOGGIFLY_DOCS_URL=https://clemcer.github.io/LoggiFly/
+LOGGIFLY_CONFIG_ROOT=/etc/loggifly
+```

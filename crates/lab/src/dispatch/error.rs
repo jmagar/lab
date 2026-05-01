@@ -290,6 +290,42 @@ impl_tool_error_from!(
 );
 
 impl_tool_error_from!(
+    "dozzle",
+    lab_apis::dozzle::error::DozzleError,
+    Api(api) => api.kind(),
+    InvalidResponse(_) => "decode_error",
+    StreamTimeout(_) => "timeout"
+);
+
+impl_tool_error_from!(
+    "immich",
+    lab_apis::immich::error::ImmichError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "navidrome",
+    lab_apis::navidrome::error::NavidromeError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "scrutiny",
+    lab_apis::scrutiny::error::ScrutinyError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
+    "freshrss",
+    lab_apis::freshrss::error::FreshrssError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param",
+    MissingAuthToken => "auth_failed"
+);
+
+impl_tool_error_from!(
     "paperless",
     lab_apis::paperless::error::PaperlessError,
     Api(api) => api.kind()

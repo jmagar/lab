@@ -317,6 +317,66 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "dozzle")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::dozzle::client_from_env,
+        ) {
+            spawn_health!("dozzle", client);
+        }
+    }
+
+    #[cfg(feature = "immich")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::immich::client_from_env,
+        ) {
+            spawn_health!("immich", client);
+        }
+    }
+
+    #[cfg(feature = "navidrome")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::navidrome::client_from_env,
+        ) {
+            spawn_health!("navidrome", client);
+        }
+    }
+
+    #[cfg(feature = "scrutiny")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::scrutiny::client_from_env,
+        ) {
+            spawn_health!("scrutiny", client);
+        }
+    }
+
+    #[cfg(feature = "freshrss")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::freshrss::client_from_env,
+        ) {
+            spawn_health!("freshrss", client);
+        }
+    }
+
+    #[cfg(feature = "loggifly")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::loggifly::client_from_env,
+        ) {
+            spawn_health!("loggifly", client);
+        }
+    }
+
     #[cfg(feature = "qdrant")]
     {
         if let Some(client) = crate::dispatch::helpers::with_env_override(

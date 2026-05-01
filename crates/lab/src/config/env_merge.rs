@@ -642,11 +642,7 @@ mod tests {
         let backups: Vec<_> = fs::read_dir(dir.path())
             .unwrap()
             .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with(".env.bak.")
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with(".env.bak."))
             .collect();
         assert_eq!(
             backups.len(),

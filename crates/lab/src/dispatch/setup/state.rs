@@ -39,11 +39,7 @@ pub fn snapshot(registry: &ToolRegistry) -> SetupSnapshot {
         let registered: Vec<String> = registry_required_keys(registry);
         let missing: Vec<String> = registered
             .into_iter()
-            .filter(|key| {
-                !entries
-                    .iter()
-                    .any(|e| &e.key == key && !e.value.is_empty())
-            })
+            .filter(|key| !entries.iter().any(|e| &e.key == key && !e.value.is_empty()))
             .collect();
         if missing.is_empty() {
             SetupState::Ready

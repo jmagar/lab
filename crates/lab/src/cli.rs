@@ -32,12 +32,22 @@ pub mod arcane;
 pub mod bytestash;
 #[cfg(feature = "deploy")]
 pub mod deploy;
+#[cfg(feature = "dozzle")]
+pub mod dozzle;
+#[cfg(feature = "freshrss")]
+pub mod freshrss;
 #[cfg(feature = "gotify")]
 pub mod gotify;
+#[cfg(feature = "immich")]
+pub mod immich;
 #[cfg(feature = "linkding")]
 pub mod linkding;
+#[cfg(feature = "loggifly")]
+pub mod loggifly;
 #[cfg(feature = "memos")]
 pub mod memos;
+#[cfg(feature = "navidrome")]
+pub mod navidrome;
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;
 #[cfg(feature = "openai")]
@@ -58,6 +68,8 @@ pub mod qdrant;
 pub mod radarr;
 #[cfg(feature = "sabnzbd")]
 pub mod sabnzbd;
+#[cfg(feature = "scrutiny")]
+pub mod scrutiny;
 #[cfg(feature = "sonarr")]
 pub mod sonarr;
 #[cfg(feature = "tailscale")]
@@ -70,6 +82,12 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
+#[cfg(feature = "adguard")]
+pub mod adguard;
+#[cfg(feature = "glances")]
+pub mod glances;
+#[cfg(feature = "uptime_kuma")]
+pub mod uptime_kuma;
 // [lab-scaffold: cli-modules]
 
 use std::process::ExitCode;
@@ -218,6 +236,24 @@ pub enum Command {
     /// Deploy the local lab release binary to SSH targets.
     #[cfg(feature = "deploy")]
     Deploy(deploy::DeployArgs),
+    #[cfg(feature = "dozzle")]
+    Dozzle(dozzle::DozzleArgs),
+    #[cfg(feature = "immich")]
+    Immich(immich::ImmichArgs),
+    #[cfg(feature = "navidrome")]
+    Navidrome(navidrome::NavidromeArgs),
+    #[cfg(feature = "scrutiny")]
+    Scrutiny(scrutiny::ScrutinyArgs),
+    #[cfg(feature = "freshrss")]
+    Freshrss(freshrss::FreshrssArgs),
+    #[cfg(feature = "loggifly")]
+    Loggifly(loggifly::LoggiflyArgs),
+    #[cfg(feature = "adguard")]
+    Adguard(adguard::AdguardArgs),
+    #[cfg(feature = "glances")]
+    Glances(glances::GlancesArgs),
+    #[cfg(feature = "uptime_kuma")]
+    UptimeKuma(uptime_kuma::UptimeKumaArgs),
     // [lab-scaffold: cli-variants]
 }
 
@@ -292,6 +328,24 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Apprise(args) => apprise::run(args, format).await,
         #[cfg(feature = "deploy")]
         Command::Deploy(args) => dispatch_deploy(args, format, config.deploy.clone()).await,
+        #[cfg(feature = "dozzle")]
+        Command::Dozzle(args) => dozzle::run(args, format).await,
+        #[cfg(feature = "immich")]
+        Command::Immich(args) => immich::run(args, format).await,
+        #[cfg(feature = "navidrome")]
+        Command::Navidrome(args) => navidrome::run(args, format).await,
+        #[cfg(feature = "scrutiny")]
+        Command::Scrutiny(args) => scrutiny::run(args, format).await,
+        #[cfg(feature = "freshrss")]
+        Command::Freshrss(args) => freshrss::run(args, format).await,
+        #[cfg(feature = "loggifly")]
+        Command::Loggifly(args) => loggifly::run(args, format).await,
+        #[cfg(feature = "adguard")]
+        Command::Adguard(args) => adguard::run(args, format).await,
+        #[cfg(feature = "glances")]
+        Command::Glances(args) => glances::run(args, format).await,
+        #[cfg(feature = "uptime_kuma")]
+        Command::UptimeKuma(args) => uptime_kuma::run(args, format).await,
         // [lab-scaffold: cli-dispatch]
     }
 }

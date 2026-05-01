@@ -41,7 +41,9 @@ const DEFAULT_LAB_URL: &str = "http://127.0.0.1:8765";
 
 pub async fn run(args: SetupArgs) -> Result<ExitCode> {
     if std::env::var("LAB_SKIP_SETUP").as_deref() == Ok("1") || args.no_setup {
-        eprintln!("setup skipped (LAB_SKIP_SETUP=1 or --no-setup); run `lab setup` manually when ready");
+        eprintln!(
+            "setup skipped (LAB_SKIP_SETUP=1 or --no-setup); run `lab setup` manually when ready"
+        );
         return Ok(ExitCode::SUCCESS);
     }
 

@@ -20,6 +20,7 @@ Commands:
   install      Install one or more services into `.mcp.json`
   uninstall    Uninstall services from `.mcp.json`
   init         First-time setup wizard
+  setup        Open the web-based first-run wizard (or settings) — lab-bg3e.3
   help         Print the service + action catalog
   scaffold     Generate a new service onboarding scaffold
   completions  Generate shell completions
@@ -52,6 +53,7 @@ Commands:
   tei          HF Text Embeddings Inference
   apprise      Apprise notification dispatcher
   deploy       Deploy the local lab release binary to SSH targets
+  dozzle       `lab dozzle` arguments
 
 Options:
       --json           Emit JSON instead of human-readable tables
@@ -213,6 +215,35 @@ Options:
 First-time setup wizard
 
 Usage: lab init [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab setup`
+
+```text
+Open the web-based first-run wizard (or settings) — lab-bg3e.3
+
+Usage: lab setup [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --no-setup       Skip the wizard and exit cleanly. Equivalent to LAB_SKIP_SETUP=1
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --no-browser     Do not attempt to open the browser (no-op for now; reserved for the follow-up that adds `webbrowser` integration)
+      --smoke          Smoke-test mode: print the state machine snapshot as JSON and exit. Used by `just smoke-setup` for CI verification
+  -h, --help           Print help
+```
+
+## `lab help`
+
+```text
+Print the service + action catalog
+
+Usage: lab help [OPTIONS]
 
 Options:
       --json           Emit JSON instead of human-readable tables
@@ -843,6 +874,24 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab dozzle`
+
+```text
+`lab dozzle` arguments
+
+Usage: lab dozzle [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab serve mcp`
 
 ```text
@@ -1269,6 +1318,19 @@ Options:
       --batch-size <BATCH_SIZE>      How many events to batch per request (default 200) [default: 200]
       --syslog-only                  Skip journald and read directly from /var/log/syslog
   -h, --help                         Print help
+```
+
+## `lab radarr help`
+
+```text
+Return the Radarr action catalog
+
+Usage: lab radarr help [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
 ```
 
 ## `lab radarr system-status`
@@ -1939,375 +2001,3 @@ Options:
   -h, --help
           Print help (see a summary with '-h')
 ```
-
-## `lab nodes enrollments list`
-
-```text
-List pending, approved, and denied enrollments
-
-Usage: lab nodes enrollments list [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes enrollments approve`
-
-```text
-Approve a pending enrollment
-
-Usage: lab nodes enrollments approve [OPTIONS] <NODE_ID>
-
-Arguments:
-  <NODE_ID>  
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --note <NOTE>    
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes enrollments deny`
-
-```text
-Deny a pending or approved enrollment
-
-Usage: lab nodes enrollments deny [OPTIONS] <NODE_ID>
-
-Arguments:
-  <NODE_ID>  
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --reason <REASON>  
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help             Print help
-```
-
-## `lab gateway quarantine list`
-
-```text
-Usage: lab gateway quarantine list [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway quarantine restore`
-
-```text
-Usage: lab gateway quarantine restore [OPTIONS] <ID>
-
-Arguments:
-  <ID>  
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway tool-search status`
-
-```text
-Usage: lab gateway tool-search status [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway tool-search enable`
-
-```text
-Usage: lab gateway tool-search enable [OPTIONS]
-
-Options:
-      --json                           Emit JSON instead of human-readable tables
-      --top-k-default <TOP_K_DEFAULT>  
-      --color <COLOR>                  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --max-tools <MAX_TOOLS>          
-  -h, --help                           Print help
-```
-
-## `lab gateway tool-search disable`
-
-```text
-Usage: lab gateway tool-search disable [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway mcp auth`
-
-```text
-Usage: lab gateway mcp auth [OPTIONS] <COMMAND>
-
-Commands:
-  start   
-  open    
-  status  
-  clear   
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway mcp list`
-
-```text
-Usage: lab gateway mcp list [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway mcp enable`
-
-```text
-Usage: lab gateway mcp enable [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --allow-stdio    
-      --json           Emit JSON instead of human-readable tables
-      --cleanup        
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --aggressive     
-  -h, --help           Print help
-```
-
-## `lab gateway mcp disable`
-
-```text
-Usage: lab gateway mcp disable [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --allow-stdio    
-      --json           Emit JSON instead of human-readable tables
-      --cleanup        
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --aggressive     
-  -h, --help           Print help
-```
-
-## `lab gateway mcp cleanup`
-
-```text
-Usage: lab gateway mcp cleanup [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --aggressive     
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --dry-run        
-  -h, --help           Print help
-```
-
-## `lab logs local search`
-
-```text
-Search the persistent local log store
-
-Usage: lab logs local search [OPTIONS]
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-      --text <TEXT>
-          
-      --after-ts <AFTER_TS>
-          
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --before-ts <BEFORE_TS>
-          
-      --level <LEVELS>
-          [possible values: trace, debug, info, warn, error]
-      --subsystem <SUBSYSTEMS>
-          [possible values: gateway, mcp_server, mcp_client, api, web, oauth_relay, auth_webui, auth_mcp, auth_upstream, core_runtime, syslog]
-      --surface <SURFACES>
-          [possible values: cli, mcp, api, web, core_runtime]
-      --action <ACTION>
-          
-      --request-id <REQUEST_ID>
-          
-      --session-id <SESSION_ID>
-          
-      --correlation-id <CORRELATION_ID>
-          
-      --limit <LIMIT>
-          
-  -h, --help
-          Print help
-```
-
-## `lab logs local tail`
-
-```text
-Read a bounded follow-up window from the persistent local log store
-
-Usage: lab logs local tail [OPTIONS]
-
-Options:
-      --after-ts <AFTER_TS>
-          
-      --json
-          Emit JSON instead of human-readable tables
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --since-event-id <SINCE_EVENT_ID>
-          
-      --limit <LIMIT>
-          
-  -h, --help
-          Print help
-```
-
-## `lab logs local stats`
-
-```text
-Inspect local retention and drop counters
-
-Usage: lab logs local stats [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab logs local stream`
-
-```text
-Live push is HTTP SSE only in v1; this command fails with guidance
-
-Usage: lab logs local stream [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab gateway mcp auth start`
-
-```text
-Usage: lab gateway mcp auth start [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-      --subject <SUBJECT>
-          
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --open
-          
-      --wait
-          
-      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
-          [default: 120]
-  -h, --help
-          Print help
-```
-
-## `lab gateway mcp auth open`
-
-```text
-Usage: lab gateway mcp auth open [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-      --subject <SUBJECT>
-          
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --open
-          
-      --wait
-          
-      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
-          [default: 120]
-  -h, --help
-          Print help
-```
-
-## `lab gateway mcp auth status`
-
-```text
-Usage: lab gateway mcp auth status [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-      --subject <SUBJECT>
-          
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --open
-          
-      --wait
-          
-      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
-          [default: 120]
-  -h, --help
-          Print help
-```
-
-## `lab gateway mcp auth clear`
-
-```text
-Usage: lab gateway mcp auth clear [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-      --subject <SUBJECT>
-          
-      --color <COLOR>
-          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --open
-          
-      --wait
-          
-      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
-          [default: 120]
-  -h, --help
-          Print help
-```
-

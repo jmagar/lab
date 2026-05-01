@@ -36,43 +36,75 @@ wiremock.workspace = true
 insta.workspace    = true
 
 [features]
-default = []
-radarr      = ["servarr"]
-sonarr      = ["servarr"]
-prowlarr    = ["servarr"]
-overseerr   = []
-plex        = []
-tautulli    = []
-sabnzbd     = []
-qbittorrent = []
-tailscale   = []
-linkding    = []
-memos       = []
-bytestash   = []
-paperless   = []
-arcane      = []
-unraid      = []
-unifi       = []
-gotify      = []
-openai      = []
-notebooklm  = []
-qdrant      = []
-tei         = []
-apprise     = []
-deploy      = []
-mcpregistry  = []
 acp_registry = []
-servarr      = []
-test-utils   = []
+adguard = []
 all = [
-    "radarr", "sonarr", "prowlarr", "overseerr", "plex", "tautulli",
-    "sabnzbd", "qbittorrent", "tailscale", "linkding",
-    "memos", "bytestash", "paperless",
-    "arcane", "unraid", "unifi",
-    "gotify", "openai", "notebooklm", "qdrant", "tei", "apprise",
-    "deploy", "mcpregistry", "acp_registry",
+    "radarr",
+    "sonarr",
+    "prowlarr",
+    "overseerr",
+    "plex",
+    "tautulli",
+    "sabnzbd",
+    "qbittorrent",
+    "tailscale",
+    "linkding",
+    "memos",
+    "bytestash",
+    "paperless",
+    "arcane",
+    "unraid",
+    "unifi",
+    "gotify",
+    "immich",
+    "loggifly",
+    "navidrome",
+    "scrutiny",
+    "freshrss",
+    "openai",
+    "notebooklm",
+    "qdrant",
+    "tei",
+    "apprise",
+    "deploy",
+    "mcpregistry",
+    "acp_registry",
 ]
-
+apprise = []
+arcane = []
+bytestash = []
+default = []
+deploy = []
+dozzle = []
+freshrss = []
+glances = []
+gotify = []
+immich = []
+linkding = []
+loggifly = []
+mcpregistry = []
+memos = []
+navidrome = []
+notebooklm = []
+openai = []
+overseerr = []
+paperless = []
+plex = []
+prowlarr = ["servarr"]
+qbittorrent = []
+qdrant = []
+radarr = ["servarr"]
+sabnzbd = []
+scrutiny = []
+servarr = []
+sonarr = ["servarr"]
+tailscale = []
+tautulli = []
+tei = []
+test-utils = []
+unifi = []
+unraid = []
+uptime_kuma = []
 [[test]]
 name     = "plex_client"
 required-features = ["plex"]

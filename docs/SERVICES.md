@@ -86,6 +86,7 @@ The following services are always compiled in and require no feature flag or ups
 - Qdrant
 - TEI
 - MCP Registry (`docs/upstream-api/mcp-registry.yaml`)
+- Immich (`docs/upstream-api/immich.md`; upstream OpenAPI-backed docs at https://api.immich.app/)
 
 ### Services Without OpenAPI Specs
 
@@ -97,10 +98,15 @@ The following services are always compiled in and require no feature flag or ups
 - Unraid
 - UniFi
 - NotebookLM (`teng-lin/notebooklm-py` RPC contract)
+- FreshRSS (`docs/upstream-api/freshrss.md`; Google Reader-compatible API)
+- Navidrome (`docs/upstream-api/navidrome.md`; Subsonic/OpenSubsonic-compatible API)
+- Scrutiny (`docs/upstream-api/scrutiny.md`; cautious read-only endpoint contract)
+- LoggiFly (`docs/upstream-api/loggifly.md`; implementation-deferred contract status only)
 
 ### Deferred
 
 - Radicale
+- LoggiFly runtime config/health integration beyond `contract.status`
 
 These are implemented from vendor docs, reference docs, or hand-written API contracts.
 

@@ -7,29 +7,32 @@ use crate::dispatch::error::ToolError;
 
 /// Parse `entries: [{ key, value }, ...]` from a draft.set request body.
 pub fn parse_entries(params: &Value) -> Result<Vec<DraftEntry>, ToolError> {
-    let raw = params.get("entries").ok_or_else(|| ToolError::InvalidParam {
-        message: "missing required parameter `entries`".into(),
-        param: "entries".into(),
-    })?;
+    let raw = params
+        .get("entries")
+        .ok_or_else(|| ToolError::InvalidParam {
+            message: "missing required parameter `entries`".into(),
+            param: "entries".into(),
+        })?;
     let array = raw.as_array().ok_or_else(|| ToolError::InvalidParam {
         message: "`entries` must be an array".into(),
         param: "entries".into(),
     })?;
     let mut out = Vec::with_capacity(array.len());
     for (idx, item) in array.iter().enumerate() {
-        let key = item.get("key").and_then(Value::as_str).ok_or_else(|| {
-            ToolError::InvalidParam {
-                message: format!("entries[{idx}].key must be a string"),
-                param: format!("entries[{idx}].key"),
-            }
-        })?;
-        let value = item
-            .get("value")
-            .and_then(Value::as_str)
-            .ok_or_else(|| ToolError::InvalidParam {
-                message: format!("entries[{idx}].value must be a string"),
-                param: format!("entries[{idx}].value"),
-            })?;
+        let key =
+            item.get("key")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ToolError::InvalidParam {
+                    message: format!("entries[{idx}].key must be a string"),
+                    param: format!("entries[{idx}].key"),
+                })?;
+        let value =
+            item.get("value")
+                .and_then(Value::as_str)
+                .ok_or_else(|| ToolError::InvalidParam {
+                    message: format!("entries[{idx}].value must be a string"),
+                    param: format!("entries[{idx}].value"),
+                })?;
         out.push(DraftEntry {
             key: key.to_string(),
             value: value.to_string(),

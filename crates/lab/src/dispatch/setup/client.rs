@@ -69,12 +69,7 @@ pub fn cached_secret_keys() -> &'static HashSet<&'static str> {
 /// not in the explicit registry — third-party env vars pasted into the
 /// draft, or services compiled out via feature flags whose secret flag
 /// would otherwise be lost.
-pub const SECRET_SUFFIX_DEFAULT_MASK: &[&str] = &[
-    "_API_KEY",
-    "_TOKEN",
-    "_PASSWORD",
-    "_SECRET",
-];
+pub const SECRET_SUFFIX_DEFAULT_MASK: &[&str] = &["_API_KEY", "_TOKEN", "_PASSWORD", "_SECRET"];
 
 /// Returns `true` when `key` ends with any of [`SECRET_SUFFIX_DEFAULT_MASK`].
 #[must_use]
