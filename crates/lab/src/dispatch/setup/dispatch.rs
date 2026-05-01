@@ -1,8 +1,15 @@
 //! Action router for the `setup` Bootstrap orchestrator.
 //!
-//! Dispatch event field policy: actions whose names start with
-//! `setup.draft.` log without their `params` field — drafts may carry
-//! secret values en route to disk and must never be visible in logs.
+//! Dispatch event field policy: the actions in [`REDACTED_LOG_ACTIONS`]
+//! log without their `params` field — drafts may carry secret values
+//! en route to disk and must never be visible in logs. Dispatch sees
+//! the trimmed action name (e.g. `"draft.set"`, not `"setup.draft.set"`),
+//! so the allowlist matches on the trimmed form.
+//!
+//! `setup.draft.commit` invokes `doctor::dispatch("audit.full", _)`
+//! synchronously (buffered) — the orchestrator must make an atomic
+//! gate decision over the full audit, so streaming is reserved for a
+//! future `setup.audit.preview` action that wraps `stream_audit_full`.
 
 use lab_apis::core::PluginMeta;
 use lab_apis::core::action::ActionSpec;
@@ -17,6 +24,12 @@ use crate::config::env_merge::{self, EnvEntry, MergeRequest, snapshot_mtime};
 /// setup.draft.commit. A misconfigured probe (network hang, dead host)
 /// will return audit_timeout instead of stalling the wizard forever.
 const AUDIT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Actions whose `params` field is dropped from dispatch event logs to
+/// prevent secret-bearing draft values from leaking into log sinks.
+/// Keep this in sync with the catalog — every action that accepts a
+/// `value` parameter or commits the draft must be listed here.
+const REDACTED_LOG_ACTIONS: &[&str] = &["draft.set", "draft.commit", "finalize"];
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 use crate::registry::service_meta;
@@ -33,7 +46,7 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     let start = std::time::Instant::now();
     let result = dispatch_inner(action, &params).await;
     let elapsed_ms = start.elapsed().as_millis();
-    let log_params = !action.starts_with("draft.");
+    let log_params = !REDACTED_LOG_ACTIONS.contains(&action);
     log_outcome(action, log_params, &params, elapsed_ms, &result);
     result
 }

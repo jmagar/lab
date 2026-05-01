@@ -82,9 +82,14 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "finalize",
-        description: "Alias for draft.commit returning a summary envelope",
+        description: "Alias for draft.commit; same params, same returns",
         destructive: true,
         returns: "CommitOutcome",
-        params: &[],
+        params: &[ParamSpec {
+            name: "force",
+            ty: "bool",
+            required: false,
+            description: "Overwrite conflicting .env keys (default false)",
+        }],
     },
 ];
