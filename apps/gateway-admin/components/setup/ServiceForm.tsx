@@ -314,6 +314,12 @@ function FieldRow({
           placeholder={placeholder}
           disabled={disabled}
           aria-invalid={errorMessage ? true : undefined}
+          // new-password tells password managers not to auto-fill from
+          // saved passwords AND not to offer to save on submit. API keys
+          // and tokens should never end up in cloud-synced password vaults.
+          // Non-secret technical fields (URLs, file paths) opt out of
+          // browser autofill suggestions, which are useless here.
+          autoComplete={isSecret ? 'new-password' : 'off'}
           {...form.register(field.name, { onBlur: onBlurProbe })}
           className={cn(isSecret ? 'pr-10' : undefined,
             errorMessage ? 'border-destructive' : undefined,
@@ -348,7 +354,10 @@ function FieldLabel({
     <Label htmlFor={htmlFor} className="flex items-center gap-1 font-mono text-xs">
       <span>{field.name}</span>
       {field.required ? <span className="text-destructive">*</span> : null}
-      {field.ui.help_url ? (
+      {/* Defense in depth: even though help_url comes from the schema (not
+          user input), validate the scheme so a tampered schema response
+          can't slip a javascript:/data: URI past noopener noreferrer. */}
+      {field.ui.help_url && /^https?:\/\//i.test(field.ui.help_url) ? (
         <a
           href={field.ui.help_url}
           target="_blank"
