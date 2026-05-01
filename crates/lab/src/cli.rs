@@ -21,6 +21,7 @@ pub mod params;
 pub mod plugins;
 pub mod scaffold;
 pub mod serve;
+pub mod setup;
 pub mod stash;
 
 #[cfg(feature = "apprise")]
@@ -124,6 +125,8 @@ pub enum Command {
     Uninstall(install::UninstallArgs),
     /// First-time setup wizard.
     Init,
+    /// Open the web-based first-run wizard (or settings) — lab-bg3e.3.
+    Setup(setup::SetupArgs),
     /// Print the service + action catalog.
     Help,
     /// Generate a new service onboarding scaffold.
@@ -225,6 +228,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Install(args) => install::run_install(&args).map(|()| ExitCode::SUCCESS),
         Command::Uninstall(args) => install::run_uninstall(&args).map(|()| ExitCode::SUCCESS),
         Command::Init => install::run_init().map(|()| ExitCode::SUCCESS),
+        Command::Setup(args) => setup::run(args).await,
         Command::Help => help::run(format),
         Command::Scaffold(args) => scaffold::run(args, format),
         Command::Completions(args) => completions::run(&args),
