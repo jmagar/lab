@@ -224,6 +224,30 @@ impl ExtractClient {
         .await
     }
 
+    /// Fleet scan restricted to the given host aliases. Aliases not found in
+    /// `~/.ssh/config` are silently skipped. Order matches SSH config order.
+    pub async fn scan_fleet_filtered(
+        &self,
+        allowed: &[String],
+    ) -> Result<ExtractReport, ExtractError> {
+        let hosts = load_ssh_inventory()?
+            .into_iter()
+            .filter(|h| allowed.contains(&h.alias))
+            .collect();
+        self.scan_fleet_hosts_with(
+            hosts,
+            |target| async move { FleetSshHost::connect(target).await },
+            |url| async move { probe_endpoint(&url).await },
+        )
+        .await
+    }
+
+    /// Return the aliases of all SSH config hosts that would be included in a
+    /// fleet scan, in SSH config order. Useful for building a host-selection UI.
+    pub fn list_hosts(&self) -> Result<Vec<String>, ExtractError> {
+        Ok(load_ssh_inventory()?.into_iter().map(|h| h.alias).collect())
+    }
+
     async fn scan_fleet_hosts_with<C, CFut, H, P, PFut>(
         &self,
         hosts: Vec<SshHostTarget>,

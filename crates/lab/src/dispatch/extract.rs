@@ -33,6 +33,13 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "Schema",
     },
     ActionSpec {
+        name: "list_hosts",
+        description: "Return SSH config host aliases available for fleet scanning",
+        destructive: false,
+        params: &[],
+        returns: "string[]",
+    },
+    ActionSpec {
         name: "scan",
         description: "Scan an appdata path and return discovered service credentials",
         destructive: false,
@@ -42,6 +49,12 @@ pub const ACTIONS: &[ActionSpec] = &[
                 ty: "string",
                 required: false,
                 description: "Local path or 'host:/abs/path' for SSH; omit for fleet scan",
+            },
+            ParamSpec {
+                name: "hosts",
+                ty: "string[]",
+                required: false,
+                description: "Restrict fleet scan to these SSH config aliases; omit for all hosts",
             },
             ParamSpec {
                 name: "redact_secrets",
@@ -103,11 +116,28 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
             let a = require_str(&params, "action")?;
             action_schema(ACTIONS, a)
         }
+        "list_hosts" => {
+            let client = ExtractClient::new();
+            let hosts = client.list_hosts().map_err(|e| ToolError::Sdk {
+                sdk_kind: "internal_error".into(),
+                message: e.to_string(),
+            })?;
+            to_json(hosts)
+        }
         "scan" => {
-            let target = parse_scan_target(&params)?;
             let redact_secrets = parse_redact_secrets(&params)?;
             let client = ExtractClient::new();
-            let report = client.scan(target).await.map_err(|e| ToolError::Sdk {
+            let report = match parse_scan_target(&params)? {
+                ScanTarget::Fleet => {
+                    if let Some(hosts) = parse_hosts_filter(&params)? {
+                        client.scan_fleet_filtered(&hosts).await
+                    } else {
+                        client.scan(ScanTarget::Fleet).await
+                    }
+                }
+                targeted => client.scan(targeted).await,
+            }
+            .map_err(|e| ToolError::Sdk {
                 sdk_kind: "internal_error".into(),
                 message: e.to_string(),
             })?;
@@ -166,6 +196,28 @@ fn parse_uri(params: &Value) -> Result<Uri, ToolError> {
             sdk_kind: "invalid_param".into(),
             message: e.to_string(),
         })
+}
+
+fn parse_hosts_filter(params: &Value) -> Result<Option<Vec<String>>, ToolError> {
+    let Some(value) = params.get("hosts") else {
+        return Ok(None);
+    };
+    let arr = value.as_array().ok_or_else(|| ToolError::InvalidParam {
+        message: "parameter `hosts` must be an array of strings".into(),
+        param: "hosts".into(),
+    })?;
+    let hosts = arr
+        .iter()
+        .map(|v| {
+            v.as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| ToolError::InvalidParam {
+                    message: "each element of `hosts` must be a string".into(),
+                    param: "hosts".into(),
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(if hosts.is_empty() { None } else { Some(hosts) })
 }
 
 fn parse_scan_target(params: &Value) -> Result<ScanTarget, ToolError> {

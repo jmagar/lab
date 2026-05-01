@@ -36,12 +36,12 @@ export function useExtractScan() {
     [report],
   )
 
-  async function runScan(uri?: string) {
+  async function runScan(opts?: { uri?: string; hosts?: string[] }) {
     setIsLoading(true)
     setError(null)
 
     try {
-      const next = await extractApi.scan(uri)
+      const next = await extractApi.scan(opts)
       startTransition(() => {
         setReport(next)
       })

@@ -8,6 +8,8 @@ Lab supports two HTTP auth modes:
   Run an internal Google-backed OAuth authorization server that issues `lab` JWT access tokens and exposes JWKS plus RFC 9728 metadata.
 
 This document covers mode selection, startup behavior, registration and token flow, JWT validation, and operator-facing constraints.
+For the complete generated route/auth matrix, see
+[generated/api-routes.md](./generated/api-routes.md).
 
 ## Configuration
 

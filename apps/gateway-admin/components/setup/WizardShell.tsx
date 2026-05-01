@@ -27,6 +27,7 @@ export const WIZARD_STEPS: WizardStep[] = [
   { slug: 'welcome', title: 'Welcome' },
   { slug: 'core-config', title: 'Core Configuration' },
   { slug: 'preflight-1', title: 'PreFlight Round 1' },
+  { slug: 'fleet-scan', title: 'Fleet Discovery' },
   { slug: 'service-selection', title: 'Service Selection' },
   { slug: 'surfaces', title: 'Surfaces', stub: true },
   { slug: 'features', title: 'Features', stub: true },

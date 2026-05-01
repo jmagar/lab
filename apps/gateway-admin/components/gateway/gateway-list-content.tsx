@@ -115,7 +115,12 @@ export interface GatewayListViewProps {
   onEdit: (gateway: Gateway) => void
   onTest: (gateway: Gateway) => void
   onReload: (gateway: Gateway) => void
+  cleanupSummaryByGatewayId?: Record<
+    string,
+    { preview?: { label: string; occurredAt: string }; cleanup?: { label: string; occurredAt: string } }
+  >
   onCleanup: (gateway: Gateway, aggressive: boolean, dryRun: boolean) => void
+  onClearCleanupHistory: (gateway: Gateway) => void
   onToggleEnabled: (gateway: Gateway) => void
   onDelete: (gateway: Gateway) => void
 }
@@ -523,11 +528,13 @@ export function GatewayListView({
   onToolFilterToggle,
   onExposureChange,
   onClearFilters,
+  cleanupSummaryByGatewayId,
   onCreate,
   onEdit,
   onTest,
   onReload,
   onCleanup,
+  onClearCleanupHistory,
   onToggleEnabled,
   onDelete,
 }: GatewayListViewProps) {
@@ -759,10 +766,12 @@ export function GatewayListView({
                 <GatewayTable
                   gateways={filteredGateways}
                   density={density}
+                  cleanupSummaryByGatewayId={cleanupSummaryByGatewayId}
                   onEdit={onEdit}
                   onTest={onTest}
                   onReload={onReload}
                   onCleanup={onCleanup}
+                  onClearCleanupHistory={onClearCleanupHistory}
                   onToggleEnabled={onToggleEnabled}
                   onDelete={onDelete}
                 />

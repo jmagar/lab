@@ -3,6 +3,8 @@
 This is the canonical end-to-end workflow for bringing a new service online in `lab`.
 
 Use this when adding a brand-new integration or when completing a partially implemented service.
+The generated all-services onboarding status is
+[generated/onboarding-audit.md](./generated/onboarding-audit.md).
 
 ## Goal
 

@@ -82,14 +82,17 @@ CLAUDE.md
 .codex-plugin/
 .github/
 agents/
-bin/
 commands/
 hooks/
 plugins/
 skills/
 
 # ── Docker self-references ───────────────────────────────────────────────────
-Dockerfile
+config/Dockerfile
+config/Dockerfile.fast
+config/docker-compose.override.yml.example
+config/config.example.toml
+config/config.toml
 docker-compose.yaml
 docker-compose.yml
 .dockerignore

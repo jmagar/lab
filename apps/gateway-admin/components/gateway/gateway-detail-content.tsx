@@ -542,7 +542,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const updatedAtLabel = formatGatewayTimestamp(gateway.updated_at)
   const endpointDisplay =
     gateway.transport === 'http'
-      ? gateway.config.url
+      ? (gateway.config.url ?? '')
       : isLabGateway
         ? gateway.config.url ?? 'Lab-managed gateway configuration'
         : [gateway.config.command, ...(gateway.config.args ?? [])].join(' ')
@@ -794,7 +794,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                     name: resource.name,
                     description: resource.description,
                     secondary: resource.uri,
-                    exposed: resource.exposed,
+                    exposed: resource.exposed ?? false,
                   }))}
                   searchValue={inventorySearch}
                   onSearchValueChange={setInventorySearch}
@@ -830,7 +830,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                       prompt.arguments && prompt.arguments.length > 0
                         ? `${prompt.arguments.length} arg${prompt.arguments.length === 1 ? '' : 's'}`
                         : undefined,
-                    exposed: prompt.exposed,
+                    exposed: prompt.exposed ?? false,
                   }))}
                   searchValue={inventorySearch}
                   onSearchValueChange={setInventorySearch}

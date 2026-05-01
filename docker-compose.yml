@@ -1,6 +1,7 @@
 services:
   lab-master:
     image: lab:dev
+    hostname: dookie
     build:
       context: .
       dockerfile: config/Dockerfile.fast
@@ -14,24 +15,26 @@ services:
       # Named volume — persists SQLite DBs, master.lock, OAuth keys across
       # container restarts and image rebuilds.
       - lab-data:/home/lab/.local
-      # Host config file mounted read-only.  Copy config/config.example.toml →
-      # config/config.toml, edit, then `docker compose up -d`.
-      - ./config/config.toml:/home/lab/.config/lab/config.toml:ro
+      # Host config file mounted read-only. Keep runtime config in ~/.lab so
+      # Docker and local `lab serve` use the same auth/service settings.
+      - ${HOME}/.lab/config.toml:/home/lab/.config/lab/config.toml:ro
 
     environment:
       # Bind to all container interfaces so the port mapping works.
       # The host-side port mapping (above) controls external exposure.
       LAB_MCP_HTTP_HOST: "0.0.0.0"
       LAB_MCP_HTTP_PORT: "8765"
+      # Override host-only paths from ~/.lab/.env for the container filesystem.
+      LAB_WEB_ASSETS_DIR: ""
+      LAB_LOCAL_LOGS_STORE_PATH: "/home/lab/.local/share/lab/logs.db"
       # Structured log levels — RUST_LOG for tracing, LAB_LOG for app filter.
       RUST_LOG: "lab=info,warn"
       LAB_LOG: "info"
 
-    # Load secrets from .env (see .env.example).
-    # File is optional so `docker compose up` works without it (token auth
-    # can also be set via LAB_MCP_HTTP_TOKEN above, but .env is safer).
+    # Load host runtime secrets from ~/.lab so Docker and local `lab serve`
+    # use the same auth, OAuth, and service credentials.
     env_file:
-      - path: .env
+      - path: ${HOME}/.lab/.env
         required: false
 
     # ── Hard outer boundary ──────────────────────────────────────────────────

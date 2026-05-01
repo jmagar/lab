@@ -188,6 +188,9 @@ Minimum expectation:
 - targeted tests for the touched files or contract
 - crate-level tests for the touched crate when the change is non-trivial
 - broader verification when the change affects shared infrastructure
+- `just docs-check` when changing registry entries, action catalogs,
+  `PluginMeta`, API route metadata, Cargo features, onboarding audit checks, or
+  generated docs artifacts
 
 Preferred runner:
 
@@ -203,6 +206,7 @@ Common commands:
 
 ```bash
 just check
+just docs-check
 just test
 just lint
 cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features

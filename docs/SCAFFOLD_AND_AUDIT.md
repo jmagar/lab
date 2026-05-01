@@ -4,6 +4,11 @@ This document is the single authoritative reference for the `lab scaffold` and `
 systems — how they work, what they produce, how they verify, and every invariant that
 governs them.
 
+The current all-services onboarding audit inventory is generated in
+[generated/onboarding-audit.md](./generated/onboarding-audit.md). Refresh it
+with `just docs-generate` after changing scaffold output, audit checks, or
+service registration.
+
 ---
 
 ## Table of Contents

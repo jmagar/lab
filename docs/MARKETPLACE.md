@@ -54,34 +54,10 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 
 ## Actions
 
-| Action | Description | Destructive |
-| --- | --- | --- |
-| `help` | Show the action catalog | |
-| `schema` | Return the parameter schema for a named action | |
-| `sources.list` | List Marketplace sources, including configured plugin marketplaces plus MCP/ACP registry feeds | |
-| `sources.add` | Register a new marketplace via `claude plugin marketplace add` | **yes** |
-| `plugins.list` | List all plugins across marketplaces with installed state | |
-| `plugin.get` | Return a single plugin by `name@marketplace` id | |
-| `plugin.artifacts` | List artifact files shipped with an installed plugin | |
-| `plugin.workspace` | Load or create an app-managed editable workspace mirror for a plugin | |
-| `plugin.save` | Save a file into the plugin workspace mirror | |
-| `plugin.deploy.preview` | Preview changed, skipped, removed, and failed files before deploy | |
-| `plugin.deploy` | Deploy the saved workspace to the local Claude Code target | **yes** |
-| `plugin.cherry_pick` | Copy selected files from a plugin artifact set into a target workspace | **yes** |
-| `plugin.install` | Install a plugin via `claude plugin install` | **yes** |
-| `plugin.uninstall` | Uninstall a plugin via `claude plugin uninstall` | **yes** |
-| `artifact.fork` | Fork an installed plugin artifact into an editable workspace | |
-| `artifact.list` | List forked plugin artifact workspace status | |
-| `artifact.unfork` | Remove a forked artifact workspace | **yes** |
-| `artifact.reset` | Reset a forked artifact workspace to source content | **yes** |
-| `mcp.config` | Return the resolved MCP Registry base URL | |
-| `mcp.list` | List MCP servers from the upstream registry with Lab metadata filters | |
-| `mcp.get` | Get one MCP Registry server record | |
-| `mcp.versions` | List versions for an MCP Registry server | |
-| `mcp.validate` | Validate a ServerJSON document against the registry schema | |
-| `mcp.meta.get` | Read Lab-owned metadata for a registry server | |
-| `mcp.meta.set` | Upsert Lab-owned registry metadata | **yes** |
-| `mcp.meta.delete` | Delete Lab-owned registry metadata | **yes** |
+The complete marketplace action inventory is generated from `ActionSpec`:
+
+- [generated action catalog](./generated/action-catalog.md)
+- [generated action catalog JSON](./generated/action-catalog.json)
 
 ### Parameters
 

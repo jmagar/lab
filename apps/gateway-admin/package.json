@@ -57,6 +57,7 @@
     "@radix-ui/react-toggle-group": "1.1.11",
     "@radix-ui/react-tooltip": "1.2.8",
     "ai": "^6.0.168",
+    "ansi-to-react": "^6.2.6",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

@@ -58,7 +58,7 @@ test('extractApi.scan performs a targeted scan when uri is provided', async () =
     )
   }
 
-  await extractApi.scan('squirts:/mnt/appdata')
+  await extractApi.scan({ uri: 'squirts:/mnt/appdata' })
 
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
@@ -81,7 +81,7 @@ test('extractApi.scan preserves empty strings so the backend can reject them', a
     )
   }
 
-  await assert.rejects(() => extractApi.scan(''))
+  await assert.rejects(() => extractApi.scan({ uri: '' }))
 
   assert.deepEqual(JSON.parse(String(requestInit?.body)), {
     action: 'scan',
@@ -102,7 +102,7 @@ test('extractApi.scan surfaces backend errors with status and kind', async () =>
     )
 
   await assert.rejects(
-    extractApi.scan(''),
+    extractApi.scan({ uri: '' }),
     (error: unknown) =>
       error instanceof ExtractApiError
       && error.status === 400

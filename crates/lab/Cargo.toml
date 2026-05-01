@@ -152,6 +152,7 @@ all = [
     "deploy",
     "mcpregistry",
     "acp_registry",
+    "dozzle",
 ]
 apprise = ["lab-apis/apprise"]
 arcane = ["lab-apis/arcane"]

@@ -7,10 +7,12 @@ WORKDIR /build
 # System build deps:
 #   pkg-config     — lets -sys crates find system headers
 #   build-essential — C compiler for rusqlite's bundled SQLite + other -sys crates
+#   libssl-dev     — headers/pkg-config metadata for crates pulling openssl-sys
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       pkg-config \
       build-essential \
+      libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # ── Dependency-caching layer ──────────────────────────────────────────────────
@@ -24,7 +26,8 @@ COPY crates/lab-auth/Cargo.toml crates/lab-auth/Cargo.toml
 # Create stub source + test files so cargo can parse ALL manifests without error.
 #
 # lab-apis/Cargo.toml declares explicit [[test]] targets with required-features:
-#   plex_client, gotify_client → need tests/plex_client.rs, tests/gotify_client.rs
+#   plex_client, gotify_client, openacp_client, jellyfin_client → need matching
+#   files under crates/lab-apis/tests/
 # Cargo validates file existence at manifest-parse time even when the required
 # feature is disabled, so we must stub them.
 #
@@ -44,8 +47,10 @@ RUN mkdir -p \
       crates/lab-apis/src/lib.rs \
       crates/lab-apis/tests/plex_client.rs \
       crates/lab-apis/tests/gotify_client.rs \
+      crates/lab-apis/tests/openacp_client.rs \
+      crates/lab-apis/tests/jellyfin_client.rs \
       crates/lab-auth/src/lib.rs \
- && cargo build --release -p 'lab@0.11.1' \
+ && cargo build --release -p 'lab@0.12.1' \
  && rm -rf \
       crates/*/src \
       crates/lab-apis/tests \
@@ -64,19 +69,16 @@ RUN mkdir -p \
 # apps/gateway-admin/out is sent in the build context.)
 COPY apps/gateway-admin/out apps/gateway-admin/out
 COPY crates/ crates/
-RUN cargo build --release -p 'lab@0.11.1'
+RUN cargo build --release -p 'lab@0.12.1'
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
-FROM debian:bookworm-slim AS runtime
+FROM debian:trixie-slim AS runtime
 
 # ca-certificates: reqwest uses rustls for TLS but still validates against the
 # system CA bundle — required for outbound HTTPS calls.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-
-# Non-root service account (uid 1000 keeps volume perms sane).
-RUN useradd --system --create-home --uid 1000 --shell /usr/sbin/nologin lab
 
 # Pre-create XDG directories so the binary never needs mkdir at runtime.
 #   ~/.local/state/lab  — master.lock and runtime state
@@ -86,11 +88,12 @@ RUN mkdir -p \
       /home/lab/.config/lab \
       /home/lab/.local/state/lab \
       /home/lab/.local/share/lab \
- && chown -R lab:lab /home/lab
+ && chown -R 1000:1000 /home/lab
 
 COPY --from=builder /build/target/release/lab /usr/local/bin/lab
 
-USER lab
+ENV HOME=/home/lab
+USER 1000:1000
 WORKDIR /home/lab
 
 # Default HTTP port.  Override with LAB_MCP_HTTP_PORT env var or config.toml.

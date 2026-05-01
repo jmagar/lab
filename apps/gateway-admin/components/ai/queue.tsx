@@ -126,16 +126,21 @@ export const QueueItemAttachment = ({ className, ...props }: QueueItemAttachment
   <div className={cn("mt-1 flex flex-wrap gap-2", className)} {...props} />
 )
 
-export type QueueItemImageProps = ComponentProps<"img">
+export type QueueItemImageProps = {
+  src: string
+  className?: string
+  height?: number
+  width?: number
+}
 
-export const QueueItemImage = ({ className, ...props }: QueueItemImageProps) => (
+export const QueueItemImage = ({ className, src, height = 32, width = 32 }: QueueItemImageProps) => (
   <Image
     alt=""
+    src={src}
     className={cn("h-8 w-8 rounded border object-cover", className)}
-    height={32}
-    width={32}
+    height={height}
+    width={width}
     unoptimized
-    {...props}
   />
 )
 

@@ -542,6 +542,36 @@ surfaces as `oauth_needs_reauth`, never as an internal error.
 
 Full details in [TRANSPORT.md](./TRANSPORT.md).
 
+## Docker Deployment
+
+`docker-compose.yml` mounts config and secrets from the host user's `~/.lab/`
+directory so the container and a local `lab serve` process share the same
+configuration without duplicating files:
+
+```yaml
+volumes:
+  - ${HOME}/.lab/config.toml:/home/lab/.config/lab/config.toml:ro
+env_file:
+  - path: ${HOME}/.lab/.env
+    required: false
+```
+
+**Implications:**
+
+- Changes to `~/.lab/config.toml` take effect on the next container restart
+  (`docker compose restart lab-master`).
+- `config/config.toml` in the repository is **not** used by the Docker
+  deployment. It exists as a reference/example for the repo. Copy it to
+  `~/.lab/config.toml` to initialise your personal config.
+- `config/config.example.toml` is the canonical reference for all available
+  TOML options.
+- The container overrides two env vars that would be wrong inside the container
+  even if set in `~/.lab/.env`:
+  - `LAB_WEB_ASSETS_DIR=""` — clears any host filesystem path so the binary
+    falls back to its embedded assets.
+  - `LAB_LOCAL_LOGS_STORE_PATH="/home/lab/.local/share/lab/logs.db"` — routes
+    the log store into the named `lab-data` volume.
+
 ## `.mcp.json` Environment
 
 When `lab` is integrated into an MCP client config, the env file path should be explicit and stable so plugin installation and operator tooling update the same source of truth.

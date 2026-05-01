@@ -226,6 +226,22 @@ impl ToolRegistry {
 #[must_use]
 #[allow(clippy::too_many_lines)]
 pub fn build_default_registry() -> ToolRegistry {
+    build_registry(true)
+}
+
+/// Build a registry for static metadata projections.
+///
+/// Unlike [`build_default_registry`], this includes compile-time services whose
+/// runtime registration depends on local operator configuration. Generated docs
+/// must describe the compiled surface without reading local env/config state.
+#[must_use]
+#[allow(dead_code)]
+pub fn build_docs_registry() -> ToolRegistry {
+    build_registry(false)
+}
+
+#[allow(clippy::too_many_lines)]
+fn build_registry(apply_runtime_conditions: bool) -> ToolRegistry {
     let mut reg = ToolRegistry::new();
 
     // extract is always-on (no feature flag).
@@ -453,7 +469,7 @@ pub fn build_default_registry() -> ToolRegistry {
     );
 
     #[cfg(feature = "lab-admin")]
-    if lab_admin_enabled() {
+    if !apply_runtime_conditions || lab_admin_enabled() {
         reg.register(RegisteredService {
             name: "lab_admin",
             description: "Internal onboarding audit tool",

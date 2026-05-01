@@ -130,7 +130,7 @@ function toolCallUpdateOutput(update: ToolCallUpdate): unknown {
   if (update.content !== undefined) {
     output.content = update.content
   }
-  if (update.locations !== undefined) {
+  if (update.locations !== null && update.locations !== undefined) {
     output.locations = update.locations.map((location) => location.path)
   }
 

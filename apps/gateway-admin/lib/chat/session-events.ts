@@ -1,4 +1,4 @@
-import type { AcpEvent, BridgeEvent, BridgeSessionStatus, BridgeSessionSummary } from '@/lib/acp/types'
+import type { AcpEvent, BridgeEvent, BridgeEventStatus, BridgeSessionStatus, BridgeSessionSummary } from '@/lib/acp/types'
 import type { ACPMessage, ActivityItem, TranscriptTerminal, TranscriptToolCall } from '@/components/chat/types'
 
 // ---------------------------------------------------------------------------
@@ -193,7 +193,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
 
-function isToolCallStatus(value: unknown): value is TranscriptToolCall['status'] | undefined {
+function isToolCallStatus(value: unknown): TranscriptToolCall['status'] | undefined {
   switch (value) {
     case 'pending':
     case 'in_progress':
@@ -285,7 +285,7 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
         ...bridgeBaseEvent(event, 'tool.update'),
         title: 'Tool call updated',
         toolCallId: event.tool_call_id,
-        status: event.status,
+        status: event.status as BridgeEventStatus | undefined,
         rawOutput: event.output,
       }
     case 'permission_request':
@@ -320,7 +320,7 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
     case 'session_update':
       return {
         ...bridgeBaseEvent(event, 'status'),
-        status: event.state,
+        status: event.state as BridgeEventStatus,
       }
     case 'provider_info': {
       const rawType = providerRawType(event.raw)
@@ -383,7 +383,7 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
           return {
             ...bridgeBaseEvent(event, 'status', event.provider),
             title: isRecord(event.raw) && typeof event.raw.title === 'string' ? event.raw.title : undefined,
-            status: isRecord(event.raw) && typeof event.raw.status === 'string' ? event.raw.status : undefined,
+            status: isRecord(event.raw) && typeof event.raw.status === 'string' ? event.raw.status as BridgeEventStatus : undefined,
             promptStopReason:
               isRecord(event.raw) && typeof event.raw.stop_reason === 'string'
                 ? (event.raw.stop_reason as BridgeEvent['promptStopReason'])
@@ -394,7 +394,7 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
           return {
             ...bridgeBaseEvent(event, 'reconnect', event.provider),
             title: 'Subscriber backpressure',
-            status: 'reconnect',
+            status: 'reconnect' as BridgeEventStatus,
             raw: event.raw,
           }
         default:
@@ -639,8 +639,8 @@ export function deriveTranscriptAndActivity(events: BridgeEvent[]): {
       }
 
       const role = event.role === 'user' ? 'user' : 'assistant'
-      const activeMessageId = role === 'user' ? activeUserMessageId : activeAssistantMessageId
-      const key =
+      const activeMessageId: string | null = role === 'user' ? activeUserMessageId : activeAssistantMessageId
+      const key: string =
         activeMessageId ??
         event.messageId ??
         `${role}-${event.sessionId}-${orderedMessageIds.length + 1}`

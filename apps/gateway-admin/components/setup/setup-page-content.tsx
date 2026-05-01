@@ -79,7 +79,7 @@ export function SetupPageContent() {
                     />
                     <Button
                       disabled={isLoading || targetUri.trim().length === 0}
-                      onClick={() => void runScan(targetUri.trim())}
+                      onClick={() => void runScan({ uri: targetUri.trim() })}
                       variant="secondary"
                     >
                       {isLoading ? <Spinner className="mr-2" /> : <Search className="mr-2 size-4" />}

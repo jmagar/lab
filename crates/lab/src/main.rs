@@ -14,6 +14,7 @@ mod catalog;
 mod cli;
 mod config;
 mod dispatch;
+mod docs;
 mod log_fmt;
 mod mcp;
 mod node;
@@ -130,6 +131,19 @@ fn init_tracing(
 async fn main() -> ExitCode {
     let cli = Cli::parse();
 
+    if matches!(cli.command, cli::Command::Docs(_)) {
+        return match cli::dispatch(cli, config::LabConfig::default()).await {
+            Ok(code) => code,
+            Err(err) => {
+                #[allow(clippy::print_stderr)]
+                {
+                    eprintln!("{err:#}");
+                }
+                ExitCode::from(1)
+            }
+        };
+    }
+
     // 1. Load config.toml first (lightweight, no tracing needed).
     //    eprintln is intentional — tracing isn't initialized yet.
     let config = match config::load_toml(&config::toml_candidates()) {
@@ -154,7 +168,9 @@ async fn main() -> ExitCode {
     // _log_guard MUST live for the entire process — dropping it stops file logging.
     let _log_guard = init_tracing(&config.log, cli.color, log_filter_override.as_deref());
 
-    // 3. Load .env files (secrets + URL env vars).
+    // 3. Load .env files (secrets + URL env vars) for runtime paths.
+    // Static docs generation is intentionally metadata-only and must not
+    // depend on operator env/config secrets.
     if let Err(err) = config::load_dotenv() {
         tracing::error!("dotenv load error: {err:#}");
         return ExitCode::from(2);

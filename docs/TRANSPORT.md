@@ -85,7 +85,7 @@ Wildcard (`*`) is rejected with a warning — it would disable Host header valid
 
 ### Authentication
 
-Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible.
+Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible. The complete generated route inventory, including auth/runtime posture, lives in [generated/api-routes.md](./generated/api-routes.md).
 
 The Labby web UI shell is served publicly when web assets are enabled. The UI then calls the same-origin
 API and MCP routes on the same port.
@@ -156,26 +156,12 @@ The HTTP router is role-aware:
 - a non-controller node keeps only `/health`, `/ready`, and `/v1/nodes/*`
 - non-controller nodes do not expose `/mcp`, `/v1/{service}`, `/v1/gateway`, `/v1/openapi.json`, `/v1/docs`, or the Web UI
 
-When HTTP transport is active, the server exposes:
+When HTTP transport is active, the generated route inventory is the canonical
+path/auth matrix:
 
-| Path | Auth | Description |
-|------|------|-------------|
-| `/` | no | Labby web UI shell on the controller. On non-controller nodes this returns `403` only when exported web assets are configured; otherwise it falls through as `404`. |
-| `/gateways/`, `/gateway/`, `/activity/`, `/settings/`, `/docs/` | no | Labby SPA routes on the controller. |
-| `/health` | no | Liveness probe |
-| `/ready` | no | Readiness probe |
-| `/.well-known/oauth-authorization-server` | no | Authorization-server metadata |
-| `/.well-known/oauth-protected-resource` | no | RFC 9728 protected-resource metadata |
-| `/jwks` | no | `lab` signing keys |
-| `/register` | no | Dynamic client registration for OAuth clients |
-| `/authorize` | no | Authorization entrypoint |
-| `/auth/google/callback` | no | Google callback endpoint |
-| `/token` | no | Authorization-code and refresh-token exchange |
-| `/v1/nodes/*` | yes | Node runtime ingest, fleet queries, and remote OAuth relay start |
-| `/v1/{service}` | yes | REST API (POST with action+params) on the controller only |
-| `/v1/{service}/actions` | yes | Action catalog (GET) on the controller only |
-| `/v1/gateway` | yes | Gateway management on the controller only |
-| `/mcp` | yes | MCP streamable HTTP transport on the controller only |
+- [generated/api-routes.md](./generated/api-routes.md)
+- [generated/api-routes.json](./generated/api-routes.json)
+- [generated/openapi.json](./generated/openapi.json)
 
 ## Example: Local Development
 

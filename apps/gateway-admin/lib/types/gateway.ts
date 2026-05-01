@@ -11,6 +11,8 @@ export interface GatewayConfig {
   proxy_resources?: boolean
   proxy_prompts?: boolean
   expose_tools?: string[]
+  expose_resources?: string[] | null
+  expose_prompts?: string[] | null
 }
 
 /** Extended config for create/update payloads only. `bearer_token_value` is write-only and never returned by the API. */
@@ -70,11 +72,13 @@ export interface DiscoveredResource {
   name: string
   uri: string
   description?: string
+  exposed?: boolean
 }
 
 export interface DiscoveredPrompt {
   name: string
   description?: string
+  exposed?: boolean
   arguments?: Array<{
     name: string
     description?: string

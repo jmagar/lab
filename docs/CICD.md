@@ -10,12 +10,16 @@ Every push and pull request must pass all of the following:
 
 | Check | Command |
 |-------|---------|
+| Workflow lint | `actionlint` over `.github/workflows/` |
 | Frontend build | `./.github/actions/build-gateway-admin` (`pnpm install --frozen-lockfile && pnpm build` in `apps/gateway-admin`) |
 | Compile | `cargo check --workspace --all-features` |
+| Generated docs freshness | `just docs-check` |
 | Format | `cargo fmt --all -- --check` |
 | Lint | `cargo clippy --workspace --all-features -- -D warnings` |
 | Deny | `cargo deny check` |
-| Tests | `cargo nextest run --workspace --all-features` |
+| Tests | `cargo nextest run --workspace --all-features --profile ci` |
+| Release smoke | `cargo build --workspace --all-features --release` on Linux and Windows |
+| Container smoke | Docker build using `config/Dockerfile` |
 
 Clippy runs with `-D warnings` — zero warnings are permitted. This is enforced at the workspace lint layer.
 
@@ -28,11 +32,14 @@ Labby assets. It is a production build gate, not a TypeScript strictness gate:
 ## CI Platform
 
 - **Provider:** GitHub Actions
+- **Manual runs:** `CI` and `Release` both support `workflow_dispatch`
+- **Scheduled runs:** `CI` runs weekly on Monday at 09:23 UTC to keep
+  dependency/advisory visibility fresh even when no PR is active
 - **Job split:**
   - Frontend assets build once, then Rust compile/lint/test jobs download the exported `apps/gateway-admin/out` artifact
-  - Fast checks (frontend-assets, check, fmt, clippy, deny, test) on every push and PR
+  - Fast checks (actionlint, frontend-assets, check, fmt, clippy, deny, test, release-smoke, container) on every push and PR
   - Release builds on `vX.Y.Z` tags only
-  - Publishing after successful release builds
+  - Container image publishing and GitHub Release publishing after successful tag builds
 
 ## Build Matrix
 
@@ -40,8 +47,12 @@ Labby assets. It is a production build gate, not a TypeScript strictness gate:
 |----------|--------|
 | Linux x86_64 | `x86_64-unknown-linux-gnu` |
 | Linux aarch64 | `aarch64-unknown-linux-gnu` |
-Release builds currently publish Linux artifacts only. Fast checks run on
-Linux x86_64 only.
+| Windows x86_64 | `x86_64-pc-windows-msvc` |
+
+Windows is a supported platform. Official Windows release artifacts are built
+on native GitHub-hosted Windows runners using the MSVC target. Linux-to-Windows
+GNU cross-compilation may be useful experimentally, but it is not the release
+support contract.
 
 ## Integration Tests
 
@@ -60,8 +71,9 @@ Integration tests must be marked `#[ignore]` so `cargo nextest run` skips them w
 2. `cargo-release` tags the commit `vX.Y.Z` and pushes
 3. The `vX.Y.Z` tag triggers the release CI job
 4. Release job builds frontend assets once and reuses them for each target build
-5. GitHub generates release notes from the tag diff
-6. Artifacts published to GitHub Releases
+5. Release job builds the container image from `config/Dockerfile` and pushes it to GHCR
+6. GitHub generates release notes from the tag diff
+7. Binary archives and checksum files are published to GitHub Releases
 
 **Tag format:** `vX.Y.Z` — no other formats are accepted.
 
@@ -70,8 +82,23 @@ Integration tests must be marked `#[ignore]` so `cargo nextest run` skips them w
 ## Artifact Distribution
 
 - **Surface:** GitHub Releases
-- **Artifacts per release:** one binary per Linux target (Linux x86_64, Linux aarch64)
+- **Container surface:** GitHub Container Registry (`ghcr.io/jmagar/lab`)
+- **Artifacts per release:** one binary archive per supported target (Linux x86_64, Linux aarch64, Windows x86_64)
+- **Checksums:** every binary archive has a SHA-256 checksum file
 - **No package registry publishing** (crates.io, npm, etc.) unless explicitly decided
+
+## Test Reports
+
+CI uses the `ci` nextest profile in `.config/nextest.toml`. The test job
+uploads `target/nextest/ci/junit.xml` as the `nextest-junit` artifact with
+short retention so failed runs can be inspected without scraping logs.
+
+## Cargo Deny Advisories
+
+`deny.toml` keeps unmaintained advisory checks enabled. Any ignored advisory
+must include a dependency-path comment and should be removed once the upstream
+dependency path is gone. The weekly scheduled CI run keeps those exceptions
+visible even if no pull request touches dependency policy.
 
 ## Size Policy
 

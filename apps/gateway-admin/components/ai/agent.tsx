@@ -9,6 +9,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import type { AccordionMultipleProps } from "@radix-ui/react-accordion"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
@@ -58,7 +59,7 @@ export const AgentInstructions = memo(
   ),
 )
 
-export type AgentToolsProps = Omit<ComponentProps<typeof Accordion>, "type"> & {
+export type AgentToolsProps = Omit<AccordionMultipleProps, "type"> & {
   wrapperClassName?: string
 }
 
@@ -69,8 +70,8 @@ export const AgentTools = memo(
       {/* className now lands on the declared target (Accordion), not the
           outer wrapper. Wrapper styling is opt-in via wrapperClassName. */}
       <Accordion
-        type="multiple"
         {...props}
+        type="multiple"
         className={cn("rounded-md border", className)}
       />
     </div>
@@ -162,7 +163,7 @@ export default function AgentDemo() {
             You are a helpful research assistant. Search the web for information and provide
             accurate, well-sourced answers.
           </AgentInstructions>
-          <AgentTools type="multiple">
+          <AgentTools>
             {sampleTools.map((tool, index) => (
               <AgentTool key={index} tool={tool} value={`tool-${index}`} />
             ))}

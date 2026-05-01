@@ -6,6 +6,7 @@
 
 pub mod audit;
 pub mod completions;
+pub mod docs;
 pub mod doctor;
 pub mod extract;
 pub mod gateway;
@@ -143,6 +144,8 @@ pub enum Command {
     Mcp(serve::McpServeArgs),
     /// Audit configured services and report problems.
     Doctor(doctor::DoctorArgs),
+    /// Generate and verify code-owned documentation artifacts.
+    Docs(docs::DocsArgs),
     /// Query nodes from the configured controller.
     Nodes(nodes::NodesArgs),
     /// Quick reachability check for configured services.
@@ -292,6 +295,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Serve(args) => serve::run(args, &config).await,
         Command::Mcp(args) => serve::run_mcp(args, &config).await,
         Command::Doctor(args) => doctor::run(args, format).await,
+        Command::Docs(args) => docs::run(args),
         Command::Nodes(args) => nodes::run(args, format, &config).await,
         Command::Health => health::run(format).await,
         Command::Plugins => plugins::run(),

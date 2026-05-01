@@ -114,53 +114,19 @@ lab deploy plan dookie
 
 ## Current State
 
-Fresh catalog source: `cargo run --all-features --bin lab -- help --json`, run from this
-checkout on 2026-04-26.
+Current inventories are generated from code-owned metadata:
 
-| Metric | Value |
-| --- | ---: |
-| Registered services in the default all-features catalog | 30 |
-| Callable actions in the default all-features catalog | 684 |
-| Runtime opt-in admin service | `lab_admin` via `LAB_ADMIN_ENABLED=1` |
-| Callable actions with `lab_admin` enabled | 687 |
+- [service catalog](./docs/generated/service-catalog.md)
+- [action catalog](./docs/generated/action-catalog.md)
+- [environment reference](./docs/generated/env-reference.md)
+- [API routes](./docs/generated/api-routes.md)
+- [feature matrix](./docs/generated/feature-matrix.md)
+- [onboarding audit](./docs/generated/onboarding-audit.md)
 
-The default all-features catalog registers these services:
-
-| Service | Category | Actions | Description |
-| --- | --- | ---: | --- |
-| `extract` | bootstrap | 5 | Pull API keys and URLs from existing service config files |
-| `gateway` | bootstrap | 36 | Manage proxied upstream MCP gateways |
-| `doctor` | bootstrap | 6 | Comprehensive health audit: env vars, system probes, and service reachability |
-| `logs` | bootstrap | 6 | Search and stream local-master runtime logs |
-| `device` | bootstrap | 5 | Manage fleet device enrollments |
-| `marketplace` | marketplace | 40 | Browse Claude Code/Codex marketplaces, MCP Registry servers, ACP agents, and installable components |
-| `acp` | ai | 13 | Agent Client Protocol - session management and provider orchestration |
-| `radarr` | servarr | 53 | Movie collection manager for Usenet and BitTorrent |
-| `sonarr` | servarr | 34 | TV series management for the Servarr stack |
-| `prowlarr` | indexer | 25 | Indexer manager for the Servarr stack |
-| `plex` | media | 29 | Plex Media Server - library browsing, session management, and playlists |
-| `tautulli` | media | 27 | Plex Media Server analytics - activity, history, statistics, and user management |
-| `sabnzbd` | download | 22 | Usenet download client |
-| `qbittorrent` | download | 31 | BitTorrent download client |
-| `tailscale` | network | 24 | WireGuard-based mesh VPN - list devices, manage auth keys, query DNS settings |
-| `linkding` | notes | 21 | Self-hosted bookmark manager with tagging and search |
-| `memos` | notes | 20 | Lightweight self-hosted memo hub for short-form notes and journals |
-| `bytestash` | notes | 18 | Self-hosted code snippet manager |
-| `paperless` | documents | 31 | Self-hosted document management system with OCR and full-text search |
-| `arcane` | network | 23 | Docker management UI - environments, containers, images, and volumes |
-| `unraid` | network | 30 | Unraid server GraphQL API - system info, metrics, array status, Docker, and disk management |
-| `unifi` | network | 81 | UniFi Network Application local API |
-| `overseerr` | media | 30 | Request and approval frontend for Plex, Sonarr, and Radarr |
-| `gotify` | notifications | 26 | Self-hosted push notification server |
-| `openai` | ai | 6 | OpenAI API: chat, embeddings, models, images, audio |
-| `qdrant` | ai | 15 | Vector database for similarity search and RAG |
-| `tei` | ai | 10 | Hugging Face TEI server - embeddings, rerankers, sequence classification |
-| `apprise` | notifications | 10 | Universal notification dispatcher: 100+ services behind one URL scheme |
-| `deploy` | bootstrap | 6 | Build and push the lab release binary to SSH targets with integrity verification |
-| `fs` | bootstrap | 1 | Workspace filesystem browser: read-only, deny-listed |
-
-`lab_admin` is compiled by the default `all` feature but only registers at runtime when
-`LAB_ADMIN_ENABLED=1` or `[admin].enabled = true`.
+Refresh them with `just docs-generate` and verify them with `just docs-check`.
+`lab_admin` is compiled by the default `all` feature but only registers in the
+runtime registry when `LAB_ADMIN_ENABLED=1` or `[admin].enabled = true`; the
+generated docs registry lists it as runtime-conditional.
 
 ## Workspace Layout
 
@@ -492,32 +458,9 @@ Service credentials follow the pattern `{SERVICE}_URL`, `{SERVICE}_API_KEY`,
 services insert the label before the suffix: `UNRAID_NODE2_URL`,
 `UNRAID_NODE2_API_KEY`.
 
-| Service | Required Env | Optional Env | Default Port |
-| --- | --- | --- | ---: |
-| Radarr | `RADARR_URL`, `RADARR_API_KEY` |  | 7878 |
-| Sonarr | `SONARR_URL`, `SONARR_API_KEY` |  | 8989 |
-| Prowlarr | `PROWLARR_URL`, `PROWLARR_API_KEY` |  | 9696 |
-| Plex | `PLEX_URL`, `PLEX_TOKEN` |  | 32400 |
-| Tautulli | `TAUTULLI_URL`, `TAUTULLI_API_KEY` |  | 8181 |
-| SABnzbd | `SABNZBD_URL`, `SABNZBD_API_KEY` |  | 8080 |
-| qBittorrent | `QBITTORRENT_URL`, `QBITTORRENT_PASSWORD` | `QBITTORRENT_USERNAME`, `QBITTORRENT_SID` | 8080 |
-| Tailscale | `TAILSCALE_API_KEY` | `TAILSCALE_TAILNET`, `TAILSCALE_BASE_URL` |  |
-| Linkding | `LINKDING_URL`, `LINKDING_TOKEN` |  | 9090 |
-| Memos | `MEMOS_URL`, `MEMOS_TOKEN` |  | 5230 |
-| ByteStash | `BYTESTASH_URL`, `BYTESTASH_TOKEN` |  | 5000 |
-| Paperless | `PAPERLESS_URL`, `PAPERLESS_TOKEN` |  | 8000 |
-| Arcane | `ARCANE_URL`, `ARCANE_API_KEY` |  | 3000 |
-| Unraid | `UNRAID_URL`, `UNRAID_API_KEY` |  | 31337 |
-| UniFi | `UNIFI_URL`, `UNIFI_API_KEY` | `UNIFI_RESOLVE_IP`, `UNIFI_ALLOW_INSECURE_TLS` | 443 |
-| Overseerr | `OVERSEERR_URL`, `OVERSEERR_API_KEY` |  | 5055 |
-| Gotify | `GOTIFY_URL` | `GOTIFY_TOKEN`, `GOTIFY_APP_TOKEN`, `GOTIFY_CLIENT_TOKEN` | 80 |
-| OpenAI | `OPENAI_API_KEY` | `OPENAI_URL`, `OPENAI_ORG_ID` |  |
-| Qdrant | `QDRANT_URL` | `QDRANT_API_KEY` | 6333 |
-| TEI | `TEI_URL` | `TEI_API_KEY` | 80 |
-| Apprise | `APPRISE_URL` | `APPRISE_TOKEN` | 8000 |
-| ACP |  | `LAB_ACP_DB`, `LAB_ACP_HMAC_SECRET` |  |
-| MCP Registry |  | `MCPREGISTRY_URL` |  |
-| ACP Registry |  | `ACP_REGISTRY_URL` |  |
+The complete generated service env inventory is
+[docs/generated/env-reference.md](./docs/generated/env-reference.md). Its JSON
+contract is [docs/generated/env-reference.json](./docs/generated/env-reference.json).
 
 Server and runtime env:
 

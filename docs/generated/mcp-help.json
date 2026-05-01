@@ -29,6 +29,13 @@
           "returns": "Schema"
         },
         {
+          "name": "list_hosts",
+          "description": "Return SSH config host aliases available for fleet scanning",
+          "destructive": false,
+          "params": [],
+          "returns": "string[]"
+        },
+        {
           "name": "scan",
           "description": "Scan an appdata path and return discovered service credentials",
           "destructive": false,
@@ -38,6 +45,12 @@
               "ty": "string",
               "required": false,
               "description": "Local path or 'host:/abs/path' for SSH; omit for fleet scan"
+            },
+            {
+              "name": "hosts",
+              "ty": "string[]",
+              "required": false,
+              "description": "Restrict fleet scan to these SSH config aliases; omit for all hosts"
             },
             {
               "name": "redact_secrets",
@@ -11980,6 +11993,50 @@
       ]
     },
     {
+      "name": "lab_admin",
+      "description": "Internal onboarding audit tool",
+      "category": "bootstrap",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "onboarding.audit",
+          "description": "Audit service onboarding against the current repo contract",
+          "destructive": false,
+          "params": [
+            {
+              "name": "services",
+              "ty": "string[]",
+              "required": true,
+              "description": "Services to audit"
+            }
+          ],
+          "returns": "AuditReport"
+        }
+      ]
+    },
+    {
       "name": "fs",
       "description": "Workspace filesystem browser (read-only, deny-listed)",
       "category": "bootstrap",
@@ -11999,6 +12056,176 @@
             }
           ],
           "returns": "{entries: [{name, path, kind, size, modified, accessible}], truncated: bool}"
+        }
+      ]
+    },
+    {
+      "name": "dozzle",
+      "description": "Read-only container log observation through Dozzle",
+      "category": "bootstrap",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.health",
+          "description": "Probe Dozzle health",
+          "destructive": false,
+          "params": [],
+          "returns": "HealthResponse"
+        },
+        {
+          "name": "server.version",
+          "description": "Fetch Dozzle version",
+          "destructive": false,
+          "params": [],
+          "returns": "VersionResponse"
+        },
+        {
+          "name": "containers.list",
+          "description": "Return the first bounded Dozzle container inventory event",
+          "destructive": false,
+          "params": [
+            {
+              "name": "max_events",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum SSE events to inspect before stopping"
+            },
+            {
+              "name": "max_bytes",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum bytes to read from the SSE stream"
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum stream read duration in milliseconds"
+            }
+          ],
+          "returns": "ContainersListResponse"
+        },
+        {
+          "name": "logs.fetch",
+          "description": "Fetch bounded container logs as parsed JSONL events",
+          "destructive": false,
+          "params": [
+            {
+              "name": "host",
+              "ty": "string",
+              "required": true,
+              "description": "Dozzle host id"
+            },
+            {
+              "name": "container_id",
+              "ty": "string",
+              "required": true,
+              "description": "Container id"
+            },
+            {
+              "name": "stdout",
+              "ty": "bool",
+              "required": false,
+              "description": "Include stdout logs; defaults to true when stderr is absent"
+            },
+            {
+              "name": "stderr",
+              "ty": "bool",
+              "required": false,
+              "description": "Include stderr logs; defaults to true when stdout is absent"
+            },
+            {
+              "name": "max_lines",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum JSONL rows to parse"
+            },
+            {
+              "name": "max_bytes",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum bytes to read from Dozzle"
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum read duration in milliseconds"
+            }
+          ],
+          "returns": "LogFetchResponse"
+        },
+        {
+          "name": "logs.fetch-plain",
+          "description": "Fetch bounded container logs as plain text",
+          "destructive": false,
+          "params": [
+            {
+              "name": "host",
+              "ty": "string",
+              "required": true,
+              "description": "Dozzle host id"
+            },
+            {
+              "name": "container_id",
+              "ty": "string",
+              "required": true,
+              "description": "Container id"
+            },
+            {
+              "name": "stdout",
+              "ty": "bool",
+              "required": false,
+              "description": "Include stdout logs; defaults to true when stderr is absent"
+            },
+            {
+              "name": "stderr",
+              "ty": "bool",
+              "required": false,
+              "description": "Include stderr logs; defaults to true when stdout is absent"
+            },
+            {
+              "name": "max_lines",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum lines reported in metadata"
+            },
+            {
+              "name": "max_bytes",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum bytes to read from Dozzle"
+            },
+            {
+              "name": "timeout_ms",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum read duration in milliseconds"
+            }
+          ],
+          "returns": "PlainLogFetchResponse"
         }
       ]
     },

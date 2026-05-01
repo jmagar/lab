@@ -122,6 +122,12 @@ That catalog is the source of truth for:
 - top-level aggregated discovery
 - destructive-op policy
 
+The complete generated action inventory is
+[generated/action-catalog.md](./generated/action-catalog.md). Its JSON contract
+is [generated/action-catalog.json](./generated/action-catalog.json) and is a
+global inventory, not the active runtime exposure policy for gateway-filtered
+MCP sessions.
+
 ## Discovery
 
 There are three discovery surfaces:

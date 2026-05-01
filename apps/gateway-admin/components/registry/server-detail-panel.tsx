@@ -695,7 +695,7 @@ function StructuredMetadataEditor({
             value={metadata.quality?.transport_score ?? ''}
             onChange={(event) => onChange((current) => ({
               ...current,
-              quality: { ...current.quality, transport_score: stringOrUndefined(event.target.value) },
+              quality: { ...current.quality, transport_score: stringOrUndefined(event.target.value) as 'good' | 'mixed' | 'poor' | null | undefined },
             }))}
             placeholder="good"
           />
@@ -705,7 +705,7 @@ function StructuredMetadataEditor({
             value={metadata.ux?.setup_difficulty ?? ''}
             onChange={(event) => onChange((current) => ({
               ...current,
-              ux: { ...current.ux, setup_difficulty: stringOrUndefined(event.target.value) },
+              ux: { ...current.ux, setup_difficulty: stringOrUndefined(event.target.value) as 'easy' | 'medium' | 'hard' | null | undefined },
             }))}
             placeholder="easy"
           />

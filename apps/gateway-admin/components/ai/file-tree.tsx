@@ -18,7 +18,7 @@ const FileTreeContext = createContext<FileTreeContextType>({
   togglePath: () => undefined,
 })
 
-export type FileTreeProps = HTMLAttributes<HTMLDivElement> & {
+export type FileTreeProps = Omit<HTMLAttributes<HTMLDivElement>, 'onSelect'> & {
   expanded?: Set<string>
   defaultExpanded?: Set<string>
   selectedPath?: string
@@ -219,7 +219,7 @@ export default function FileTreeDemo() {
       <FileTree
         defaultExpanded={new Set(["src", "src/components"])}
         selectedPath={selected}
-        onSelect={path => setSelected(path)}
+        onSelect={(path: string) => setSelected(path)}
       >
         <FileTreeFolder path="src" name="src">
           <FileTreeFolder path="src/components" name="components">

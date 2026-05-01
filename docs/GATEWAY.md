@@ -23,19 +23,10 @@ Secrets remain indirect:
 
 ## Actions
 
-| Action | Purpose |
-|-------|---------|
-| `gateway.list` | Return all configured gateways with config and runtime views. |
-| `gateway.get` | Return one configured gateway. |
-| `gateway.test` | Probe a configured gateway by name or a proposed unsaved spec. |
-| `gateway.add` | Persist a new `[[upstream]]` entry, reconcile runtime state, return the new view. |
-| `gateway.update` | Patch an existing gateway, reconcile runtime state, return the new view. |
-| `gateway.remove` | Remove a gateway, reconcile runtime state, return the removed config view. |
-| `gateway.reload` | Reload `~/.config/lab/config.toml`, rebuild the runtime pool, and pick up changed env-token values. |
-| `gateway.status` | Return runtime counts for configured gateways. |
-| `gateway.discovered_tools` | Return discovered tool metadata and exposure state for one gateway. |
-| `gateway.discovered_resources` | Return proxied resource URIs discovered for one gateway. |
-| `gateway.discovered_prompts` | Return prompt names discovered for one gateway. |
+The complete gateway action inventory is generated from `ActionSpec`:
+
+- [generated action catalog](./generated/action-catalog.md)
+- [generated action catalog JSON](./generated/action-catalog.json)
 
 `gateway.add`, `gateway.update`, `gateway.remove`, and `gateway.reload` are
 destructive actions in shared action metadata. HTTP callers must send

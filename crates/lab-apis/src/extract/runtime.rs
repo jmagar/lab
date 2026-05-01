@@ -341,6 +341,16 @@ fn service_from_image(image: &str) -> Option<&'static str> {
         "overseerr" => Some("overseerr"),
         "linkding" => Some("linkding"),
         "plex" | "pms-docker" => Some("plex"),
+        "jellyfin" => Some("jellyfin"),
+        "immich-server" => Some("immich"),
+        "navidrome" => Some("navidrome"),
+        "dozzle" => Some("dozzle"),
+        "scrutiny" | "scrutiny-web" => Some("scrutiny"),
+        "glances" => Some("glances"),
+        "uptime-kuma" => Some("uptime_kuma"),
+        "adguardhome" => Some("adguard"),
+        "pihole" => Some("pihole"),
+        "freshrss" => Some("freshrss"),
         _ => None,
     }
 }
@@ -356,6 +366,17 @@ fn service_from_name(name: &str) -> Option<&'static str> {
         "tautulli",
         "overseerr",
         "linkding",
+        "jellyfin",
+        "immich",
+        "navidrome",
+        "dozzle",
+        "scrutiny",
+        "glances",
+        "adguard",
+        "pihole",
+        "freshrss",
+        // uptime_kuma omitted: container name "uptime-kuma" tokenises to ["uptime","kuma"]
+        // neither of which matches the service name; image-based detection handles it.
     ];
 
     let normalized = name.to_ascii_lowercase();

@@ -57,77 +57,36 @@ Default feature posture:
 - always-on exposed services are compiled into `lab` without feature flags
 - always-on SDK capability modules remain available where they are used by those exposed services
 
-## Always-On Services
+## Generated Inventories
 
-The following services are always compiled in and require no feature flag or upstream service:
+Do not maintain service, env, action, feature, or onboarding matrices by hand in
+this file. The current code-owned inventories are generated under
+[`docs/generated/`](./generated/README.md):
 
-| Service | Description | Docs |
-|---------|-------------|------|
-| `gateway` | Product-local MCP gateway control plane | [GATEWAY.md](./GATEWAY.md) |
-| `doctor` | Service health and environment audit surface | [OPERATIONS.md](./OPERATIONS.md) |
-| `setup` | Operator setup helpers | [OPERATIONS.md](./OPERATIONS.md) |
-| `logs` | Local-master and fleet log search/tail surface | [LOCAL_LOGS.md](./LOCAL_LOGS.md), [FLEET_LOGS.md](./FLEET_LOGS.md) |
-| `device` | MCP/API-facing node runtime inventory service | [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [NODES.md](./NODES.md) |
-| `marketplace` | Plugin marketplace and artifact management | [MARKETPLACE.md](./MARKETPLACE.md) |
-| `acp` | First-class ACP capability service | [acp/README.md](./acp/README.md) |
-| `extract` | Scan local and SSH hosts for service credentials | [EXTRACT.md](./EXTRACT.md) |
-| `stash` | Local versioned component snapshots with provider sync | [STASH.md](./STASH.md) |
+- [service catalog](./generated/service-catalog.md)
+- [environment reference](./generated/env-reference.md)
+- [action catalog](./generated/action-catalog.md)
+- [feature matrix](./generated/feature-matrix.md)
+- [onboarding audit](./generated/onboarding-audit.md)
 
-`device_runtime` remains an always-on SDK capability module, but the exposed
-registry service is `device`.
+The generated service catalog distinguishes always-on, feature-gated,
+runtime-conditional, synthetic, and SDK-only entries. `device_runtime` remains
+an always-on SDK capability module, but the exposed registry service is
+`device`.
 
 ## Service Sources
 
-### Services With OpenAPI Specs
-
-- Radarr
-- Sonarr
-- Prowlarr
-- Overseerr
-- Plex
-- Jellyfin (`docs/upstream-api/jellyfin.openapi.json`)
-- Tailscale
-- Paperless-ngx
-- Memos
-- ByteStash
-- Arcane
-- Gotify
-- OpenAI
-- Qdrant
-- TEI
-- MCP Registry (`docs/upstream-api/mcp-registry.yaml`)
-- Immich (`docs/upstream-api/immich.md`; upstream OpenAPI-backed docs at https://api.immich.app/)
-- AdGuard Home (`docs/upstream-api/adguard.md`; upstream OpenAPI contract)
-- Pi-hole (`docs/upstream-api/pihole.md`; v6 REST API with session auth)
-
-### Services Without OpenAPI Specs
-
-- Apprise
-- Tautulli
-- SABnzbd
-- qBittorrent
-- Linkding
-- Unraid
-- UniFi
-- Beads (`docs/upstream-api/beads.md`; local `bd --json --readonly` CLI contract)
-- NotebookLM (`teng-lin/notebooklm-py` RPC contract)
-- FreshRSS (`docs/upstream-api/freshrss.md`; Google Reader-compatible API)
-- Navidrome (`docs/upstream-api/navidrome.md`; Subsonic/OpenSubsonic-compatible API)
-- Scrutiny (`docs/upstream-api/scrutiny.md`; cautious read-only endpoint contract)
-- LoggiFly (`docs/upstream-api/loggifly.md`; local heartbeat/config contract)
-- Glances (`docs/upstream-api/glances.md`; REST API v4)
-- Neo4j (`docs/upstream-api/neo4j.md`; Bolt protocol via `neo4rs`)
-- Uptime Kuma (`docs/upstream-api/uptime-kuma.md`; Socket.IO-backed monitor and notification API)
-- Dozzle (`docs/upstream-api/dozzle.md`; HTTP/JSON and server-sent log stream contract)
-
-### Deferred
+### Deferred Capability Boundaries
 
 - Radicale
 - Beads write operations, raw SQL, Dolt push/pull/commit, and direct Dolt database access
 - LoggiFly Docker socket access, raw logs, labels, notification sends/tests, and container/OliveTin actions
 - Uptime Kuma status-page mutation, maintenance windows, and fuller supervised socket actor lifecycle
 
-These are implemented from vendor docs, reference docs, or hand-written API contracts.
+Upstream source coverage lives in [`docs/upstream-api/`](./upstream-api/README.md).
+Implementation coverage lives in [`docs/coverage/`](./coverage/README.md), and
+current onboarding status is generated in
+[`docs/generated/onboarding-audit.md`](./generated/onboarding-audit.md).
 
 ## Plugin Metadata
 
@@ -211,6 +170,10 @@ The important rule is that the service client owns logic. CLI, MCP, and HTTP lay
 The project is intentionally broad but follows one rule: one binary, one consistent control plane, many integrations.
 
 The service set is grouped conceptually, not implemented as unrelated one-offs.
+
+Run `just docs-generate` after changing registry entries, `PluginMeta`,
+`ActionSpec`, API route metadata, Cargo features, or onboarding checks. Run
+`just docs-check` before handing off generated-docs changes.
 
 ## Synthetic Service
 

@@ -642,6 +642,16 @@ fn preferred_container_port(service: &str) -> Option<u16> {
         "tautulli" => Some(8181),
         "overseerr" => Some(5055),
         "linkding" => Some(9090),
+        "jellyfin" => Some(8096),
+        "immich" => Some(2283),
+        "navidrome" => Some(4533),
+        "dozzle" => Some(8080),
+        "scrutiny" => Some(8080),
+        "glances" => Some(61208),
+        "uptime_kuma" => Some(3001),
+        "adguard" => Some(3000),
+        "pihole" => Some(80),
+        "freshrss" => Some(80),
         _ => None,
     }
 }
@@ -676,6 +686,16 @@ fn default_env_field(service: &str) -> &'static str {
         "tautulli" => "TAUTULLI_API_KEY",
         "overseerr" => "OVERSEERR_API_KEY",
         "linkding" => "LINKDING_TOKEN",
+        "jellyfin" => "JELLYFIN_API_KEY",
+        "immich" => "IMMICH_API_KEY",
+        "navidrome" => "NAVIDROME_TOKEN",
+        "dozzle" => "DOZZLE_SESSION_COOKIE",
+        "scrutiny" => "SCRUTINY_API_KEY",
+        "glances" => "GLANCES_TOKEN",
+        "uptime_kuma" => "UPTIME_KUMA_PASSWORD",
+        "adguard" => "ADGUARD_PASSWORD",
+        "pihole" => "PIHOLE_PASSWORD",
+        "freshrss" => "FRESHRSS_API_PASSWORD",
         _ => "EXTRACT_SECRET",
     }
 }

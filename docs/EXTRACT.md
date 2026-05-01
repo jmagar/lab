@@ -105,15 +105,32 @@ verified working URLs.
 
 Current fleet discovery supports:
 
-- `radarr`
-- `sonarr`
-- `prowlarr`
-- `sabnzbd`
-- `qbittorrent`
-- `plex`
-- `tautulli`
-- `overseerr`
-- `linkding`
+| Service | Credential extracted | Notes |
+|---|---|---|
+| `radarr` | API key | From `config.xml` |
+| `sonarr` | API key | From `config.xml` |
+| `prowlarr` | API key | From `config.xml` |
+| `sabnzbd` | API key | From `sabnzbd.ini` |
+| `qbittorrent` | URL only | Session-cookie auth; no plaintext key in config |
+| `plex` | Token | From `Preferences.xml` |
+| `tautulli` | API key | From `config.ini` |
+| `overseerr` | API key | From `settings.json` |
+| `linkding` | Token | From SQLite `db.sqlite3` |
+| `jellyfin` | URL only | API keys are UI-generated, not stored in config files |
+| `immich` | URL only | Multi-container; credentials not in accessible config files. Image: `immich-server` |
+| `navidrome` | URL only | Tokens are per-user, not in config files |
+| `dozzle` | URL only | No auth by default |
+| `scrutiny` | URL only | No API key required. Images: `scrutiny`, `scrutiny-web` |
+| `glances` | URL only | Optional password is not in a readable plaintext config |
+| `uptime_kuma` | URL only | Passwords are bcrypt-hashed. Image: `uptime-kuma` (detected by image only, not container name) |
+| `adguard` | URL only | Passwords are bcrypt-hashed. Image: `adguardhome` |
+| `pihole` | URL only | Passwords are hashed in config |
+| `freshrss` | URL only | PHP config is not parsed |
+
+**Credential extraction summary:** The original 9 services (Servarr stack, Plex, Linkding) support
+full credential extraction. The 10 newer services support URL discovery only — the fleet scan
+will verify the endpoint and populate `*_URL` env vars, but secrets must be filled in manually
+or via the setup wizard.
 
 `apply` and `diff` remain targeted-only in this iteration. Fleet results are
 discovery-oriented and are not written directly into `~/.lab/.env` because the

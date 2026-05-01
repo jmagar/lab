@@ -69,8 +69,18 @@ async function extractAction<T>(
 }
 
 export const extractApi = {
-  async scan(uri?: string, signal?: AbortSignal): Promise<ExtractReport> {
-    const params = uri === undefined ? { redact_secrets: true } : { uri, redact_secrets: true }
-    return extractAction<ExtractReport>('scan', params, signal)
+  async listHosts(signal?: AbortSignal): Promise<string[]> {
+    return extractAction<string[]>('list_hosts', {}, signal)
+  },
+
+  async scan(opts?: {
+    uri?: string
+    hosts?: string[]
+    signal?: AbortSignal
+  }): Promise<ExtractReport> {
+    const params: Record<string, unknown> = { redact_secrets: true }
+    if (opts?.uri !== undefined) params.uri = opts.uri
+    if (opts?.hosts !== undefined && opts.hosts.length > 0) params.hosts = opts.hosts
+    return extractAction<ExtractReport>('scan', params, opts?.signal)
   },
 }
