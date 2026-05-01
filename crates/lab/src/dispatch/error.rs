@@ -326,6 +326,12 @@ impl_tool_error_from!(
 );
 
 impl_tool_error_from!(
+    "notebooklm",
+    lab_apis::notebooklm::NotebookLmError,
+    Api(api) => api.kind()
+);
+
+impl_tool_error_from!(
     "memos",
     lab_apis::memos::MemosError,
     Api(api) => api.kind()

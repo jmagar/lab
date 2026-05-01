@@ -141,6 +141,11 @@ pub fn service_env_checks() -> Vec<(&'static str, &'static [EnvVar])> {
         lab_apis::openai::META.name,
         lab_apis::openai::META.required_env,
     ));
+    #[cfg(feature = "notebooklm")]
+    list.push((
+        lab_apis::notebooklm::META.name,
+        lab_apis::notebooklm::META.required_env,
+    ));
     #[cfg(feature = "qdrant")]
     list.push((
         lab_apis::qdrant::META.name,

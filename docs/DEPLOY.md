@@ -32,7 +32,7 @@ They do not expose the operator control plane.
 
 1. choose a stable hostname for the master
 2. set `[device].master` to that hostname on every non-master machine
-3. start `lab serve --transport http` on the master
+3. start `lab serve` on the master
 4. if the master binds beyond loopback, configure auth before startup
 
 Example:
@@ -42,7 +42,7 @@ LAB_MCP_TRANSPORT=http
 LAB_MCP_HTTP_HOST=0.0.0.0
 LAB_MCP_HTTP_PORT=8765
 LAB_MCP_HTTP_TOKEN=replace-me
-lab serve --transport http
+lab serve
 ```
 
 ## Non-Master Setup
@@ -66,7 +66,7 @@ port = 8765
 Then start:
 
 ```bash
-lab serve --transport http
+lab serve
 ```
 
 The non-master runtime will queue metadata and bootstrap logs locally, open its node websocket session automatically, and keep retrying until the master admits the node.

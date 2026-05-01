@@ -949,8 +949,8 @@ mod db_load_events_tests {
         let conn = fresh_in_memory_conn();
         insert_message_chunks(&conn, "sess-cap", 25);
 
-        let events = db_load_events(&conn, "sess-cap", Some(0), Some(10), &[0u8; 32])
-            .expect("load events");
+        let events =
+            db_load_events(&conn, "sess-cap", Some(0), Some(10), &[0u8; 32]).expect("load events");
 
         assert_eq!(events.len(), 10, "cap of 10 must be applied at SQL layer");
         let seqs: Vec<u64> = events.iter().map(event_seq).collect();
@@ -968,8 +968,8 @@ mod db_load_events_tests {
 
         // since_seq = 5 narrows to seqs 6..=25 (20 events); cap of 5 keeps the
         // last 5 of those (seqs 21..=25).
-        let events = db_load_events(&conn, "sess-cap", Some(5), Some(5), &[0u8; 32])
-            .expect("load events");
+        let events =
+            db_load_events(&conn, "sess-cap", Some(5), Some(5), &[0u8; 32]).expect("load events");
 
         let seqs: Vec<u64> = events.iter().map(event_seq).collect();
         assert_eq!(seqs, vec![21, 22, 23, 24, 25]);
@@ -980,8 +980,8 @@ mod db_load_events_tests {
         let conn = fresh_in_memory_conn();
         insert_message_chunks(&conn, "sess-cap", 7);
 
-        let events = db_load_events(&conn, "sess-cap", Some(0), Some(100), &[0u8; 32])
-            .expect("load events");
+        let events =
+            db_load_events(&conn, "sess-cap", Some(0), Some(100), &[0u8; 32]).expect("load events");
 
         assert_eq!(events.len(), 7);
         let seqs: Vec<u64> = events.iter().map(event_seq).collect();
@@ -993,8 +993,8 @@ mod db_load_events_tests {
         let conn = fresh_in_memory_conn();
         insert_message_chunks(&conn, "sess-cap", 12);
 
-        let events = db_load_events(&conn, "sess-cap", Some(0), None, &[0u8; 32])
-            .expect("load events");
+        let events =
+            db_load_events(&conn, "sess-cap", Some(0), None, &[0u8; 32]).expect("load events");
 
         assert_eq!(events.len(), 12, "passing None for limit must not cap");
     }

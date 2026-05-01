@@ -38,6 +38,8 @@ pub mod gotify;
 pub mod linkding;
 #[cfg(feature = "memos")]
 pub mod memos;
+#[cfg(feature = "notebooklm")]
+pub mod notebooklm;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "overseerr")]
@@ -109,6 +111,8 @@ impl Cli {
 pub enum Command {
     /// Start the MCP server (stdio or HTTP transport).
     Serve(serve::ServeArgs),
+    /// Start the MCP server over stdio.
+    Mcp(serve::McpServeArgs),
     /// Audit configured services and report problems.
     Doctor(doctor::DoctorArgs),
     /// Query nodes from the configured controller.
@@ -199,6 +203,9 @@ pub enum Command {
     /// `OpenAI` API client.
     #[cfg(feature = "openai")]
     Openai(openai::OpenaiArgs),
+    /// Google NotebookLM client.
+    #[cfg(feature = "notebooklm")]
+    Notebooklm(notebooklm::NotebooklmArgs),
     /// Qdrant vector database.
     #[cfg(feature = "qdrant")]
     Qdrant(qdrant::QdrantArgs),
@@ -220,6 +227,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let color = cli.color;
     match cli.command {
         Command::Serve(args) => serve::run(args, &config).await,
+        Command::Mcp(args) => serve::run_mcp(args, &config).await,
         Command::Doctor(args) => doctor::run(args, format).await,
         Command::Nodes(args) => nodes::run(args, format, &config).await,
         Command::Health => health::run(format).await,
@@ -274,6 +282,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Gotify(args) => gotify::run(args, format).await,
         #[cfg(feature = "openai")]
         Command::Openai(args) => openai::run(args, format).await,
+        #[cfg(feature = "notebooklm")]
+        Command::Notebooklm(args) => notebooklm::run(args, format).await,
         #[cfg(feature = "qdrant")]
         Command::Qdrant(args) => qdrant::run(args, format).await,
         #[cfg(feature = "tei")]

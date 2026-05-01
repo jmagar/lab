@@ -53,10 +53,7 @@ async fn handle(
             );
             return Err(ToolError::Sdk {
                 sdk_kind: "forbidden".to_string(),
-                message: format!(
-                    "action `{}` requires `lab:admin` scope",
-                    req.action
-                ),
+                message: format!("action `{}` requires `lab:admin` scope", req.action),
             });
         }
     }
@@ -119,11 +116,7 @@ mod tests {
             "help",
             "schema",
         ] {
-            let response = post_stash(
-                app.clone(),
-                json!({ "action": action, "params": {} }),
-            )
-            .await;
+            let response = post_stash(app.clone(), json!({ "action": action, "params": {} })).await;
             // Should not be forbidden (403) — may be 400/404/200 from dispatch
             assert_ne!(
                 response.status(),

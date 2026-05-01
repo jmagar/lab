@@ -273,9 +273,8 @@ fn component_deploy_blocking(store: &StashStore, p: DeployParams) -> Result<Valu
             // Expanded denylist covering common system and sensitive user directories.
             // lab-qz6a.20: added /var, /tmp, /root, /home, /opt, /srv.
             let system_paths = [
-                "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot",
-                "/dev", "/proc", "/sys", "/var", "/tmp", "/root", "/home",
-                "/opt", "/srv",
+                "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/dev", "/proc",
+                "/sys", "/var", "/tmp", "/root", "/home", "/opt", "/srv",
             ];
             let canonical_str = canonical.to_string_lossy();
             for system in &system_paths {
@@ -324,7 +323,10 @@ fn copy_revision_to_path(files_dir: &Path, target_path: &Path) -> Result<usize, 
     // Canonicalize target once so containment checks are path-traversal-proof.
     let canonical_target = std::fs::canonicalize(target_path).map_err(|e| ToolError::Sdk {
         sdk_kind: "deploy_failed".into(),
-        message: format!("canonicalize deploy target `{}`: {e}", target_path.display()),
+        message: format!(
+            "canonicalize deploy target `{}`: {e}",
+            target_path.display()
+        ),
     })?;
 
     let mut count = 0usize;

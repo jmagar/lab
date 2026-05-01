@@ -30,6 +30,7 @@ use std::time::SystemTime;
 use tempfile::NamedTempFile;
 
 /// Maximum number of `.env.bak.*` files retained after a successful merge.
+#[allow(dead_code)]
 pub const BACKUP_RETENTION: usize = 10;
 
 /// Single key-value entry to merge into the target file.
@@ -62,6 +63,7 @@ pub struct MergeRequest {
 }
 
 /// Outcome of a successful [`merge`].
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct MergeOutcome {
     /// Number of entries that resulted in a key change (new key or override).
@@ -75,6 +77,7 @@ pub struct MergeOutcome {
     pub pruned: PruneStats,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PruneStats {
     pub kept: usize,
@@ -119,9 +122,11 @@ pub enum MergeError {
     },
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum WriteConflictReason {
     MtimeSkew,
+    /// Reserved for v2 fs2 lock contention. Not constructed in v1.
     LockContentionV2,
 }
 
@@ -134,6 +139,7 @@ impl std::fmt::Display for WriteConflictReason {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum WriteFailReason {
     StorageFull,

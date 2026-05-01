@@ -41,7 +41,7 @@ use crate::registry::{ToolRegistry, build_default_registry};
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[value(rename_all = "lowercase")]
 pub enum Transport {
-    /// stdin/stdout framing (available via `lab serve mcp --stdio`).
+    /// stdin/stdout framing (available via `lab mcp`).
     Stdio,
     /// HTTP transport (default) — requires `LAB_MCP_HTTP_TOKEN` or OAuth when exposed remotely.
     Http,
@@ -60,13 +60,26 @@ pub struct McpArgs {
     pub stdio: bool,
 }
 
+/// `lab mcp` arguments.
+#[derive(Debug, Args)]
+pub struct McpServeArgs {
+    /// Comma- or space-separated list of services to enable. Empty = all.
+    #[arg(long, value_delimiter = ',')]
+    pub services: Vec<String>,
+    /// Override the log filter level for this process.
+    /// Sets `LAB_LOG=lab=<level>,warn` before tracing init.
+    /// Example: `--log-level debug`
+    #[arg(long)]
+    pub log_level: Option<String>,
+}
+
 /// `lab serve` arguments.
 #[derive(Debug, Args)]
 pub struct ServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
-    /// Legacy transport selector. Prefer `lab serve` for HTTP and `lab serve mcp --stdio` for stdio.
+    /// Legacy transport selector. Prefer `lab serve` for HTTP and `lab mcp` for stdio.
     #[arg(long, value_enum, hide = true)]
     pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
@@ -82,6 +95,22 @@ pub struct ServeArgs {
     pub log_level: Option<String>,
     #[command(subcommand)]
     pub command: Option<ServeCommand>,
+}
+
+/// Run the top-level `lab mcp` stdio shortcut.
+pub async fn run_mcp(args: McpServeArgs, config: &LabConfig) -> Result<ExitCode> {
+    run(
+        ServeArgs {
+            services: args.services,
+            transport: Some(Transport::Stdio),
+            host: None,
+            port: None,
+            log_level: args.log_level,
+            command: None,
+        },
+        config,
+    )
+    .await
 }
 
 /// Run the serve subcommand.
@@ -389,6 +418,24 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         oauth_enabled,
     )?;
     state = state.with_web_ui_auth_disabled(web_ui_auth_disabled);
+
+    // lab-bg3e.3 Q5 reframe: prominent startup banner whenever the web UI
+    // is reachable without authentication. v1 ships unsecured by design;
+    // operators must understand any local process can write ~/.lab/.env.
+    if web_ui_auth_disabled {
+        let banner = "==================================================================\n\
+                      ⚠  Lab web UI is running WITHOUT authentication.\n\
+                      ⚠  Any local process can read or modify your configuration.\n\
+                      ⚠  Set up OAuth (LAB_AUTH_MODE=oauth) to secure the API.\n\
+                      ==================================================================";
+        eprintln!("\n{banner}\n");
+        tracing::warn!(
+            subsystem = "web_server",
+            phase = "startup.banner",
+            "lab web UI started without authentication; any local process can write ~/.lab/.env"
+        );
+    }
+
     state = state.with_node_store(Arc::clone(&node_store));
     state = state.with_enrollment_store(Arc::clone(&enrollment_store));
     state = state.with_log_system(logs_system);
@@ -812,7 +859,7 @@ async fn run_http(
             Err(std::fs::TryLockError::WouldBlock) => {
                 eprintln!(
                     "lab: another master instance is already running on this device \
-                     (lock: {}). Use 'lab serve mcp --stdio' for node/MCP-only mode.",
+                     (lock: {}). Use 'lab mcp' for node/MCP-only mode.",
                     lock_path.display()
                 );
                 std::process::exit(1);

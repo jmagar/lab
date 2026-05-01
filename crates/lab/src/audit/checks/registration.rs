@@ -9,12 +9,10 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
     let feature = format!("{name} = [");
     let service_mod = format!("#[cfg(feature = \"{name}\")]\npub mod {name};");
     let dispatch_mod = format!("pub mod {name};");
-    let api_nest = format!("nest(\"/{name}\"");
-    let api_field = format!("pub {name}: Option<");
-    let api_load = format!("{name}: crate::dispatch::{name}::client_from_env()");
-    // Match the comment token that `patch_tui_metadata_rs` inserts — avoids false passes
-    // from any incidental occurrence of the service name in the file.
-    let tui_token = format!("// scaffolded service: {name}");
+    let api_mount = format!("mount_if_enabled!(v1, state, \"{name}\", \"{name}\", {name})");
+    let client_field = format!("pub {name}: Option<");
+    let client_load = format!("{name}: crate::dispatch::{name}::client_from_env().map(Arc::new)");
+    let tui_health = format!("spawn_health!(\"{name}\", client)");
     // Use the register_service! macro anchor rather than a bare name substring to avoid
     // false passes from the name appearing in comments or unrelated strings.
     let mcp_registry_token = format!("register_service!(reg, \"{name}\"");
@@ -37,7 +35,7 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         .get(repo_root, "crates/lab/src/api/router.rs")
         .unwrap_or("");
     let state = shared
-        .get(repo_root, "crates/lab/src/api/state.rs")
+        .get(repo_root, "crates/lab/src/dispatch/clients.rs")
         .unwrap_or("");
     let tui = shared
         .get(repo_root, "crates/lab/src/tui/metadata.rs")
@@ -45,11 +43,11 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
 
     out.push((
         "feature.lab-apis".into(),
-        contains_check(lab_apis_cargo, &feature),
+        contains_feature_check(lab_apis_cargo, &feature),
     ));
     out.push((
         "feature.lab".into(),
-        contains_check(lab_cargo, &format!("{name} = [\"lab-apis/{name}\"]")),
+        contains_feature_check(lab_cargo, &format!("{name} = [\"lab-apis/{name}\"]")),
     ));
     out.push(("lib.rs".into(), contains_check(lib, &service_mod)));
     out.push(("cli.rs".into(), contains_check(cli, &dispatch_mod)));
@@ -61,18 +59,31 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         "api.services.rs".into(),
         contains_check(api_services, &service_mod),
     ));
-    out.push(("api.router.rs".into(), contains_check(router, &api_nest)));
-    out.push(("api.state.rs".into(), contains_check(state, &api_field)));
-    out.push(("tui.metadata.rs".into(), contains_check(tui, &tui_token)));
+    out.push(("api.router.rs".into(), contains_check(router, &api_mount)));
     out.push((
-        "api.state.load".into(),
-        contains_check(state, &api_load).or_skip("state client mapping is not yet threaded"),
+        "dispatch.clients.rs".into(),
+        contains_check(state, &client_field),
+    ));
+    out.push(("tui.metadata.rs".into(), contains_check(tui, &tui_health)));
+    out.push((
+        "dispatch.clients.load".into(),
+        contains_check(state, &client_load).or_skip("state client mapping is not yet threaded"),
     ));
     out
 }
 
 fn contains_check(haystack: &str, needle: &str) -> CheckResult {
     if haystack.contains(needle) {
+        CheckResult::Pass
+    } else {
+        CheckResult::Fail(format!("missing token `{needle}`"))
+    }
+}
+
+fn contains_feature_check(haystack: &str, needle: &str) -> CheckResult {
+    let compact_haystack = haystack.split_whitespace().collect::<String>();
+    let compact_needle = needle.split_whitespace().collect::<String>();
+    if compact_haystack.contains(&compact_needle) {
         CheckResult::Pass
     } else {
         CheckResult::Fail(format!("missing token `{needle}`"))

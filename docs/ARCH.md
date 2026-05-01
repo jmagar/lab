@@ -140,7 +140,8 @@ Service identifiers must use service-local newtypes rather than raw integers eve
 The same service logic is exposed through three product surfaces:
 
 - CLI: `lab <service> <command>`
-- MCP: `lab serve`
+- MCP stdio: `lab mcp`
+- MCP HTTP: `lab serve`
 - TUI: `lab plugins`
 
 All three consume the same service metadata and service clients.

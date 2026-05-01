@@ -241,10 +241,13 @@ async fn handle_websocket(
         loop {
             interval.tick().await;
             // Evict if we haven't received a Pong within HEARTBEAT_TIMEOUT.
-            let age_s = unix_now_secs().saturating_sub(last_pong_hb.load(std::sync::atomic::Ordering::Relaxed));
+            let age_s = unix_now_secs()
+                .saturating_sub(last_pong_hb.load(std::sync::atomic::Ordering::Relaxed));
             if age_s > HEARTBEAT_TIMEOUT.as_secs() {
                 tracing::warn!(
-                    surface = "api", service = "nodes", action = "ws.heartbeat.evict",
+                    surface = "api",
+                    service = "nodes",
+                    action = "ws.heartbeat.evict",
                     last_pong_ago_s = age_s,
                     "evicting stale node connection: no pong received in >{}s",
                     HEARTBEAT_TIMEOUT.as_secs(),

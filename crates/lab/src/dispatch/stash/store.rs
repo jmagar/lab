@@ -437,8 +437,7 @@ impl StashStore {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
                 Err(e) => return Err(io_internal(e)),
             };
-            let target: StashDeployTarget =
-                serde_json::from_slice(&bytes).map_err(decode_error)?;
+            let target: StashDeployTarget = serde_json::from_slice(&bytes).map_err(decode_error)?;
             out.push((id.to_string(), target));
         }
         Ok(out)
@@ -657,9 +656,7 @@ fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), ToolErr
 
 /// Read and deserialize a JSON file, returning `None` if the file does not
 /// exist.
-fn read_json_optional<T: serde::de::DeserializeOwned>(
-    path: &Path,
-) -> Result<Option<T>, ToolError> {
+fn read_json_optional<T: serde::de::DeserializeOwned>(path: &Path) -> Result<Option<T>, ToolError> {
     let bytes = match std::fs::read(path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -934,8 +931,7 @@ mod tests {
         let rev = sample_revision("rev-99", "comp-99");
         let meta_path = store.revision_meta_path("rev-99");
         std::fs::create_dir_all(meta_path.parent().unwrap()).expect("create dir");
-        std::fs::write(&meta_path, serde_json::to_vec_pretty(&rev).unwrap())
-            .expect("write meta");
+        std::fs::write(&meta_path, serde_json::to_vec_pretty(&rev).unwrap()).expect("write meta");
 
         // The index does not exist for comp-99; fallback scan must find it.
         let revs = store.list_revisions_for("comp-99").expect("list");

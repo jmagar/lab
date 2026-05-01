@@ -23,8 +23,8 @@ To proxy an upstream server through `lab`, you configure one or more `[[upstream
 
 That means the client connects only to `lab`:
 
-- `lab serve` for stdio clients such as Claude Desktop
-- `lab serve --transport http` for streamable HTTP MCP clients
+- `lab mcp` for stdio clients such as Claude Desktop
+- `lab serve` for streamable HTTP MCP clients
 
 The client never connects directly to the upstreams once `lab` is acting as the gateway.
 
@@ -438,13 +438,13 @@ Set bearer-token env vars named by `bearer_token_env` in `~/.lab/.env` or the pr
 For local stdio clients:
 
 ```bash
-lab serve
+lab mcp
 ```
 
 For network MCP clients:
 
 ```bash
-lab serve --transport http
+lab serve
 ```
 
 ### 4. Point the client at `lab`, not the upstreams

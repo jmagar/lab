@@ -128,7 +128,10 @@ pub fn sanitize_page_context_field(value: &str) -> Option<String> {
             }
         }
     }
-    let joined: String = lower.chars().filter(|c| !matches!(c, '/' | '_' | '-')).collect();
+    let joined: String = lower
+        .chars()
+        .filter(|c| !matches!(c, '/' | '_' | '-'))
+        .collect();
     for denied in PAGE_CONTEXT_DENY_LIST {
         if joined.contains(denied) {
             return None;

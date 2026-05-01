@@ -51,7 +51,11 @@ fn human_console_target_enabled(target: &str) -> bool {
 ///
 /// Accepts config.toml log preferences; env vars `LAB_LOG` / `LAB_LOG_FORMAT`
 /// override them when set.
-fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_override: Option<&str>) -> tracing_appender::non_blocking::WorkerGuard {
+fn init_tracing(
+    log: &config::LogPreferences,
+    color_policy: ColorPolicy,
+    filter_override: Option<&str>,
+) -> tracing_appender::non_blocking::WorkerGuard {
     // Priority: explicit CLI override > LAB_LOG env var > config.toml > default.
     let filter = if let Some(directive) = filter_override {
         EnvFilter::new(directive)
@@ -66,11 +70,12 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
     };
 
     // ── Rolling file appender (survives OOM — guard must live as long as main) ──
-    let log_dir = std::env::var("LAB_LOG_DIR")
-        .unwrap_or_else(|_| format!(
+    let log_dir = std::env::var("LAB_LOG_DIR").unwrap_or_else(|_| {
+        format!(
             "{}/.local/share/lab/logs",
             std::env::var("HOME").unwrap_or_default()
-        ));
+        )
+    });
     std::fs::create_dir_all(&log_dir).ok();
 
     let file_appender = RollingFileAppender::builder()
@@ -95,8 +100,8 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
         tracing_subscriber::registry()
             .with(filter)
             .with(LogIngestLayer)
-            .with(fmt::layer().json().with_writer(std::io::stderr))           // console
-            .with(fmt::layer().json().with_writer(non_blocking_file))         // file
+            .with(fmt::layer().json().with_writer(std::io::stderr)) // console
+            .with(fmt::layer().json().with_writer(non_blocking_file)) // file
             .init();
     } else {
         let fmt_layer = fmt::layer()
@@ -113,8 +118,8 @@ fn init_tracing(log: &config::LogPreferences, color_policy: ColorPolicy, filter_
         tracing_subscriber::registry()
             .with(filter)
             .with(LogIngestLayer)
-            .with(fmt_layer)                                                   // console (pretty)
-            .with(fmt::layer().json().with_writer(non_blocking_file))         // file (JSON)
+            .with(fmt_layer) // console (pretty)
+            .with(fmt::layer().json().with_writer(non_blocking_file)) // file (JSON)
             .init();
     }
 
@@ -138,13 +143,14 @@ async fn main() -> ExitCode {
         }
     };
 
-    // 2. Init tracing. If `lab serve --log-level <level>` was given, pass it
+    // 2. Init tracing. If a serve-path `--log-level <level>` was given, pass it
     //    directly to avoid mutating the environment (crate forbids unsafe_code).
-    let log_filter_override: Option<String> = if let crate::cli::Command::Serve(ref args) = cli.command {
-        args.log_level.as_ref().map(|level| format!("lab={level},warn"))
-    } else {
-        None
-    };
+    let log_filter_override: Option<String> = match &cli.command {
+        cli::Command::Serve(args) => args.log_level.as_ref(),
+        cli::Command::Mcp(args) => args.log_level.as_ref(),
+        _ => None,
+    }
+    .map(|level| format!("lab={level},warn"));
     // _log_guard MUST live for the entire process — dropping it stops file logging.
     let _log_guard = init_tracing(&config.log, cli.color, log_filter_override.as_deref());
 

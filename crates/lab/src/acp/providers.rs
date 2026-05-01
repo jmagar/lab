@@ -128,7 +128,10 @@ mod tests {
     #[test]
     fn structured_entry_round_trips_quoted_args_and_spaces() {
         let mut env = BTreeMap::new();
-        env.insert("CODEX_TOKEN".to_string(), "sk-with-spaces and quotes".to_string());
+        env.insert(
+            "CODEX_TOKEN".to_string(),
+            "sk-with-spaces and quotes".to_string(),
+        );
 
         let entry = AcpProviderEntry {
             id: "test-provider".to_string(),
@@ -153,8 +156,14 @@ mod tests {
 
         assert_eq!(round.command, "/opt/with spaces/bin/codex");
         assert_eq!(round.args, entry.args);
-        assert_eq!(round.cwd.as_deref(), Some(PathBuf::from("/var/lib/with spaces").as_path()));
-        assert_eq!(round.env.get("CODEX_TOKEN").map(String::as_str), Some("sk-with-spaces and quotes"));
+        assert_eq!(
+            round.cwd.as_deref(),
+            Some(PathBuf::from("/var/lib/with spaces").as_path())
+        );
+        assert_eq!(
+            round.env.get("CODEX_TOKEN").map(String::as_str),
+            Some("sk-with-spaces and quotes")
+        );
     }
 
     #[test]
@@ -170,7 +179,10 @@ mod tests {
         });
 
         let entry: AcpProviderEntry = serde_json::from_value(legacy).expect("deserialize legacy");
-        assert!(entry.args.is_empty(), "legacy entries default to empty args");
+        assert!(
+            entry.args.is_empty(),
+            "legacy entries default to empty args"
+        );
         assert!(entry.cwd.is_none());
         assert!(entry.env.is_empty());
         // The whitespace-joined command survives verbatim — it is the
@@ -196,7 +208,10 @@ mod tests {
         // cwd/env/sha256 are skip_if_empty/None — must not appear in JSON.
         assert!(json.get("cwd").is_none(), "cwd must be omitted when None");
         assert!(json.get("env").is_none(), "env must be omitted when empty");
-        assert!(json.get("sha256").is_none(), "sha256 must be omitted when None");
+        assert!(
+            json.get("sha256").is_none(),
+            "sha256 must be omitted when None"
+        );
         // args is `default` not `skip_if_empty` — empty vec serializes as []
         // so explicit consumers can distinguish "no args" from "legacy".
         assert_eq!(json.get("args"), Some(&serde_json::json!([])));

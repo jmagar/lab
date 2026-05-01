@@ -180,6 +180,10 @@ fn all_service_names() -> Vec<&'static str> {
     {
         names.push("openai");
     }
+    #[cfg(feature = "notebooklm")]
+    {
+        names.push("notebooklm");
+    }
     #[cfg(feature = "qdrant")]
     {
         names.push("qdrant");
@@ -300,6 +304,12 @@ fn configured_service_names(clients: &ServiceClients) -> Vec<String> {
             names.push("openai".into());
         }
     }
+    #[cfg(feature = "notebooklm")]
+    {
+        if clients.notebooklm.is_some() {
+            names.push("notebooklm".into());
+        }
+    }
     #[cfg(feature = "qdrant")]
     {
         if clients.qdrant.is_some() {
@@ -365,6 +375,8 @@ async fn health_by_name_owned(clients: &ServiceClients, service: &str) -> Servic
         },
         #[cfg(feature = "openai")]
         "openai" => probe_arc(clients.openai.as_ref()).await,
+        #[cfg(feature = "notebooklm")]
+        "notebooklm" => probe_arc(clients.notebooklm.as_ref()).await,
         #[cfg(feature = "qdrant")]
         "qdrant" => probe_arc(clients.qdrant.as_ref()).await,
         #[cfg(feature = "tei")]

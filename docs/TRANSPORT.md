@@ -9,20 +9,14 @@ Stdio is the explicit child-process transport. Use it for Claude Desktop, IDE ex
 No authentication is required — security is provided by process-level isolation. The parent process owns the stdio pipes and controls access.
 
 ```bash
-lab serve mcp --stdio
-lab serve --transport stdio
-```
-
-Or via env:
-
-```bash
-LAB_MCP_TRANSPORT=stdio lab serve
+lab mcp
+lab mcp --services plex
 ```
 
 No network listener is opened. No host, port, or auth configuration is needed.
 
-This default is contractual: code, CLI help, tests, and operator docs must all
-agree that `stdio` is the default transport unless changed intentionally in one
+This shortcut is contractual: code, CLI help, tests, and operator docs must all
+agree that `lab mcp` is the stdio child-process entrypoint unless changed intentionally in one
 coordinated update.
 
 ## Streamable HTTP (Default)
@@ -33,7 +27,7 @@ from `/`.
 
 ```bash
 lab serve
-lab serve --transport http
+lab serve --services plex
 ```
 
 ### Configuration
@@ -65,7 +59,7 @@ assets_dir = "/path/to/labby/out"
 
 CLI flags take precedence over env vars, which take precedence over config.toml:
 
-1. `--host`, `--port`, `--transport` (CLI)
+1. `--host`, `--port` (CLI)
 2. `LAB_MCP_HTTP_HOST`, `LAB_MCP_HTTP_PORT`, `LAB_MCP_TRANSPORT` (env)
 3. `mcp.host`, `mcp.port`, `mcp.transport` (config.toml)
 4. Defaults: `127.0.0.1`, `8765`, `http`
@@ -187,7 +181,7 @@ When HTTP transport is active, the server exposes:
 
 ```bash
 # Bind to localhost, no auth needed when neither static bearer nor OAuth is configured
-LAB_MCP_TRANSPORT=http lab serve
+lab serve
 # → listening on 127.0.0.1:8765
 
 curl http://localhost:8765/health
@@ -206,7 +200,7 @@ LAB_MCP_HTTP_PORT=8765
 LAB_MCP_HTTP_TOKEN=$(openssl rand -hex 32)
 LAB_PUBLIC_URL=https://lab.example.com
 
-lab serve --transport http
+lab serve
 ```
 
 ```bash

@@ -624,6 +624,8 @@ fn meta_env_vars(name: &str, required: bool) -> Vec<EnvVarDesc> {
         "apprise" => collect_env!(lab_apis::apprise::META),
         #[cfg(feature = "openai")]
         "openai" => collect_env!(lab_apis::openai::META),
+        #[cfg(feature = "notebooklm")]
+        "notebooklm" => collect_env!(lab_apis::notebooklm::META),
         #[cfg(feature = "qdrant")]
         "qdrant" => collect_env!(lab_apis::qdrant::META),
         #[cfg(feature = "tei")]

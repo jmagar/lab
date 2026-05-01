@@ -241,17 +241,16 @@ lab help --json
 lab serve
 lab serve --host 127.0.0.1 --port 8765
 lab serve --services radarr,sonarr,plex
-lab serve mcp --stdio
+lab mcp
 lab doctor
 lab health
 lab plugins
 lab extract /mnt/appdata --diff
 ```
 
-`lab serve` defaults to the hosted runtime path. Unless transport is explicitly set to
-stdio, it starts the Axum HTTP server for the product API, OAuth/auth endpoints when
-configured, the HTTP MCP surface at `/mcp`, and the Labby web UI when exported assets
-exist.
+`lab serve` starts the hosted runtime path: the Axum HTTP server for the product API,
+OAuth/auth endpoints when configured, the HTTP MCP surface at `/mcp`, and the Labby web
+UI when exported assets exist. Use `lab mcp` for stdio MCP clients.
 
 To serve Labby from the same process, build the static export first:
 
@@ -263,7 +262,7 @@ lab serve --host 127.0.0.1 --port 8765
 Main Labby routes are `/marketplace`, `/registry`, `/gateway`, `/logs`, `/setup`,
 `/activity`, `/chat`, `/settings`, `/docs`, and `/design-system`.
 
-`lab serve mcp --stdio` is the stdio-only MCP path for local editor and desktop clients.
+`lab mcp` is the stdio-only MCP path for local editor and desktop clients.
 It does not start the hosted API or web UI.
 
 ## Auth And OAuth
@@ -323,7 +322,8 @@ Top-level commands are defined in [crates/lab/src/cli.rs](./crates/lab/src/cli.r
 
 | Command | Purpose |
 | --- | --- |
-| `lab serve` | Start the hosted runtime or stdio MCP server |
+| `lab serve` | Start the hosted HTTP runtime |
+| `lab mcp` | Start the stdio MCP server for local MCP clients |
 | `lab help` | Print the generated service and action catalog |
 | `lab doctor` | Run comprehensive health audits |
 | `lab health` | Run quick reachability checks |

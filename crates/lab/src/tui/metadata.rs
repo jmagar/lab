@@ -377,6 +377,16 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "notebooklm")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::notebooklm::client_from_env,
+        ) {
+            spawn_health!("notebooklm", client);
+        }
+    }
+
     #[cfg(feature = "tautulli")]
     {
         if let Some(client) = crate::dispatch::helpers::with_env_override(

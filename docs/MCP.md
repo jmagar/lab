@@ -6,15 +6,15 @@ The RMCP SDK integration contract that underpins this surface lives in [RMCP.md]
 
 ## Transport Modes
 
-`lab serve` supports two transports:
+`lab` exposes two MCP entrypoints:
 
-- `stdio`: local child-process MCP clients such as Claude Desktop and `.mcp.json`
-- `http`: remote or network-accessible MCP clients
+- `lab mcp`: local stdio child-process MCP clients such as Claude Desktop and `.mcp.json`
+- `lab serve`: hosted HTTP runtime, including streamable HTTP MCP at `/mcp`
 
 Rules:
 
-- HTTP is the default `lab serve` transport
-- `stdio` is the explicit child-process transport via `lab serve mcp --stdio`
+- `lab serve` starts the hosted HTTP runtime by default
+- `lab mcp` is the explicit child-process stdio entrypoint
 - HTTP supports `LAB_AUTH_MODE=bearer|oauth`
 - bearer mode preserves `LAB_MCP_HTTP_TOKEN`
 - oauth mode requires `LAB_PUBLIC_URL` and Google client credentials
@@ -38,7 +38,7 @@ support must reflect the running server, not a partial or hypothetical build.
 
 ## HTTP Auth Surface
 
-When `lab serve --transport http` is active, `lab` exposes two auth modes:
+When `lab serve` is active, `lab` exposes two auth modes:
 
 - `LAB_AUTH_MODE=bearer`
   `LAB_MCP_HTTP_TOKEN` remains the only credential. This preserves existing HTTP deployments.

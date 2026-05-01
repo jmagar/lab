@@ -22,9 +22,9 @@ impl SharedContext {
             "crates/lab/src/cli.rs",
             "crates/lab/src/mcp/services.rs",
             "crates/lab/src/registry.rs",
+            "crates/lab/src/dispatch/clients.rs",
             "crates/lab/src/api/services.rs",
             "crates/lab/src/api/router.rs",
-            "crates/lab/src/api/state.rs",
             "crates/lab/src/tui/metadata.rs",
         ] {
             let path = repo_root.join(rel);

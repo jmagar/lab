@@ -55,6 +55,7 @@ unraid      = []
 unifi       = []
 gotify      = []
 openai      = []
+notebooklm  = []
 qdrant      = []
 tei         = []
 apprise     = []
@@ -68,7 +69,7 @@ all = [
     "sabnzbd", "qbittorrent", "tailscale", "linkding",
     "memos", "bytestash", "paperless",
     "arcane", "unraid", "unifi",
-    "gotify", "openai", "qdrant", "tei", "apprise",
+    "gotify", "openai", "notebooklm", "qdrant", "tei", "apprise",
     "deploy", "mcpregistry", "acp_registry",
 ]
 

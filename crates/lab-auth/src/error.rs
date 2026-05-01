@@ -85,9 +85,7 @@ impl IntoResponse for AuthError {
             "message": self.to_string(),
         }));
         let mut response = (status, body).into_response();
-        response
-            .extensions_mut()
-            .insert(AuthErrorKind(self.kind()));
+        response.extensions_mut().insert(AuthErrorKind(self.kind()));
         response
             .headers_mut()
             .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));

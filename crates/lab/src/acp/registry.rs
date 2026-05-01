@@ -851,11 +851,7 @@ impl AcpSessionRegistry {
         }
     }
 
-    fn spawn_event_forwarder(
-        &self,
-        session: Arc<Session>,
-        mut rx: mpsc::Receiver<AcpEvent>,
-    ) {
+    fn spawn_event_forwarder(&self, session: Arc<Session>, mut rx: mpsc::Receiver<AcpEvent>) {
         let registry = self.clone();
         tokio::spawn(async move {
             while let Some(event) = rx.recv().await {

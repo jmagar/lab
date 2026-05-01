@@ -761,7 +761,7 @@ Verify that:
 
 ### Required: Live MCP Smoke Tests (via mcporter)
 
-`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab MCP server first (`lab serve --transport stdio` or `--transport sse`), then use `mcporter call` to invoke tools:
+`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`lab mcp --services <service>`), then use `mcporter call` to invoke tools:
 
 
 ```bash
@@ -777,7 +777,7 @@ Verify that:
 
 ### Required: Live API Smoke Tests (via curl)
 
-Start the lab API server (`lab serve --transport http`) and hit each service endpoint:
+Start the hosted lab runtime (`lab serve --services <service>`) and hit each service endpoint:
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
@@ -817,7 +817,7 @@ Verify that:
 
 ### Required: Live MCP Smoke Tests (via mcporter)
 
-`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab MCP server first (`lab serve --transport stdio` or `--transport sse`), then use `mcporter call` to invoke tools:
+`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`lab mcp --services <service>`), then use `mcporter call` to invoke tools:
 
 
 ```bash
@@ -833,7 +833,7 @@ Verify that:
 
 ### Required: Live API Smoke Tests (via curl)
 
-Start the lab API server (`lab serve --transport http`) and hit each service endpoint:
+Start the hosted lab runtime (`lab serve --services <service>`) and hit each service endpoint:
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>

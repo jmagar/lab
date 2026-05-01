@@ -84,6 +84,8 @@ pub async fn run(format: OutputFormat) -> Result<ExitCode> {
     rows.push(gotify_row().await);
     #[cfg(feature = "openai")]
     rows.push(HealthRow::not_configured("openai"));
+    #[cfg(feature = "notebooklm")]
+    rows.push(notebooklm_row().await);
     #[cfg(feature = "qdrant")]
     rows.push(qdrant_row().await);
     #[cfg(feature = "tei")]
@@ -273,6 +275,16 @@ async fn bytestash_row() -> HealthRow {
         "bytestash",
         crate::dispatch::bytestash::client_from_env(),
         "BYTESTASH_URL / BYTESTASH_TOKEN not set",
+    )
+    .await
+}
+
+#[cfg(feature = "notebooklm")]
+async fn notebooklm_row() -> HealthRow {
+    service_health_row(
+        "notebooklm",
+        crate::dispatch::notebooklm::client_from_env(),
+        "NOTEBOOKLM_AUTH_JSON or NotebookLM storage_state.json not set",
     )
     .await
 }

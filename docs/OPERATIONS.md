@@ -167,7 +167,7 @@ controller = "tootie"
 ```
 
 4. Start each non-master with `lab serve`.
-5. Only use `lab serve mcp --stdio` when you explicitly want a local stdio MCP session instead of the default HTTP runtime.
+5. Only use `lab mcp` when you explicitly want a local stdio MCP session instead of the default HTTP runtime.
 
 Operationally:
 

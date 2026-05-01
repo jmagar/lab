@@ -34,6 +34,7 @@ const VALID_SERVICE_NAMES: &[&str] = &[
     "gotify",
     "apprise",
     "openai",
+    "notebooklm",
     "qdrant",
     "tei",
     "extract",

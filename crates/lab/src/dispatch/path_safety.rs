@@ -51,10 +51,7 @@ pub fn reject_symlink(path: &Path) -> Result<(), ToolError> {
     if metadata.file_type().is_symlink() {
         return Err(ToolError::Sdk {
             sdk_kind: "symlink_rejected".into(),
-            message: format!(
-                "refusing to operate on symlinked path `{}`",
-                path.display()
-            ),
+            message: format!("refusing to operate on symlinked path `{}`", path.display()),
         });
     }
     Ok(())

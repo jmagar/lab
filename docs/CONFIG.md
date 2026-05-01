@@ -127,7 +127,7 @@ Rules:
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve --transport http` |
+| `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve` |
 
 ### `[workspace]`
 
@@ -375,7 +375,7 @@ query string when proxying the callback.
 
 ## Web UI Hosting
 
-When `lab serve --transport http` can find exported Labby assets, it serves the web UI from the
+When `lab serve` can find exported Labby assets, it serves the web UI from the
 same origin as the API and MCP server. Asset directory resolution is:
 
 1. `LAB_WEB_ASSETS_DIR`

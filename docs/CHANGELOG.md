@@ -31,7 +31,7 @@ changes rather than internal refactors.
   Startup fails closed if it is missing. The previous behavior of allowing every
   Google account when no allowlist was configured was a fail-open
   misconfiguration risk. Operators upgrading to this release must add
-  `LAB_AUTH_ADMIN_EMAIL` to their environment before `lab serve --transport http`
+  `LAB_AUTH_ADMIN_EMAIL` to their environment before `lab serve`
   will start in oauth mode.
 - **Breaking (HTTP API):** `gateway.add`, `gateway.update`, `gateway.remove`, and
   `gateway.reload` are now marked destructive. HTTP and MCP callers must include

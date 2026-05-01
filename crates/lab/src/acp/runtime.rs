@@ -1559,8 +1559,13 @@ async fn handle_session_dispatch(
             let is_assistant_output =
                 matches!(notification.update, SessionUpdate::AgentMessageChunk(_));
             let is_prompt_progress = is_prompt_progress_update(&notification.update);
-            push_session_update(session_id, event_tx, notification.update, stream_message_ids)
-                .await?;
+            push_session_update(
+                session_id,
+                event_tx,
+                notification.update,
+                stream_message_ids,
+            )
+            .await?;
             Ok(SessionDispatchProgress {
                 assistant_output: is_assistant_output,
                 prompt_progress: is_prompt_progress,
@@ -1815,7 +1820,10 @@ mod tests {
         // Structured args round-trip verbatim — no whitespace-splitting.
         assert_eq!(launch.command, "/opt/with spaces/codex");
         assert_eq!(launch.args, entry.args);
-        assert_eq!(launch.cwd.as_deref(), Some(std::path::Path::new("/work dir")));
+        assert_eq!(
+            launch.cwd.as_deref(),
+            Some(std::path::Path::new("/work dir"))
+        );
         assert_eq!(launch.env, env);
     }
 
@@ -1923,10 +1931,7 @@ mod tests {
 
     /// Drain all pending events and return them. Panics if the channel is empty and
     /// expected_count events have not been collected.
-    fn drain_events(
-        rx: &mut mpsc::Receiver<AcpEvent>,
-        expected_count: usize,
-    ) -> Vec<AcpEvent> {
+    fn drain_events(rx: &mut mpsc::Receiver<AcpEvent>, expected_count: usize) -> Vec<AcpEvent> {
         let mut events = Vec::new();
         while let Ok(event) = rx.try_recv() {
             events.push(event);
@@ -2479,7 +2484,8 @@ pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::Receiver<AcpEvent>) {
         let _command_rx = command_rx;
         std::future::pending::<()>().await;
     });
-    let (event_tx, event_rx) = mpsc::channel::<AcpEvent>(crate::acp::registry::ACP_EVENT_CHANNEL_CAPACITY);
+    let (event_tx, event_rx) =
+        mpsc::channel::<AcpEvent>(crate::acp::registry::ACP_EVENT_CHANNEL_CAPACITY);
     let handle = RuntimeHandle {
         provider_session_id: "fake-provider-session".to_string(),
         command_tx,
@@ -2500,7 +2506,8 @@ pub fn saturated_fake_handle_for_tests() -> (RuntimeHandle, mpsc::Receiver<AcpEv
         let _command_rx = command_rx;
         std::future::pending::<()>().await;
     });
-    let (event_tx, event_rx) = mpsc::channel::<AcpEvent>(crate::acp::registry::ACP_EVENT_CHANNEL_CAPACITY);
+    let (event_tx, event_rx) =
+        mpsc::channel::<AcpEvent>(crate::acp::registry::ACP_EVENT_CHANNEL_CAPACITY);
     let handle = RuntimeHandle {
         provider_session_id: "fake-provider-session".to_string(),
         command_tx,

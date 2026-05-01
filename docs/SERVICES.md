@@ -96,6 +96,7 @@ The following services are always compiled in and require no feature flag or ups
 - Linkding
 - Unraid
 - UniFi
+- NotebookLM (`teng-lin/notebooklm-py` RPC contract)
 
 ### Deferred
 

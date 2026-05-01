@@ -72,7 +72,9 @@ async fn auth_dispatch_observability(request: Request, next: Next) -> Response {
 }
 
 fn request_id(headers: &HeaderMap) -> Option<&str> {
-    headers.get("x-request-id").and_then(|value| value.to_str().ok())
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
 }
 
 fn status_error_kind(status: StatusCode) -> Option<&'static str> {

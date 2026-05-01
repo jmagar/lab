@@ -34,7 +34,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 
 ## Startup Behavior
 
-When OAuth mode is configured, `lab serve --transport http` performs these steps at startup:
+When OAuth mode is configured, `lab serve` performs these steps at startup:
 
 1. Validate that `LAB_PUBLIC_URL`, Google credentials, and `LAB_AUTH_ADMIN_EMAIL` are present.
 2. Open the SQLite auth store in WAL mode with a non-zero busy timeout.
@@ -335,7 +335,7 @@ LAB_GOOGLE_CLIENT_ID=google-client-id
 LAB_GOOGLE_CLIENT_SECRET=google-client-secret
 
 # Start
-lab serve --transport http
+lab serve
 ```
 
 Verify the metadata endpoint:

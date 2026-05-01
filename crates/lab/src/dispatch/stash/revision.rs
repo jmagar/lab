@@ -362,7 +362,9 @@ mod tests {
             files_dir.join("settings.json").exists(),
             "settings.json must be in revision snapshot; got files: {:?}",
             std::fs::read_dir(&files_dir)
-                .map(|it| it.filter_map(|e| e.ok().map(|e| e.file_name())).collect::<Vec<_>>())
+                .map(|it| it
+                    .filter_map(|e| e.ok().map(|e| e.file_name()))
+                    .collect::<Vec<_>>())
                 .unwrap_or_default()
         );
     }
@@ -419,20 +421,14 @@ mod tests {
         let b1 = tmp.path().join("b.txt");
         std::fs::write(&a1, b"foo").unwrap();
         std::fs::write(&b1, b"bar").unwrap();
-        let files1 = vec![
-            (PathBuf::from("a.txt"), a1),
-            (PathBuf::from("b.txt"), b1),
-        ];
+        let files1 = vec![(PathBuf::from("a.txt"), a1), (PathBuf::from("b.txt"), b1)];
 
         // Set 2: a.txt="foob", b.txt="ar"  — same bytes total, different split
         let a2 = tmp.path().join("c.txt");
         let b2 = tmp.path().join("d.txt");
         std::fs::write(&a2, b"foob").unwrap();
         std::fs::write(&b2, b"ar").unwrap();
-        let files2 = vec![
-            (PathBuf::from("a.txt"), a2),
-            (PathBuf::from("b.txt"), b2),
-        ];
+        let files2 = vec![(PathBuf::from("a.txt"), a2), (PathBuf::from("b.txt"), b2)];
 
         let d1 = compute_digest(&files1).unwrap();
         let d2 = compute_digest(&files2).unwrap();

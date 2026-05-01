@@ -582,10 +582,13 @@ mod tests {
         );
 
         // Save a revision via the production blocking path.
-        let rev = super::super::revision::save_revision_blocking(&store, &comp.id, Some("v1"))
-            .unwrap();
+        let rev =
+            super::super::revision::save_revision_blocking(&store, &comp.id, Some("v1")).unwrap();
 
-        assert_eq!(rev.file_count, 1, "file-shaped revision must have exactly 1 file");
+        assert_eq!(
+            rev.file_count, 1,
+            "file-shaped revision must have exactly 1 file"
+        );
         assert!(!rev.content_digest.is_empty());
 
         // The snapshot file must be named settings.json, not the ULID component ID.
@@ -594,7 +597,9 @@ mod tests {
             files_dir.join("settings.json").exists(),
             "revision snapshot must contain settings.json; found: {:?}",
             std::fs::read_dir(&files_dir)
-                .map(|it| it.filter_map(|e| e.ok().map(|e| e.file_name())).collect::<Vec<_>>())
+                .map(|it| it
+                    .filter_map(|e| e.ok().map(|e| e.file_name()))
+                    .collect::<Vec<_>>())
                 .unwrap_or_default()
         );
 

@@ -263,7 +263,7 @@ Services are enumerated from `PluginMeta` constants at compile time via `metadat
 | Documents | paperless, linkding, bytestash |
 | Network | tailscale, unifi, unraid |
 | Notifications | apprise, gotify |
-| Ai | openai, qdrant, tei |
+| Ai | openai, notebooklm, qdrant, tei |
 | Bootstrap | extract |
 
 Each row shows: service name, short description, category, health dot (from `lab doctor`), and enabled state.
