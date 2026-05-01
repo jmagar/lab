@@ -5,20 +5,43 @@ import { Loader2, AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { NavButtons } from '@/components/setup/WizardShell'
-import { doctorApi, type DoctorReport } from '@/lib/api/doctor-client'
+import { DoctorApiError, doctorApi, type DoctorReport, type Severity } from '@/lib/api/doctor-client'
+
+interface TransportError {
+  message: string
+  status?: number
+  /** True when the error is a 401/403 — user can re-auth to retry. */
+  authRelated: boolean
+}
 
 export default function PreflightOne(): React.ReactElement {
   const [report, setReport] = useState<DoctorReport | undefined>()
-  const [error, setError] = useState<string | undefined>()
+  const [transportError, setTransportError] = useState<TransportError | undefined>()
   const [loading, setLoading] = useState(false)
 
   async function run(): Promise<void> {
     setLoading(true)
-    setError(undefined)
+    setTransportError(undefined)
     try {
       setReport(await doctorApi.systemChecks())
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'system.checks failed')
+      // Distinguish transport/auth failures from blocking findings. The
+      // doctor service reports findings (severity: error) inside a
+      // successful 200 response; only network/auth/server errors throw
+      // here. Surface those distinctly so the user can re-auth or step
+      // back instead of being dead-ended at "Refresh".
+      if (err instanceof DoctorApiError) {
+        setTransportError({
+          message: err.message,
+          status: err.status,
+          authRelated: err.status === 401 || err.status === 403,
+        })
+      } else {
+        setTransportError({
+          message: err instanceof Error ? err.message : 'system.checks failed',
+          authRelated: false,
+        })
+      }
     } finally {
       setLoading(false)
     }
@@ -48,9 +71,22 @@ export default function PreflightOne(): React.ReactElement {
         </div>
       ) : null}
 
-      {error ? (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          {error}
+      {transportError ? (
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive space-y-2">
+          <p className="font-medium">
+            {transportError.authRelated
+              ? 'Authentication required to run preflight checks.'
+              : 'Could not reach the lab gateway to run preflight checks.'}
+          </p>
+          <p className="text-xs">
+            {transportError.status ? `HTTP ${transportError.status}: ` : ''}
+            {transportError.message}
+          </p>
+          <p className="text-xs">
+            {transportError.authRelated
+              ? 'Re-authenticate, then click Re-run. Use Back to revisit core configuration if needed.'
+              : 'Check that lab serve is running and click Re-run, or use Back to revisit core configuration.'}
+          </p>
         </div>
       ) : null}
 
@@ -88,7 +124,7 @@ export default function PreflightOne(): React.ReactElement {
   )
 }
 
-function SeverityIcon({ severity }: { severity: string }): React.ReactElement {
+function SeverityIcon({ severity }: { severity: Severity }): React.ReactElement {
   if (severity === 'error') return <AlertTriangle className="h-4 w-4 mt-0.5 text-destructive" />
   if (severity === 'warn') return <AlertTriangle className="h-4 w-4 mt-0.5 text-amber-500" />
   return <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600" />
