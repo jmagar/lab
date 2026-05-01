@@ -108,7 +108,7 @@ product surface, including:
 
 - `/auth/session`
 - `/auth/logout`
-- `/v1/device/oauth/relay/start`
+- `/v1/nodes/oauth/relay/start`
 - OAuth authorize/callback/token handlers where `lab` itself is the actor
 
 Those routes must not silently bypass the normal dispatch schema just because

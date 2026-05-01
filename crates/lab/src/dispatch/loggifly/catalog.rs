@@ -23,9 +23,36 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "contract.status",
-        description: "Return LoggiFly implementation deferral status",
+        description: "Return LoggiFly local integration contract status",
         destructive: false,
         returns: "ContractStatus",
         params: &[],
     },
+    ActionSpec {
+        name: "health.status",
+        description: "Inspect the documented LoggiFly heartbeat file health status",
+        destructive: false,
+        returns: "HealthStatus",
+        params: &[],
+    },
+    ActionSpec {
+        name: "config.summary",
+        description: "Summarize allowlisted LoggiFly config.yaml without returning raw config",
+        destructive: false,
+        returns: "ConfigSummary",
+        params: &[],
+    },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::ACTIONS;
+
+    #[test]
+    fn loggifly_local_actions_are_read_only() {
+        for action in ["contract.status", "health.status", "config.summary"] {
+            let spec = ACTIONS.iter().find(|spec| spec.name == action).unwrap();
+            assert!(!spec.destructive, "{action} should remain read-only");
+        }
+    }
+}

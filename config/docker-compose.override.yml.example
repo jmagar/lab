@@ -10,7 +10,7 @@ services:
     # Always rebuild from local source in dev.
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: config/Dockerfile
 
     # Bind only to loopback on the dev machine — no accidental LAN exposure.
     ports:
@@ -27,4 +27,4 @@ services:
     # binaries still need a rebuild).
     # volumes:
     #   - lab-data:/home/lab/.local
-    #   - ./config/lab.toml:/home/lab/.config/lab/config.toml:ro
+    #   - ./config/config.toml:/home/lab/.config/lab/config.toml:ro

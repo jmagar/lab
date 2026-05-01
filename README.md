@@ -229,7 +229,7 @@ cors_origins = []
 mode = "bearer"
 ```
 
-Use [config.example.toml](./config.example.toml), [.env.example](./.env.example),
+Use [config.example.toml](./config/config.example.toml), [.env.example](./.env.example),
 [docs/CONFIG.md](./docs/CONFIG.md), and [docs/ENV.md](./docs/ENV.md) for the full
 configuration contract.
 
@@ -367,7 +367,6 @@ Discovery surfaces:
 
 | Surface | Purpose |
 | --- | --- |
-| `lab.help` MCP meta-tool | Full service and action catalog |
 | `lab://catalog` MCP resource | Full generated catalog |
 | `lab://<service>/actions` MCP resource | Per-service action list |
 | `help` action | Per-tool action catalog |
@@ -442,32 +441,49 @@ curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
   http://127.0.0.1:8765/v1/radarr/actions
 ```
 
-Action-level coverage docs live under [docs/coverage](./docs/coverage):
+Action-level coverage docs live under [docs/coverage](./docs/coverage). The
+complete coverage index is [docs/coverage/README.md](./docs/coverage/README.md):
 
 | Service | Coverage Doc |
 | --- | --- |
+| ACP Registry | [docs/coverage/acp_registry.md](./docs/coverage/acp_registry.md) |
+| AdGuard | [docs/coverage/adguard.md](./docs/coverage/adguard.md) |
 | Apprise | [docs/coverage/apprise.md](./docs/coverage/apprise.md) |
 | Arcane | [docs/coverage/arcane.md](./docs/coverage/arcane.md) |
 | ByteStash | [docs/coverage/bytestash.md](./docs/coverage/bytestash.md) |
+| Dozzle | [docs/coverage/dozzle.md](./docs/coverage/dozzle.md) |
+| FreshRSS | [docs/coverage/freshrss.md](./docs/coverage/freshrss.md) |
+| Glances | [docs/coverage/glances.md](./docs/coverage/glances.md) |
 | Gotify | [docs/coverage/gotify.md](./docs/coverage/gotify.md) |
+| Immich | [docs/coverage/immich.md](./docs/coverage/immich.md) |
+| Jellyfin | [docs/coverage/jellyfin.md](./docs/coverage/jellyfin.md) |
 | Linkding | [docs/coverage/linkding.md](./docs/coverage/linkding.md) |
+| LoggiFly | [docs/coverage/loggifly.md](./docs/coverage/loggifly.md) |
 | MCP Registry | [docs/coverage/mcpregistry.md](./docs/coverage/mcpregistry.md) |
 | Memos | [docs/coverage/memos.md](./docs/coverage/memos.md) |
+| Navidrome | [docs/coverage/navidrome.md](./docs/coverage/navidrome.md) |
+| Neo4j | [docs/coverage/neo4j.md](./docs/coverage/neo4j.md) |
+| NotebookLM | [docs/coverage/notebooklm.md](./docs/coverage/notebooklm.md) |
+| OpenACP | [docs/coverage/openacp.md](./docs/coverage/openacp.md) |
 | OpenAI | [docs/coverage/openai.md](./docs/coverage/openai.md) |
 | Overseerr | [docs/coverage/overseerr.md](./docs/coverage/overseerr.md) |
 | Paperless | [docs/coverage/paperless.md](./docs/coverage/paperless.md) |
+| Pi-hole | [docs/coverage/pihole.md](./docs/coverage/pihole.md) |
 | Plex | [docs/coverage/plex.md](./docs/coverage/plex.md) |
 | Prowlarr | [docs/coverage/prowlarr.md](./docs/coverage/prowlarr.md) |
 | qBittorrent | [docs/coverage/qbittorrent.md](./docs/coverage/qbittorrent.md) |
 | Qdrant | [docs/coverage/qdrant.md](./docs/coverage/qdrant.md) |
 | Radarr | [docs/coverage/radarr.md](./docs/coverage/radarr.md) |
 | SABnzbd | [docs/coverage/sabnzbd.md](./docs/coverage/sabnzbd.md) |
+| Scrutiny | [docs/coverage/scrutiny.md](./docs/coverage/scrutiny.md) |
 | Sonarr | [docs/coverage/sonarr.md](./docs/coverage/sonarr.md) |
+| Stash | [docs/coverage/stash.md](./docs/coverage/stash.md) |
 | Tailscale | [docs/coverage/tailscale.md](./docs/coverage/tailscale.md) |
 | Tautulli | [docs/coverage/tautulli.md](./docs/coverage/tautulli.md) |
 | TEI | [docs/coverage/tei.md](./docs/coverage/tei.md) |
 | UniFi | [docs/coverage/unifi.md](./docs/coverage/unifi.md) |
 | Unraid | [docs/coverage/unraid.md](./docs/coverage/unraid.md) |
+| Uptime Kuma | [docs/coverage/uptime_kuma.md](./docs/coverage/uptime_kuma.md) |
 
 ## Environment Reference
 
@@ -556,7 +572,7 @@ just test-integration # cargo nextest run --workspace --all-features -- --ignore
 just lint             # cargo clippy --workspace --all-features -- -D warnings; cargo fmt --all -- --check
 just deny             # cargo deny check
 just build            # cargo build --workspace --all-features
-just build-release    # cargo build --workspace --all-features --release
+just build-release    # cargo build --workspace --all-features --release; install bin/lab
 just web-build        # cd apps/gateway-admin && pnpm build
 just web-watch        # rebuild Labby static assets on frontend changes
 just run -- help      # cargo run --all-features -- <args>

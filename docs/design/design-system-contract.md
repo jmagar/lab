@@ -15,8 +15,8 @@ This contract is implementation-facing. It exists so product pages do not drift 
 
 Related documents:
 
-- [Aurora Dark Theme Spec](./superpowers/specs/2026-04-17-aurora-dark-theme-spec.md)
-- [Design System Page Plan](./superpowers/plans/2026-04-17-design-system-page.md)
+- [Aurora Dark Theme Spec](../superpowers/specs/2026-04-17-aurora-dark-theme-spec.md)
+- [Design System Page Plan](../superpowers/plans/2026-04-17-design-system-page.md)
 
 ## Theme Modes
 

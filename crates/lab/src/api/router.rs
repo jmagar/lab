@@ -462,6 +462,20 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
                 $v1 = $v1.nest(concat!("/", $name), services::$mod::routes($state.clone()));
             }
         };
+        ($v1:ident, $state:ident, $feat:literal, $registry_name:literal, $route_name:literal, $mod:ident) => {
+            #[cfg(feature = $feat)]
+            if $state
+                .registry
+                .services()
+                .iter()
+                .any(|s| s.name == $registry_name)
+            {
+                $v1 = $v1.nest(
+                    concat!("/", $route_name),
+                    services::$mod::routes($state.clone()),
+                );
+            }
+        };
     }
 
     if is_master {
@@ -475,6 +489,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "tailscale", "tailscale", tailscale);
         mount_if_enabled!(v1, state, "linkding", "linkding", linkding);
         mount_if_enabled!(v1, state, "memos", "memos", memos);
+        mount_if_enabled!(v1, state, "beads", "beads", beads);
         mount_if_enabled!(v1, state, "bytestash", "bytestash", bytestash);
         mount_if_enabled!(v1, state, "paperless", "paperless", paperless);
         mount_if_enabled!(v1, state, "arcane", "arcane", arcane);
@@ -497,7 +512,14 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "loggifly", "loggifly", loggifly);
         mount_if_enabled!(v1, state, "adguard", "adguard", adguard);
         mount_if_enabled!(v1, state, "glances", "glances", glances);
-        mount_if_enabled!(v1, state, "uptime_kuma", "uptime_kuma", uptime_kuma);
+        mount_if_enabled!(
+            v1,
+            state,
+            "uptime_kuma",
+            "uptime-kuma",
+            "uptime-kuma",
+            uptime_kuma
+        );
         mount_if_enabled!(v1, state, "pihole", "pihole", pihole);
         mount_if_enabled!(v1, state, "neo4j", "neo4j", neo4j);
         // [lab-scaffold: api-routes]
@@ -1395,6 +1417,50 @@ mod tests {
             StatusCode::NOT_FOUND,
             "radarr routes must not be mounted when radarr is absent from the runtime registry"
         );
+    }
+
+    #[cfg(feature = "uptime_kuma")]
+    #[tokio::test]
+    async fn uptime_kuma_route_uses_registry_service_name() {
+        let mut state = AppState::new();
+        state.clients = Arc::new(crate::dispatch::clients::ServiceClients {
+            uptime_kuma: Some(Arc::new(
+                lab_apis::uptime_kuma::UptimeKumaClient::new(
+                    "http://127.0.0.1:3001",
+                    lab_apis::core::Auth::None,
+                )
+                .unwrap(),
+            )),
+            ..Default::default()
+        });
+        let app = build_router_with_bearer(state, None, None);
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/uptime-kuma")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"contract.status","params":{}}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/uptime_kuma")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(r#"{"action":"contract.status","params":{}}"#))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

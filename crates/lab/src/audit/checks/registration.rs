@@ -6,13 +6,16 @@ use super::super::{CheckResult, onboarding::SharedContext};
 
 pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String, CheckResult)> {
     let mut out = Vec::new();
+    let service_file = repo_root.join(format!("crates/lab-apis/src/{name}.rs"));
+    let service_text = std::fs::read_to_string(service_file).unwrap_or_default();
+    let registry_name = extract_plugin_meta_name(&service_text).unwrap_or(name);
     let feature = format!("{name} = [");
     let service_mod = format!("#[cfg(feature = \"{name}\")]\npub mod {name};");
     let dispatch_mod = format!("pub mod {name};");
-    let api_mount = format!("mount_if_enabled!(v1, state, \"{name}\", \"{name}\", {name})");
+    let api_mount = format!("mount_if_enabled!(v1, state, \"{name}\", \"{registry_name}\"");
     let client_field = format!("pub {name}: Option<");
     let client_load = format!("{name}: crate::dispatch::{name}::client_from_env().map(Arc::new)");
-    let tui_health = format!("spawn_health!(\"{name}\", client)");
+    let tui_health = format!("spawn_health!(\"{registry_name}\", client)");
     // Use the register_service! macro anchor rather than a bare name substring to avoid
     // false passes from the name appearing in comments or unrelated strings.
     let mcp_registry_token = format!("register_service!(reg, \"{name}\"");
@@ -59,7 +62,10 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         "api.services.rs".into(),
         contains_check(api_services, &service_mod),
     ));
-    out.push(("api.router.rs".into(), contains_check(router, &api_mount)));
+    out.push((
+        "api.router.rs".into(),
+        contains_feature_check(router, &api_mount),
+    ));
     out.push((
         "dispatch.clients.rs".into(),
         contains_check(state, &client_field),
@@ -70,6 +76,14 @@ pub fn run(name: &str, shared: &SharedContext, repo_root: &Path) -> Vec<(String,
         contains_check(state, &client_load).or_skip("state client mapping is not yet threaded"),
     ));
     out
+}
+
+fn extract_plugin_meta_name(text: &str) -> Option<&str> {
+    text.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let value = trimmed.strip_prefix("name: \"")?;
+        value.split_once('"').map(|(name, _)| name)
+    })
 }
 
 fn contains_check(haystack: &str, needle: &str) -> CheckResult {
@@ -105,6 +119,18 @@ impl CheckExt for CheckResult {
 
 #[cfg(test)]
 mod tests {
+    use super::extract_plugin_meta_name;
+
+    #[test]
+    fn extracts_plugin_meta_name() {
+        let text = r#"
+pub const META: PluginMeta = PluginMeta {
+    name: "uptime-kuma",
+};
+"#;
+        assert_eq!(extract_plugin_meta_name(text), Some("uptime-kuma"));
+    }
+
     #[test]
     fn bare_pub_mod_fails_mcp_check() {
         // A file with bare pub mod foo; but no cfg guard should fail

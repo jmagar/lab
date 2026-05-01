@@ -890,16 +890,53 @@ impl AcpSessionRegistry {
                 }
             }
 
-            // Runtime thread exited (event_tx dropped) — clean up.
+            // Runtime thread exited (event_tx dropped). Keep the session and
+            // transcript available for replay; the idle reaper or explicit
+            // close path owns eventual removal.
             let current_state = session.state.read().await.clone();
             if matches!(
                 current_state,
                 AcpSessionState::Running | AcpSessionState::WaitingForPermission
             ) {
+                let failed = next_session_event(
+                    &session,
+                    AcpEvent::SessionUpdate {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session.id.clone(),
+                        seq: 0,
+                        state: AcpSessionState::Failed,
+                    },
+                )
+                .await;
+                persist_session_event(&registry, &failed).await;
+                apply_session_event(&session, &failed).await;
+                let _ = fanout_event(&session, Arc::new(failed)).await;
+
+                let exit_event = next_session_event(
+                    &session,
+                    AcpEvent::ProviderInfo {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: jiff::Timestamp::now().to_string(),
+                        session_id: session.id.clone(),
+                        seq: 0,
+                        provider: "lab".to_string(),
+                        raw: serde_json::json!({
+                            "type": "runtime_exit",
+                            "title": "ACP provider exited while session was active",
+                            "status": "failed",
+                        }),
+                    },
+                )
+                .await;
+                persist_session_event(&registry, &exit_event).await;
+                apply_session_event(&session, &exit_event).await;
+                let _ = fanout_event(&session, Arc::new(exit_event)).await;
+
                 tracing::error!(
                     surface = "acp", service = "registry", action = "runtime.exit",
                     session_id = %session.id, state = ?current_state,
-                    "ACP subprocess exited unexpectedly while session active — removing from registry",
+                    "ACP subprocess exited unexpectedly while session active",
                 );
             } else {
                 tracing::info!(
@@ -908,7 +945,8 @@ impl AcpSessionRegistry {
                     "ACP session runtime exited cleanly",
                 );
             }
-            registry.sessions.write().await.remove(&session.id);
+            let mut handle = session.handle.lock().await;
+            *handle = None;
         });
     }
 
@@ -1024,13 +1062,17 @@ impl AcpSessionRegistry {
                 .insert(session_id.to_string(), Arc::clone(&session));
         }
 
-        // Minimal forwarder: just drains and removes on channel close.
+        // Minimal forwarder: just drains and marks the runtime detached on
+        // channel close. Production sessions stay replayable after provider
+        // exit; test sessions should preserve that lifecycle contract.
         let registry = self.clone();
         let sid = session_id.to_string();
         tokio::spawn(async move {
             let mut rx = fake_rx;
             while rx.recv().await.is_some() {}
-            registry.sessions.write().await.remove(&sid);
+            if let Ok(session) = registry.get_session_arc(&sid).await {
+                *session.handle.lock().await = None;
+            }
         });
         summary
     }
@@ -1348,27 +1390,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_session_removed_after_event_stream_closes() {
+    async fn test_session_retained_after_event_stream_closes() {
         let registry = test_registry();
         registry.inject_fake_session("exit-sess", "").await;
         assert_eq!(registry.session_count().await, 1);
         // Drop the handle — closes command_tx, which closes the fake channel,
-        // causing the minimal forwarder task to exit and remove the session.
+        // causing the minimal forwarder task to exit while retaining the
+        // session for transcript replay.
         {
             let session = registry.get_session_arc("exit-sess").await.unwrap();
             *session.handle.lock().await = None;
         }
         let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
         while tokio::time::Instant::now() < deadline {
-            if registry.session_count().await == 0 {
+            let session = registry.get_session_arc("exit-sess").await.unwrap();
+            if session.handle.lock().await.is_none() {
                 break;
             }
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
         assert_eq!(
             registry.session_count().await,
-            0,
-            "session removed after runtime exit"
+            1,
+            "session retained after runtime exit"
         );
     }
 

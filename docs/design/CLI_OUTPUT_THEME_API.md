@@ -28,9 +28,9 @@ It is intentionally scoped to CLI output, not the Ratatui TUI. The TUI can later
 
 The output layer is now split into:
 
-- [output.rs](/home/jmagar/workspace/lab/crates/lab/src/output.rs) — stable public API and re-exports
-- [theme.rs](/home/jmagar/workspace/lab/crates/lab/src/output/theme.rs) — policy, environment detection, palette, semantic theme, symbol fallback
-- [render.rs](/home/jmagar/workspace/lab/crates/lab/src/output/render.rs) — human-readable rendering and JSON routing
+- [output.rs](../../crates/lab/src/output.rs) — stable public API and re-exports
+- [theme.rs](../../crates/lab/src/output/theme.rs) — policy, environment detection, palette, semantic theme, symbol fallback
+- [render.rs](../../crates/lab/src/output/render.rs) — human-readable rendering and JSON routing
 
 The active design is:
 

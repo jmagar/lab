@@ -1,7 +1,7 @@
 # Prowlarr API Coverage
 
 **Last updated:** 2026-04-14
-**OpenAPI spec:** docs/api-specs/prowlarr.openapi.json
+**OpenAPI spec:** docs/upstream-api/prowlarr.openapi.json
 **OpenAPI version:** 3.0.4
 **API version:** 1.0.0
 **Paths:** 129

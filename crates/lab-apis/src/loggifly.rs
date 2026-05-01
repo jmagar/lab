@@ -1,4 +1,4 @@
-//! LoggiFly source-contract placeholder.
+//! LoggiFly local heartbeat/config contract.
 
 pub mod client;
 pub mod error;
@@ -16,7 +16,7 @@ use crate::core::traits::ServiceClient;
 pub const META: PluginMeta = PluginMeta {
     name: "loggifly",
     display_name: "LoggiFly",
-    description: "Docker log/event monitor source-contract status",
+    description: "Docker log/event monitor local heartbeat/config status",
     category: Category::Network,
     docs_url: "https://clemcer.github.io/LoggiFly/",
     required_env: &[],
@@ -30,8 +30,22 @@ pub const META: PluginMeta = PluginMeta {
         },
         EnvVar {
             name: "LOGGIFLY_CONFIG_ROOT",
-            description: "Future allowlisted root for config/health inspection",
+            description: "Allowlisted directory containing LoggiFly config.yaml for redacted summary",
             example: "/etc/loggifly",
+            secret: false,
+            ui: Some(&TEXT_FIELD),
+        },
+        EnvVar {
+            name: "LOGGIFLY_HEARTBEAT_PATH",
+            description: "Heartbeat file written by LoggiFly when ENABLE_HEALTHCHECK=true",
+            example: "/dev/shm/loggifly-heartbeat",
+            secret: false,
+            ui: Some(&TEXT_FIELD),
+        },
+        EnvVar {
+            name: "LOGGIFLY_HEARTBEAT_INTERVAL_SECS",
+            description: "Heartbeat interval in seconds; max age is interval * 1.5",
+            example: "60",
             secret: false,
             ui: Some(&TEXT_FIELD),
         },
@@ -50,8 +64,21 @@ impl ServiceClient for LoggiflyClient {
     }
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
-        Ok(ServiceStatus::degraded(
-            "implementation deferred: no stable safe API",
-        ))
+        let status = self
+            .health_status()
+            .await
+            .map_err(|err| ApiError::Internal(err.to_string()))?;
+        match status.status {
+            "healthy" => Ok(ServiceStatus {
+                reachable: true,
+                auth_ok: true,
+                version: None,
+                latency_ms: 0,
+                message: Some("heartbeat fresh".into()),
+            }),
+            "stale" => Ok(ServiceStatus::degraded("heartbeat stale")),
+            "missing" => Ok(ServiceStatus::degraded("heartbeat missing")),
+            other => Ok(ServiceStatus::degraded(format!("heartbeat {other}"))),
+        }
     }
 }

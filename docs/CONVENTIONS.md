@@ -133,7 +133,7 @@ Rules:
 - `lab-apis` types stay free of presentation concerns
 - avoid ad-hoc `println!`-driven UX logic
 
-The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
+The canonical serialization and output-boundary contract lives in [design/SERIALIZATION.md](./design/SERIALIZATION.md).
 
 ## Security and Privacy
 

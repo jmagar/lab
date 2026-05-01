@@ -84,7 +84,7 @@ If kind cannot be auto-detected and no override is given, `component.import` ret
 
 ## Actions
 
-All 16 actions are dispatched via `stash({ "action": "...", "params": {...} })`.
+All 18 actions are dispatched via `stash({ "action": "...", "params": {...} })`.
 
 ### Component lifecycle (9 actions)
 
@@ -100,7 +100,7 @@ All 16 actions are dispatched via `stash({ "action": "...", "params": {...} })`.
 | `component.export` | Yes | Export a component to a local path |
 | `component.deploy` | Yes | Deploy a component to a registered target |
 
-### Provider sync (3 actions)
+### Provider sync (4 actions)
 
 | Action | Destructive | Description |
 |--------|-------------|-------------|
@@ -109,7 +109,7 @@ All 16 actions are dispatched via `stash({ "action": "...", "params": {...} })`.
 | `provider.push` | Yes | Push the head revision to a provider |
 | `provider.pull` | Yes | Pull the latest revision from a provider |
 
-### Deploy targets (4 actions)
+### Deploy targets (3 actions)
 
 | Action | Destructive | Description |
 |--------|-------------|-------------|

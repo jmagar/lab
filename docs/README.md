@@ -15,6 +15,8 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Refer to [OAUTH.md](./OAUTH.md) for bearer vs OAuth mode selection, Google-backed authorization flow, lab-issued JWT behavior, and callback-forwarding constraints.
 - Use [GATEWAY.md](./GATEWAY.md) when managing upstream MCP gateways over CLI, MCP, or `/v1/gateway`.
 - Use [acp/README.md](./acp/README.md) for ACP service architecture, the `acp` vs `chat` boundary, and gateway integration direction.
+- Use [acp/design.md](./acp/design.md) for ACP design details and [acp/research-findings.md](./acp/research-findings.md) for the supporting research notes.
+- Use [coverage/README.md](./coverage/README.md), [upstream-api/README.md](./upstream-api/README.md), [generated/README.md](./generated/README.md), and [features/README.md](./features/README.md) for directory-level indexes.
 - Use [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md) for Lab-owned registry metadata layered onto the mirrored MCP Registry surface.
 - Use [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [FLEET_LOGS.md](./FLEET_LOGS.md), and [DEPLOY.md](./DEPLOY.md) for the master/non-master fleet runtime, device inventory, and deployment model.
 - Use [MONITORS.md](./MONITORS.md) for Claude Code monitor definitions (`plugins/monitors/monitors.json`) and the `lab deploy monitor` command.
@@ -95,6 +97,10 @@ The docs are split by topic so contributors do not have to recover architecture,
   Gateway control plane: CRUD, reload/test flows, runtime views, and tool exposure policy.
 - [acp/README.md](./acp/README.md)
   ACP service entrypoint, first-class service design, and the browser `chat` relationship.
+- [acp/design.md](./acp/design.md)
+  ACP detailed design notes.
+- [acp/research-findings.md](./acp/research-findings.md)
+  ACP supporting research findings.
 - [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md)
   Lab-owned metadata layered onto mirrored MCP Registry entries: contract, validation, audit fields, filters, CLI, and UI behavior.
 - [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md)
@@ -127,6 +133,16 @@ The docs are split by topic so contributors do not have to recover architecture,
   Labby web UI design-system contract: Aurora tokens, typography, surfaces, components, page patterns, accessibility, and approval rules.
 - [SERVICES.md](./SERVICES.md)
   Service inventory, feature gates, plugin metadata, multi-instance support, coverage docs, and add-a-service workflow.
+- [coverage/README.md](./coverage/README.md)
+  Service coverage doc index.
+- [upstream-api/README.md](./upstream-api/README.md)
+  Upstream API/spec reference index.
+- [generated/README.md](./generated/README.md)
+  Generated CLI/MCP catalog docs and refresh notes.
+- [features/README.md](./features/README.md)
+  Focused feature docs and implementation artifacts.
+- [design/README.md](./design/README.md)
+  Design contract and artifact index.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
 - [SCAFFOLD_AND_AUDIT.md](./SCAFFOLD_AND_AUDIT.md)

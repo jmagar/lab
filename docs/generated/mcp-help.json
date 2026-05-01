@@ -83,7 +83,7 @@
               "name": "uri",
               "ty": "string",
               "required": true,
-              "description": "Local path or 'host:/abs/path' for SSH \u2014 same format as scan"
+              "description": "Local path or 'host:/abs/path' for SSH — same format as scan"
             }
           ],
           "returns": "WritePlan"
@@ -888,7 +888,7 @@
               "name": "query",
               "ty": "json",
               "required": false,
-              "description": "LogQuery filter object (text, levels, subsystems, surfaces, ts range, \u2026)"
+              "description": "LogQuery filter object (text, levels, subsystems, surfaces, ts range, …)"
             }
           ],
           "returns": "Value"
@@ -1589,7 +1589,7 @@
               "name": "project_path",
               "ty": "string",
               "required": false,
-              "description": "Absolute project path \u2014 required when `scope` is `project`"
+              "description": "Absolute project path — required when `scope` is `project`"
             },
             {
               "name": "confirm",
@@ -1758,7 +1758,7 @@
               "name": "gateway_ids",
               "ty": "array",
               "required": false,
-              "description": "Lab gateway names to add this server to \u2014 one gateway.add call per entry. Either gateway_ids or client_targets must be provided."
+              "description": "Lab gateway names to add this server to — one gateway.add call per entry. Either gateway_ids or client_targets must be provided."
             },
             {
               "name": "client_targets",
@@ -1782,7 +1782,7 @@
               "name": "env_values",
               "ty": "object",
               "required": false,
-              "description": "Stdio only: map of env var name \u2192 value for variables declared by the server's packages[0].environmentVariables. Required vars with no default must be supplied here."
+              "description": "Stdio only: map of env var name → value for variables declared by the server's packages[0].environmentVariables. Required vars with no default must be supplied here."
             },
             {
               "name": "confirm",
@@ -1896,7 +1896,7 @@
     },
     {
       "name": "acp",
-      "description": "Agent Client Protocol \u2014 session management and provider orchestration",
+      "description": "Agent Client Protocol — session management and provider orchestration",
       "category": "ai",
       "status": "available",
       "requires_http_subject": false,
@@ -2044,7 +2044,7 @@
               "name": "page_context",
               "ty": "object",
               "required": false,
-              "description": "Optional page context: {route, entityType?, entityId?} \u2014 prepends a compact context prefix to the prompt"
+              "description": "Optional page context: {route, entityType?, entityId?} — prepends a compact context prefix to the prompt"
             }
           ],
           "returns": "Value"
@@ -2197,7 +2197,7 @@
     },
     {
       "name": "stash",
-      "description": "Component versioning and deployment \u2014 track, snapshot, and deploy Claude Code artefacts",
+      "description": "Component versioning and deployment — track, snapshot, and deploy Claude Code artefacts",
       "category": "bootstrap",
       "status": "available",
       "requires_http_subject": false,
@@ -4015,7 +4015,7 @@
     },
     {
       "name": "plex",
-      "description": "Plex Media Server \u2014 library browsing, session management, and playlists",
+      "description": "Plex Media Server — library browsing, session management, and playlists",
       "category": "media",
       "status": "available",
       "requires_http_subject": false,
@@ -4414,7 +4414,7 @@
     },
     {
       "name": "tautulli",
-      "description": "Plex Media Server analytics \u2014 activity, history, statistics, and user management",
+      "description": "Plex Media Server analytics — activity, history, statistics, and user management",
       "category": "media",
       "status": "available",
       "requires_http_subject": false,
@@ -5482,19 +5482,19 @@
               "name": "ratio_limit",
               "ty": "number",
               "required": true,
-              "description": "Ratio limit (-2=global, -1=no limit, \u22650=cap)"
+              "description": "Ratio limit (-2=global, -1=no limit, ≥0=cap)"
             },
             {
               "name": "seeding_time_limit",
               "ty": "integer",
               "required": true,
-              "description": "Seeding time limit in minutes (-2=global, -1=no limit, \u22650=cap)"
+              "description": "Seeding time limit in minutes (-2=global, -1=no limit, ≥0=cap)"
             },
             {
               "name": "inactive_seeding_time_limit",
               "ty": "integer",
               "required": true,
-              "description": "Inactive seeding time limit in minutes (-2=global, -1=no limit, \u22650=cap)"
+              "description": "Inactive seeding time limit in minutes (-2=global, -1=no limit, ≥0=cap)"
             }
           ],
           "returns": "{}"
@@ -5557,7 +5557,7 @@
     },
     {
       "name": "tailscale",
-      "description": "WireGuard-based mesh VPN \u2014 list devices, manage auth keys, query DNS settings",
+      "description": "WireGuard-based mesh VPN — list devices, manage auth keys, query DNS settings",
       "category": "network",
       "status": "available",
       "requires_http_subject": false,
@@ -6027,7 +6027,7 @@
         },
         {
           "name": "bookmark.update",
-          "description": "Partially update a bookmark (PATCH \u2014 only provided fields are changed)",
+          "description": "Partially update a bookmark (PATCH — only provided fields are changed)",
           "destructive": false,
           "params": [
             {
@@ -6152,7 +6152,7 @@
         },
         {
           "name": "tag.create",
-          "description": "Create a new tag (linkding has no tag-delete API \u2014 tags are permanent)",
+          "description": "Create a new tag (linkding has no tag-delete API — tags are permanent)",
           "destructive": false,
           "params": [
             {
@@ -6212,7 +6212,7 @@
         },
         {
           "name": "bundle.update",
-          "description": "Partially update a bundle (PATCH \u2014 only provided fields are changed)",
+          "description": "Partially update a bundle (PATCH — only provided fields are changed)",
           "destructive": false,
           "params": [
             {
@@ -6382,7 +6382,7 @@
         },
         {
           "name": "memos.update",
-          "description": "Update a memo by resource name (PATCH \u2014 only provided fields are changed)",
+          "description": "Update a memo by resource name (PATCH — only provided fields are changed)",
           "destructive": false,
           "params": [
             {
@@ -6930,6 +6930,133 @@
             }
           ],
           "returns": "void"
+        }
+      ]
+    },
+    {
+      "name": "beads",
+      "description": "Git/Dolt-backed issue tracker through the local bd CLI",
+      "category": "bootstrap",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "contract.status",
+          "description": "Return Beads local CLI integration contract status",
+          "destructive": false,
+          "params": [],
+          "returns": "ContractStatus"
+        },
+        {
+          "name": "health.status",
+          "description": "Check bd availability and workspace status",
+          "destructive": false,
+          "params": [],
+          "returns": "BeadsHealth"
+        },
+        {
+          "name": "version.get",
+          "description": "Return bd version metadata",
+          "destructive": false,
+          "params": [],
+          "returns": "BdJson"
+        },
+        {
+          "name": "context.get",
+          "description": "Return active Beads workspace/backend context",
+          "destructive": false,
+          "params": [],
+          "returns": "BdJson"
+        },
+        {
+          "name": "status.summary",
+          "description": "Return Beads database summary counts",
+          "destructive": false,
+          "params": [],
+          "returns": "BdJson"
+        },
+        {
+          "name": "issue.list",
+          "description": "List Beads issues with optional status and limit filters",
+          "destructive": false,
+          "params": [
+            {
+              "name": "status",
+              "ty": "string",
+              "required": false,
+              "description": "Optional stored status filter: open, in_progress, blocked, deferred, closed"
+            },
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum issues to return, capped at 500"
+            }
+          ],
+          "returns": "BdJson"
+        },
+        {
+          "name": "issue.ready",
+          "description": "List ready unblocked Beads issues",
+          "destructive": false,
+          "params": [
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": false,
+              "description": "Maximum issues to return, capped at 500"
+            }
+          ],
+          "returns": "BdJson"
+        },
+        {
+          "name": "issue.show",
+          "description": "Show one Beads issue by id",
+          "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "string",
+              "required": true,
+              "description": "Beads issue id"
+            }
+          ],
+          "returns": "BdJson"
+        },
+        {
+          "name": "graph.show",
+          "description": "Show one Beads issue dependency graph",
+          "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "string",
+              "required": true,
+              "description": "Beads issue id"
+            }
+          ],
+          "returns": "BdJson"
         }
       ]
     },
@@ -7483,7 +7610,7 @@
     },
     {
       "name": "arcane",
-      "description": "Docker management UI \u2014 environments, containers, images, and volumes",
+      "description": "Docker management UI — environments, containers, images, and volumes",
       "category": "network",
       "status": "available",
       "requires_http_subject": false,
@@ -7859,7 +7986,7 @@
     },
     {
       "name": "unraid",
-      "description": "Unraid server GraphQL API \u2014 system info, metrics, array status, Docker, and disk management",
+      "description": "Unraid server GraphQL API — system info, metrics, array status, Docker, and disk management",
       "category": "network",
       "status": "available",
       "requires_http_subject": false,
@@ -8101,7 +8228,7 @@
         },
         {
           "name": "parity.check-cancel",
-          "description": "Cancel a running parity check (destructive \u2014 invalidates partial parity data)",
+          "description": "Cancel a running parity check (destructive — invalidates partial parity data)",
           "destructive": true,
           "params": [],
           "returns": "{ ok: true }"
@@ -10122,7 +10249,7 @@
               "name": "priority",
               "ty": "integer",
               "required": false,
-              "description": "Priority 0\u201310; higher values bypass Do Not Disturb"
+              "description": "Priority 0–10; higher values bypass Do Not Disturb"
             }
           ],
           "returns": "Message"
@@ -10895,7 +11022,7 @@
               "name": "temperature",
               "ty": "number",
               "required": false,
-              "description": "Sampling temperature (0.0 \u2013 2.0)"
+              "description": "Sampling temperature (0.0 – 2.0)"
             },
             {
               "name": "max_tokens",
@@ -11357,7 +11484,7 @@
     },
     {
       "name": "tei",
-      "description": "Hugging Face TEI server \u2014 embeddings, rerankers, sequence classification",
+      "description": "Hugging Face TEI server — embeddings, rerankers, sequence classification",
       "category": "ai",
       "status": "available",
       "requires_http_subject": false,
@@ -11437,7 +11564,7 @@
         },
         {
           "name": "embed.rerank",
-          "description": "Rerank texts against a query (POST /rerank). Max 100 texts per call \u2014 split larger batches across multiple requests.",
+          "description": "Rerank texts against a query (POST /rerank). Max 100 texts per call — split larger batches across multiple requests.",
           "destructive": false,
           "params": [
             {
@@ -11779,7 +11906,7 @@
         },
         {
           "name": "config.list",
-          "description": "Lists the current deploy configuration. Note: configuration is loaded once at startup \u2014 restart the lab process to pick up changes to ~/.ssh/config or deploy preferences.",
+          "description": "Lists the current deploy configuration. Note: configuration is loaded once at startup — restart the lab process to pick up changes to ~/.ssh/config or deploy preferences.",
           "destructive": false,
           "params": [],
           "returns": "ConfigListing"
@@ -11872,176 +11999,6 @@
             }
           ],
           "returns": "{entries: [{name, path, kind, size, modified, accessible}], truncated: bool}"
-        }
-      ]
-    },
-    {
-      "name": "dozzle",
-      "description": "Read-only container log observation through Dozzle",
-      "category": "bootstrap",
-      "status": "available",
-      "requires_http_subject": false,
-      "actions": [
-        {
-          "name": "help",
-          "description": "Show this action catalog",
-          "destructive": false,
-          "params": [],
-          "returns": "Catalog"
-        },
-        {
-          "name": "schema",
-          "description": "Return the parameter schema for a named action",
-          "destructive": false,
-          "params": [
-            {
-              "name": "action",
-              "ty": "string",
-              "required": true,
-              "description": "Action name to describe"
-            }
-          ],
-          "returns": "Schema"
-        },
-        {
-          "name": "server.health",
-          "description": "Probe Dozzle health",
-          "destructive": false,
-          "params": [],
-          "returns": "HealthResponse"
-        },
-        {
-          "name": "server.version",
-          "description": "Fetch Dozzle version",
-          "destructive": false,
-          "params": [],
-          "returns": "VersionResponse"
-        },
-        {
-          "name": "containers.list",
-          "description": "Return the first bounded Dozzle container inventory event",
-          "destructive": false,
-          "params": [
-            {
-              "name": "max_events",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum SSE events to inspect before stopping"
-            },
-            {
-              "name": "max_bytes",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum bytes to read from the SSE stream"
-            },
-            {
-              "name": "timeout_ms",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum stream read duration in milliseconds"
-            }
-          ],
-          "returns": "ContainersListResponse"
-        },
-        {
-          "name": "logs.fetch",
-          "description": "Fetch bounded container logs as parsed JSONL events",
-          "destructive": false,
-          "params": [
-            {
-              "name": "host",
-              "ty": "string",
-              "required": true,
-              "description": "Dozzle host id"
-            },
-            {
-              "name": "container_id",
-              "ty": "string",
-              "required": true,
-              "description": "Container id"
-            },
-            {
-              "name": "stdout",
-              "ty": "bool",
-              "required": false,
-              "description": "Include stdout logs; defaults to true when stderr is absent"
-            },
-            {
-              "name": "stderr",
-              "ty": "bool",
-              "required": false,
-              "description": "Include stderr logs; defaults to true when stdout is absent"
-            },
-            {
-              "name": "max_lines",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum JSONL rows to parse"
-            },
-            {
-              "name": "max_bytes",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum bytes to read from Dozzle"
-            },
-            {
-              "name": "timeout_ms",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum read duration in milliseconds"
-            }
-          ],
-          "returns": "LogFetchResponse"
-        },
-        {
-          "name": "logs.fetch-plain",
-          "description": "Fetch bounded container logs as plain text",
-          "destructive": false,
-          "params": [
-            {
-              "name": "host",
-              "ty": "string",
-              "required": true,
-              "description": "Dozzle host id"
-            },
-            {
-              "name": "container_id",
-              "ty": "string",
-              "required": true,
-              "description": "Container id"
-            },
-            {
-              "name": "stdout",
-              "ty": "bool",
-              "required": false,
-              "description": "Include stdout logs; defaults to true when stderr is absent"
-            },
-            {
-              "name": "stderr",
-              "ty": "bool",
-              "required": false,
-              "description": "Include stderr logs; defaults to true when stdout is absent"
-            },
-            {
-              "name": "max_lines",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum lines reported in metadata"
-            },
-            {
-              "name": "max_bytes",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum bytes to read from Dozzle"
-            },
-            {
-              "name": "timeout_ms",
-              "ty": "integer",
-              "required": false,
-              "description": "Maximum read duration in milliseconds"
-            }
-          ],
-          "returns": "PlainLogFetchResponse"
         }
       ]
     },
@@ -12541,7 +12498,7 @@
     },
     {
       "name": "loggifly",
-      "description": "Docker log/event monitor source-contract status",
+      "description": "Docker log/event monitor local heartbeat/config status",
       "category": "network",
       "status": "available",
       "requires_http_subject": false,
@@ -12569,10 +12526,24 @@
         },
         {
           "name": "contract.status",
-          "description": "Return LoggiFly implementation deferral status",
+          "description": "Return LoggiFly local integration contract status",
           "destructive": false,
           "params": [],
           "returns": "ContractStatus"
+        },
+        {
+          "name": "health.status",
+          "description": "Inspect the documented LoggiFly heartbeat file health status",
+          "destructive": false,
+          "params": [],
+          "returns": "HealthStatus"
+        },
+        {
+          "name": "config.summary",
+          "description": "Summarize allowlisted LoggiFly config.yaml without returning raw config",
+          "destructive": false,
+          "params": [],
+          "returns": "ConfigSummary"
         }
       ]
     },
@@ -12811,7 +12782,7 @@
         },
         {
           "name": "contract.status",
-          "description": "Show the Uptime Kuma integration contract and live-read status",
+          "description": "Show the Uptime Kuma integration contract and live action status",
           "destructive": false,
           "params": [],
           "returns": "UptimeKumaResponse"
@@ -12834,6 +12805,82 @@
           "name": "monitor.get",
           "description": "Fetch one monitor through the Socket.IO actor",
           "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.create",
+          "description": "Create a monitor through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "config",
+              "ty": "object",
+              "required": true,
+              "description": "Uptime Kuma monitor config object"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.update",
+          "description": "Update a monitor through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            },
+            {
+              "name": "config",
+              "ty": "object",
+              "required": true,
+              "description": "Uptime Kuma monitor config object"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.delete",
+          "description": "Delete a monitor through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.pause",
+          "description": "Pause monitor checks through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.resume",
+          "description": "Resume monitor checks through the Socket.IO actor",
+          "destructive": true,
           "params": [
             {
               "name": "id",
@@ -12876,6 +12923,34 @@
           "description": "List notification channels through the Socket.IO actor",
           "destructive": false,
           "params": [],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "notification.test",
+          "description": "Send a real notification through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "notification_id",
+              "ty": "integer",
+              "required": true,
+              "description": "Notification channel id to test"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "notification.add",
+          "description": "Create a notification channel through the Socket.IO actor",
+          "destructive": true,
+          "params": [
+            {
+              "name": "config",
+              "ty": "object",
+              "required": true,
+              "description": "Notification config object; template markers and local webhook targets are rejected"
+            }
+          ],
           "returns": "UptimeKumaResponse"
         }
       ]

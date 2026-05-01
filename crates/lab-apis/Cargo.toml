@@ -52,6 +52,7 @@ all = [
     "tailscale",
     "linkding",
     "memos",
+    "beads",
     "bytestash",
     "paperless",
     "arcane",
@@ -78,9 +79,11 @@ all = [
     "deploy",
     "mcpregistry",
     "acp_registry",
+    "dozzle",
 ]
 apprise = []
 arcane = []
+beads = []
 bytestash = []
 default = []
 deploy = []

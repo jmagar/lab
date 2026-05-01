@@ -373,7 +373,7 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
             vars.clone(),
             crate::dispatch::uptime_kuma::client_from_env,
         ) {
-            spawn_health!("uptime_kuma", client);
+            spawn_health!("uptime-kuma", client);
         }
     }
 
@@ -434,6 +434,16 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
             crate::dispatch::loggifly::client_from_env,
         ) {
             spawn_health!("loggifly", client);
+        }
+    }
+
+    #[cfg(feature = "beads")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::beads::client_from_env,
+        ) {
+            spawn_health!("beads", client);
         }
     }
 

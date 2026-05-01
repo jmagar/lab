@@ -104,8 +104,8 @@ Useful checks after deployment:
 
 ```bash
 curl http://<device>:8765/health
-curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<master>:8765/v1/device/devices
-curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<master>:8765/v1/device/enrollments
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/devices
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/enrollments
 lab nodes list
 lab nodes enrollments list
 lab logs search <device> <query>

@@ -26,13 +26,22 @@ pub const META: PluginMeta = PluginMeta {
         secret: false,
         ui: Some(&URL_FIELD),
     }],
-    optional_env: &[EnvVar {
-        name: "SCRUTINY_API_KEY",
-        description: "Optional bearer token or reverse-proxy token",
-        example: "abc123...",
-        secret: true,
-        ui: Some(&SECRET_OPTIONAL_FIELD),
-    }],
+    optional_env: &[
+        EnvVar {
+            name: "SCRUTINY_API_KEY",
+            description: "Optional bearer token or reverse-proxy token",
+            example: "abc123...",
+            secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
+        },
+        EnvVar {
+            name: "SCRUTINY_TOKEN",
+            description: "Alias for optional bearer token or reverse-proxy token",
+            example: "abc123...",
+            secret: true,
+            ui: Some(&SECRET_OPTIONAL_FIELD),
+        },
+    ],
     default_port: Some(8080),
     supports_multi_instance: false,
 };

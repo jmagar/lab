@@ -2,15 +2,15 @@
 
 ## What is this?
 
-`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, **25 service integrations** (23 feature-gated + always-on `extract` and `device_runtime`) plus always-on operator tools like `gateway`, `logs`, and `device`; MCP dispatch still uses a single tool per runtime service with an `action` + `params` shape instead of hundreds of per-method tools.
+`lab` is a pluggable homelab CLI + MCP server SDK in Rust. One binary, feature-gated upstream integrations plus always-on operator tools like `gateway`, `logs`, `device`, `marketplace`, `acp`, `extract`, and `stash`; MCP dispatch still uses a single tool per runtime service with an `action` + `params` shape instead of hundreds of per-method tools.
 
 Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
 Observability is governed by `docs/OBSERVABILITY.md`. When adding or changing request paths, treat that file as the source of truth for logging boundaries, required fields, correlation, redaction, and verification.
-Errors are governed by `docs/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/SERIALIZATION.md`.
+Errors are governed by `docs/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/design/SERIALIZATION.md`.
 Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.md`.
 
-**Build assumption.** This repo is developed and verified as an **all-features** binary. Treat `cargo build --all-features`, `cargo test --all-features` / `cargo test --tests --no-fail-fast`, and the equivalent `just` commands as the default truth. Do not delete or rewrite shared helpers just because they appear unused in a narrow feature slice; first verify whether they are used by other feature-gated services in the normal all-features build.
+**Build assumption.** This repo is developed and verified as an **all-features** binary. Treat `cargo build --all-features`, `cargo nextest run --all-features`, and the equivalent `just` commands as the default truth. Do not delete or rewrite shared helpers just because they appear unused in a narrow feature slice; first verify whether they are used by other feature-gated services in the normal all-features build.
 
 **Service onboarding rule.** When bringing a service online, prefer scaffold first, audit second, and all-features verification last. New onboarding work should be generated with `lab scaffold service`, checked with `lab audit onboarding`, and only then validated with the all-features test/build path.
 
@@ -132,8 +132,8 @@ radarr({ "action": "schema", "params": { "action": "movie.add" } })  // per-acti
 
 - **Action naming:** `<resource>.<verb>`, lowercase, dot-separated.
 - **Built-in actions:** every tool accepts `help` and `schema` without declaring them.
-- **Discovery:** `lab://<service>/actions` MCP resource + global `lab.help` meta-tool + `lab://catalog` resource.
-- **Shared catalog.** `build_catalog()` is a single function feeding three surfaces: the `lab.help` MCP tool, the `lab://catalog` MCP resource, and the `lab help` CLI subcommand. Never duplicate catalog logic — extend the builder.
+- **Discovery:** `lab://<service>/actions` MCP resource + `lab://catalog` resource.
+- **Shared catalog.** `build_catalog()` is a single function feeding the `lab://catalog` MCP resource and the `lab help` CLI subcommand. Never duplicate catalog logic — extend the builder.
 - **Multi-instance services.** When `{SERVICE}_{LABEL}_URL` env vars exist, callers pass `params.instance: "<label>"`. Unknown labels return a structured `unknown_instance` envelope listing valid labels.
 
 ### Destructive actions
@@ -273,7 +273,7 @@ Use **native `async fn in trait`** (stable in Rust 1.75+). Do **not** add the `a
 
 All formatting lives in `crates/lab/src/output.rs`. `lab-apis` types are pure data.
 
-`docs/SERIALIZATION.md` is the canonical source of truth for serde ownership, stable envelopes, and output boundaries.
+`docs/design/SERIALIZATION.md` is the canonical source of truth for serde ownership, stable envelopes, and output boundaries.
 
 - Derive `Tabled` on wrapper types in `lab` (not on `lab-apis` types — keeps `tabled` out of the SDK)
 - Support `--json` by serializing the underlying `lab-apis` type with `serde_json`
@@ -324,7 +324,7 @@ Scoped to a single crate:
 
 ```bash
 cargo test -p lab-apis        # client tests only (fast, wiremock-based)
-cargo test -p lab             # CLI/MCP/TUI tests only
+cargo test --manifest-path crates/lab/Cargo.toml  # CLI/MCP/TUI tests only
 ```
 
 ## Testing
@@ -346,9 +346,9 @@ just test-integration
 ## CI
 
 - GitHub Actions
-- Matrix: linux x86_64, windows x86_64
+- Matrix: linux x86_64
 - Checks: clippy, rustfmt, cargo-deny, nextest
-- Release: cargo-release → GitHub Releases with pre-built binaries (linux x86_64, linux aarch64, windows x86_64)
+- Release: cargo-release → GitHub Releases with pre-built binaries (linux x86_64, linux aarch64)
 
 ## Style
 

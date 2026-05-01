@@ -40,6 +40,7 @@ Commands:
   tailscale    Tailscale VPN network
   linkding     Linkding bookmark manager
   memos        Memos note-taking service
+  beads        Beads issue tracker
   bytestash    Bytestash snippet manager
   paperless    Paperless-ngx document manager
   arcane       Arcane Docker management UI
@@ -2017,6 +2018,24 @@ Options:
   -h, --help             Print help
 ```
 
+## `lab beads`
+
+```text
+Beads issue tracker
+
+Usage: lab beads [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `issue.ready`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab bytestash`
 
 ```text
@@ -2184,7 +2203,6 @@ Options:
       --params <PARAMS>      Action-specific parameters as JSON
       --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
       --instance <INSTANCE>  Select a named OpenACP instance
-  -y, --yes                  Accepted for consistency; OpenACP actions are not destructive-gated
       --dry-run              Print what would be done without executing
   -h, --help                 Print help
 ```

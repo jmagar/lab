@@ -1,11 +1,9 @@
 # Deploy Service
 
-> **Implementation status:** The `deploy` service skeleton is wired — types,
-> dispatch layer, CLI shim, and MCP adapter exist — but the V1 execution
-> pipeline (`plan`, `run`, `rollback`) is not yet connected to a live SSH
-> runner. Invoking those actions currently returns `internal_error` from the
-> `NoopRunner` placeholder. `config.list` and the built-in `help`/`schema`
-> actions are fully functional. The live runner wiring is the tracked follow-up.
+> **Implementation status:** The `deploy` service is wired for CLI and MCP
+> with the live SSH runner path. `config.list`, `plan`, `run`, `rollback`, and
+> the built-in `help`/`schema` actions are available. The HTTP API surface is
+> still deferred.
 
 The `deploy` service is a synthetic service that pushes the local `lab`
 release binary to one or more SSH targets with end-to-end integrity
@@ -110,9 +108,9 @@ mapping is defined for when it does).
 ## Implementation status
 
 Types, dispatch layer (catalog + params + authz + per-host lock + build
-stage), CLI shim, and MCP adapter are wired in this release. The V1
-orchestrator — concurrent host fan-out with canary, fail-fast, and the
-per-stage preflight/transfer/install/restart/verify pipeline — is
-implemented against a `HostIo` trait and is pending its live SSH wiring in
-a follow-up release. Until the runner lands, invoking `plan`, `run`, or
-`rollback` returns `internal_error` from the supplied `NoopRunner`.
+stage), CLI shim, MCP adapter, and the V1 orchestrator are wired. The
+orchestrator runs the per-stage preflight/transfer/install/restart/verify
+pipeline against the `HostIo` trait, with the production path using SSH I/O.
+
+The CLI also exposes `lab deploy monitor` for monitor-oriented deployment
+workflows.

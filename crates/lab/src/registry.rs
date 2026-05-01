@@ -402,6 +402,14 @@ pub fn build_default_registry() -> ToolRegistry {
         actions = crate::dispatch::bytestash::ACTIONS,
         dispatch = dispatch_fn!(crate::dispatch::bytestash::dispatch)
     );
+    // Audit anchor: register_service!(reg, "beads"
+    register_service!(
+        reg,
+        "beads",
+        beads,
+        actions = crate::dispatch::beads::ACTIONS,
+        dispatch = dispatch_fn!(crate::dispatch::beads::dispatch)
+    );
 
     register_service!(
         reg,
@@ -542,6 +550,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "memos" => Some(&lab_apis::memos::META),
         #[cfg(feature = "bytestash")]
         "bytestash" => Some(&lab_apis::bytestash::META),
+        #[cfg(feature = "beads")]
+        "beads" => Some(&lab_apis::beads::META),
         #[cfg(feature = "paperless")]
         "paperless" => Some(&lab_apis::paperless::META),
         #[cfg(feature = "arcane")]
@@ -650,6 +660,8 @@ mod tests {
         assert!(names.contains(&"memos"), "memos missing");
         #[cfg(feature = "bytestash")]
         assert!(names.contains(&"bytestash"), "bytestash missing");
+        #[cfg(feature = "beads")]
+        assert!(names.contains(&"beads"), "beads missing");
         #[cfg(feature = "paperless")]
         assert!(names.contains(&"paperless"), "paperless missing");
         #[cfg(feature = "arcane")]
@@ -739,6 +751,8 @@ mod tests {
             s.insert(lab_apis::memos::META.name);
             #[cfg(feature = "bytestash")]
             s.insert(lab_apis::bytestash::META.name);
+            #[cfg(feature = "beads")]
+            s.insert(lab_apis::beads::META.name);
             #[cfg(feature = "paperless")]
             s.insert(lab_apis::paperless::META.name);
             #[cfg(feature = "arcane")]

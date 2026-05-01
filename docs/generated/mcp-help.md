@@ -1,6 +1,6 @@
 # Lab MCP Help
 
-Generated from `target/debug/lab --json help`, the shared catalog used by `lab.help` / `lab://catalog`.
+Generated from `target/debug/lab --json help`, the shared catalog used by `lab://catalog`.
 
 ## `extract`
 
@@ -598,6 +598,26 @@ Category: `notes`  Status: `available`
 | `memo.share-list` | List share links for a memo | false | `name*: json` | `Value` |
 | `memo.share-create` | Create a share link for a memo | false | `name*: json` | `Value` |
 
+## `beads`
+
+Git/Dolt-backed issue tracker through the local bd CLI
+
+Category: `bootstrap`  Status: `available`
+
+| Action | Description | Destructive | Params | Returns |
+|---|---|---:|---|---|
+| `help` | Show this action catalog | false | - | `Catalog` |
+| `schema` | Return the parameter schema for a named action | false | `action*: json` | `Schema` |
+| `contract.status` | Return Beads local CLI integration contract status | false | - | `ContractStatus` |
+| `health.status` | Check bd availability and workspace status | false | - | `BeadsHealth` |
+| `version.get` | Return bd version metadata | false | - | `BdJson` |
+| `context.get` | Return active Beads workspace/backend context | false | - | `BdJson` |
+| `status.summary` | Return Beads database summary counts | false | - | `BdJson` |
+| `issue.list` | List Beads issues with optional status and limit filters | false | `status: json`<br>`limit: json` | `BdJson` |
+| `issue.ready` | List ready unblocked Beads issues | false | `limit: json` | `BdJson` |
+| `issue.show` | Show one Beads issue by id | false | `id*: json` | `BdJson` |
+| `graph.show` | Show one Beads issue dependency graph | false | `id*: json` | `BdJson` |
+
 ## `bytestash`
 
 Self-hosted code snippet manager
@@ -1160,7 +1180,7 @@ Category: `notes`  Status: `available`
 
 ## `loggifly`
 
-Docker log/event monitor source-contract status
+Docker log/event monitor local heartbeat/config status
 
 Category: `network`  Status: `available`
 
@@ -1168,7 +1188,9 @@ Category: `network`  Status: `available`
 |---|---|---:|---|---|
 | `help` | Show this action catalog | false | - | `Catalog` |
 | `schema` | Return the parameter schema for a named action | false | `action*: json` | `Schema` |
-| `contract.status` | Return LoggiFly implementation deferral status | false | - | `ContractStatus` |
+| `contract.status` | Return LoggiFly local integration contract status | false | - | `ContractStatus` |
+| `health.status` | Inspect the documented LoggiFly heartbeat file health status | false | - | `HealthStatus` |
+| `config.summary` | Summarize allowlisted LoggiFly config.yaml without returning raw config | false | - | `ConfigSummary` |
 
 ## `adguard`
 
@@ -1218,13 +1240,20 @@ Category: `network`  Status: `available`
 |---|---|---:|---|---|
 | `help` | Show this action catalog | false | - | `Catalog` |
 | `schema` | Return the parameter schema for a named action | false | `action*: json` | `Schema` |
-| `contract.status` | Show the Uptime Kuma integration contract and live-read status | false | - | `UptimeKumaResponse` |
+| `contract.status` | Show the Uptime Kuma integration contract and live action status | false | - | `UptimeKumaResponse` |
 | `server.health` | Probe the Uptime Kuma web UI root | false | - | `null` |
 | `monitor.list` | List monitors through the Socket.IO actor | false | - | `UptimeKumaResponse` |
 | `monitor.get` | Fetch one monitor through the Socket.IO actor | false | `id*: json` | `UptimeKumaResponse` |
+| `monitor.create` | Create a monitor through the Socket.IO actor | true | `config*: json` | `UptimeKumaResponse` |
+| `monitor.update` | Update a monitor through the Socket.IO actor | true | `id*: json`<br>`config*: json` | `UptimeKumaResponse` |
+| `monitor.delete` | Delete a monitor through the Socket.IO actor | true | `id*: json` | `UptimeKumaResponse` |
+| `monitor.pause` | Pause monitor checks through the Socket.IO actor | true | `id*: json` | `UptimeKumaResponse` |
+| `monitor.resume` | Resume monitor checks through the Socket.IO actor | true | `id*: json` | `UptimeKumaResponse` |
 | `heartbeat.list` | List heartbeat rows through the Socket.IO actor | false | `monitor_id*: json`<br>`hours: json` | `UptimeKumaResponse` |
 | `status.summary` | Summarize monitor status through the Socket.IO actor | false | - | `UptimeKumaResponse` |
 | `notification.list` | List notification channels through the Socket.IO actor | false | - | `UptimeKumaResponse` |
+| `notification.test` | Send a real notification through the Socket.IO actor | true | `notification_id*: json` | `UptimeKumaResponse` |
+| `notification.add` | Create a notification channel through the Socket.IO actor | true | `config*: json` | `UptimeKumaResponse` |
 
 ## `pihole`
 

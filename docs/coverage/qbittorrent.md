@@ -1,7 +1,7 @@
 # qBittorrent API Coverage
 
 **Last updated:** 2026-04-14
-**Source spec:** docs/api-specs/qbittorrent.md
+**Source spec:** docs/upstream-api/qbittorrent.md
 **Format:** dispatch layer + shared surfaces
 
 ## Legend
@@ -14,7 +14,7 @@
 
 ## Summary
 
-- **Auth:** qBittorrent uses cookie-based session auth (SID cookie). The lab binary reads `QBITTORRENT_URL` and `QBITTORRENT_SID` from env. The SID must be obtained externally by calling `POST /api/v2/auth/login` once and is passed via `Auth::Session { cookie }`.
+- **Auth:** qBittorrent uses cookie-based session auth. The lab binary reads `QBITTORRENT_URL` plus either `QBITTORRENT_SID` or username/password credentials. `QBITTORRENT_SID` is a shortcut for an already-issued cookie; without it, dispatch logs in with `QBITTORRENT_USERNAME` (optional, defaults to `admin`) and required `QBITTORRENT_PASSWORD`.
 - **All 32 dispatch actions are fully implemented** across all surfaces: SDK, dispatch layer, MCP, CLI, and API.
 - **CLI:** thin dispatch shim (`lab qbittorrent <action> [--params <json>]`).
 - **MCP:** exposes one tool: `qbittorrent`.
@@ -116,9 +116,11 @@ For `torrent.set-share-limits` ratio and time limits: `-2` = use global setting,
 | Env Var | Required | Description |
 |---------|----------|-------------|
 | `QBITTORRENT_URL` | yes | Base URL, e.g. `http://qbittorrent:8080` |
-| `QBITTORRENT_SID` | recommended | Pre-obtained SID cookie string, e.g. `SID=abc123` |
+| `QBITTORRENT_PASSWORD` | yes, unless `QBITTORRENT_SID` is set | Password for qBittorrent WebUI login |
+| `QBITTORRENT_USERNAME` | no | Username for qBittorrent WebUI login; defaults to `admin` |
+| `QBITTORRENT_SID` | no | Pre-obtained SID cookie string, e.g. `SID=abc123`; bypasses login when present |
 
-Note: If `QBITTORRENT_SID` is absent, the client is constructed with an empty cookie. Requests will fail until a valid SID is supplied.
+Note: If `QBITTORRENT_SID` is absent, dispatch performs the qBittorrent login flow and uses the returned SID for the client session.
 
 ## Implementation Architecture
 

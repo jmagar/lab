@@ -81,6 +81,7 @@ specs/
 **/*.rs.bk
 *.profraw
 *.profdata
+/bin/lab
 
 # ── Node / TypeScript build artifacts ────────────────────────────────────────
 node_modules/

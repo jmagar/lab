@@ -50,8 +50,9 @@ pub mod openapi;
 /// Shared request type for all service action dispatchers.
 ///
 /// Every service handler deserializes `POST /v1/<service>` bodies into this
-/// struct and forwards `action` + `params` to the corresponding MCP dispatch
-/// function, keeping the HTTP and MCP surfaces byte-compatible.
+/// struct and forwards `action` + `params` to the corresponding dispatch
+/// function, keeping HTTP and MCP input semantics aligned while each transport
+/// owns its response envelope.
 #[derive(Debug, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
 pub struct ActionRequest {
     pub action: String,

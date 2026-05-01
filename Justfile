@@ -31,6 +31,7 @@ build:
 # Build release binary with all features
 build-release:
     cargo build --workspace --all-features --release
+    install -D -m 755 target/release/lab bin/lab
 
 # Rebuild static Labby web assets served by lab serve
 web-build:

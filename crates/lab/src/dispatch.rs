@@ -5,6 +5,8 @@ pub mod adguard;
 pub mod apprise;
 #[cfg(feature = "arcane")]
 pub mod arcane;
+#[cfg(feature = "beads")]
+pub mod beads;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
 pub mod clients;

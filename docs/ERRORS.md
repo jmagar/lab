@@ -137,10 +137,9 @@ instead of double-wrapping.
 - `ai_backend_not_configured` — `artifact.merge.suggest` or AI merge application needs an AI backend, but no merge backend is configured. HTTP 422.
 - `content_contains_secrets` — `artifact.merge.suggest` rejected changed artifact content before transmission because it matched credential-like patterns. HTTP 422.
 
-Additional MCP-only flow-control cases may include:
+Additional MCP destructive-confirmation flow-control case:
 
-- `elicitation_declined`
-- `elicitation_unsupported`
+- `confirmation_required`
 
 ### Auth Protocol Exception
 
@@ -186,7 +185,7 @@ The following kinds are emitted exclusively by the HTTP surface. MCP handles the
 
 **Surface:** MCP only. Upstream proxy is MCP-transport infrastructure.
 
-**Resolution:** Check upstream server health. Review circuit breaker status via `lab.help` or logs. If the upstream is consistently failing, it will be excluded from tool listings after 3 consecutive failures.
+**Resolution:** Check upstream server health. Review circuit breaker status via `lab://catalog` or logs. If the upstream is consistently failing, it will be excluded from tool listings after 3 consecutive failures.
 
 **Status code:** `502 Bad Gateway` (when mapped to HTTP, e.g. in error.rs)
 

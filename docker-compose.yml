@@ -3,7 +3,7 @@ services:
     image: lab:dev
     build:
       context: .
-      dockerfile: Dockerfile.fast
+      dockerfile: config/Dockerfile.fast
     restart: unless-stopped
 
     ports:
@@ -14,9 +14,9 @@ services:
       # Named volume — persists SQLite DBs, master.lock, OAuth keys across
       # container restarts and image rebuilds.
       - lab-data:/home/lab/.local
-      # Host config file mounted read-only.  Copy config/lab.toml.example →
-      # config/lab.toml, edit, then `docker compose up -d`.
-      - ./config/lab.toml:/home/lab/.config/lab/config.toml:ro
+      # Host config file mounted read-only.  Copy config/config.example.toml →
+      # config/config.toml, edit, then `docker compose up -d`.
+      - ./config/config.toml:/home/lab/.config/lab/config.toml:ro
 
     environment:
       # Bind to all container interfaces so the port mapping works.
@@ -27,7 +27,7 @@ services:
       RUST_LOG: "lab=info,warn"
       LAB_LOG: "info"
 
-    # Load secrets from .env (see .env.docker.example).
+    # Load secrets from .env (see .env.example).
     # File is optional so `docker compose up` works without it (token auth
     # can also be set via LAB_MCP_HTTP_TOKEN above, but .env is safer).
     env_file:

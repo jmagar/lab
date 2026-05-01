@@ -54,8 +54,8 @@ Default feature posture:
 - `lab-apis` defaults to no optional services
 - `lab` defaults to all service integrations
 - `all` enables every service integration
-- `extract` remains always available
-- `stash` remains always available (local versioning service, no feature gate)
+- always-on exposed services are compiled into `lab` without feature flags
+- always-on SDK capability modules remain available where they are used by those exposed services
 
 ## Always-On Services
 
@@ -63,9 +63,18 @@ The following services are always compiled in and require no feature flag or ups
 
 | Service | Description | Docs |
 |---------|-------------|------|
+| `gateway` | Product-local MCP gateway control plane | [GATEWAY.md](./GATEWAY.md) |
+| `doctor` | Service health and environment audit surface | [OPERATIONS.md](./OPERATIONS.md) |
+| `setup` | Operator setup helpers | [OPERATIONS.md](./OPERATIONS.md) |
+| `logs` | Local-master and fleet log search/tail surface | [LOCAL_LOGS.md](./LOCAL_LOGS.md), [FLEET_LOGS.md](./FLEET_LOGS.md) |
+| `device` | MCP/API-facing node runtime inventory service | [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [NODES.md](./NODES.md) |
+| `marketplace` | Plugin marketplace and artifact management | [MARKETPLACE.md](./MARKETPLACE.md) |
+| `acp` | First-class ACP capability service | [acp/README.md](./acp/README.md) |
 | `extract` | Scan local and SSH hosts for service credentials | [EXTRACT.md](./EXTRACT.md) |
-| `device_runtime` | Local device runtime introspection | [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md) |
 | `stash` | Local versioned component snapshots with provider sync | [STASH.md](./STASH.md) |
+
+`device_runtime` remains an always-on SDK capability module, but the exposed
+registry service is `device`.
 
 ## Service Sources
 
@@ -100,20 +109,23 @@ The following services are always compiled in and require no feature flag or ups
 - Linkding
 - Unraid
 - UniFi
+- Beads (`docs/upstream-api/beads.md`; local `bd --json --readonly` CLI contract)
 - NotebookLM (`teng-lin/notebooklm-py` RPC contract)
 - FreshRSS (`docs/upstream-api/freshrss.md`; Google Reader-compatible API)
 - Navidrome (`docs/upstream-api/navidrome.md`; Subsonic/OpenSubsonic-compatible API)
 - Scrutiny (`docs/upstream-api/scrutiny.md`; cautious read-only endpoint contract)
-- LoggiFly (`docs/upstream-api/loggifly.md`; implementation-deferred contract status only)
+- LoggiFly (`docs/upstream-api/loggifly.md`; local heartbeat/config contract)
 - Glances (`docs/upstream-api/glances.md`; REST API v4)
 - Neo4j (`docs/upstream-api/neo4j.md`; Bolt protocol via `neo4rs`)
-- Uptime Kuma (`docs/upstream-api/uptime-kuma.md`; Socket.IO-backed monitor API, live reads deferred)
+- Uptime Kuma (`docs/upstream-api/uptime-kuma.md`; Socket.IO-backed monitor and notification API)
+- Dozzle (`docs/upstream-api/dozzle.md`; HTTP/JSON and server-sent log stream contract)
 
 ### Deferred
 
 - Radicale
-- LoggiFly runtime config/health integration beyond `contract.status`
-- Uptime Kuma live Socket.IO monitor reads beyond `contract.status` and `server.health`
+- Beads write operations, raw SQL, Dolt push/pull/commit, and direct Dolt database access
+- LoggiFly Docker socket access, raw logs, labels, notification sends/tests, and container/OliveTin actions
+- Uptime Kuma status-page mutation, maintenance windows, and fuller supervised socket actor lifecycle
 
 These are implemented from vendor docs, reference docs, or hand-written API contracts.
 

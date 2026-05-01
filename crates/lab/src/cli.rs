@@ -30,6 +30,8 @@ pub mod adguard;
 pub mod apprise;
 #[cfg(feature = "arcane")]
 pub mod arcane;
+#[cfg(feature = "beads")]
+pub mod beads;
 #[cfg(feature = "bytestash")]
 pub mod bytestash;
 #[cfg(feature = "deploy")]
@@ -205,6 +207,9 @@ pub enum Command {
     /// Memos note-taking service.
     #[cfg(feature = "memos")]
     Memos(memos::MemosArgs),
+    /// Beads issue tracker.
+    #[cfg(feature = "beads")]
+    Beads(beads::BeadsArgs),
     /// Bytestash snippet manager.
     #[cfg(feature = "bytestash")]
     Bytestash(bytestash::BytestashArgs),
@@ -324,6 +329,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Linkding(args) => linkding::run(args, format).await,
         #[cfg(feature = "memos")]
         Command::Memos(args) => memos::run(args, format).await,
+        #[cfg(feature = "beads")]
+        Command::Beads(args) => beads::run(args, format).await,
         #[cfg(feature = "bytestash")]
         Command::Bytestash(args) => bytestash::run(args, format).await,
         #[cfg(feature = "paperless")]

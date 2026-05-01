@@ -96,17 +96,20 @@ Canonical error shape:
 }
 ```
 
-The error payload follows [ERRORS.md](./ERRORS.md).
+The error payload follows [ERRORS.md](../ERRORS.md).
 
 ### HTTP Product API
 
-HTTP handlers should mirror the MCP dispatch model:
+HTTP handlers should mirror the MCP dispatch input model:
 
 - one action-based request shape
 - one structured JSON error shape
 - shared semantic behavior across transports
 
-When HTTP and MCP both expose the same action surface, they should not drift in field meaning.
+MCP wraps successful action data in the MCP success envelope. HTTP action
+routes return the action data directly on success and use the shared structured
+error shape on failure. When HTTP and MCP both expose the same action surface,
+they should not drift in input fields or error semantics.
 
 ## CLI Output Rules
 
@@ -168,7 +171,7 @@ Serialization must respect the security rules:
 - do not serialize secret env values into prompts or doctor output
 - do not accidentally expose auth headers, cookies, or tokens in debug output
 
-Observability-specific logging rules live in [OBSERVABILITY.md](./OBSERVABILITY.md).
+Observability-specific logging rules live in [OBSERVABILITY.md](../OBSERVABILITY.md).
 
 ## Verification Requirements
 
@@ -181,8 +184,8 @@ At minimum, verify:
 
 ## Related Docs
 
-- [ERRORS.md](./ERRORS.md)
-- [OBSERVABILITY.md](./OBSERVABILITY.md)
-- [MCP.md](./MCP.md)
-- [CLI.md](./CLI.md)
-- [CONVENTIONS.md](./CONVENTIONS.md)
+- [ERRORS.md](../ERRORS.md)
+- [OBSERVABILITY.md](../OBSERVABILITY.md)
+- [MCP.md](../MCP.md)
+- [CLI.md](../CLI.md)
+- [CONVENTIONS.md](../CONVENTIONS.md)

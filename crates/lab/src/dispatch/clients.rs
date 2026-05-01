@@ -57,6 +57,8 @@ pub struct ServiceClients {
     pub notebooklm: Option<Arc<lab_apis::notebooklm::NotebookLmClient>>,
     #[cfg(feature = "memos")]
     pub memos: Option<Arc<lab_apis::memos::MemosClient>>,
+    #[cfg(feature = "beads")]
+    pub beads: Option<Arc<lab_apis::beads::BeadsClient>>,
     #[cfg(feature = "tailscale")]
     pub tailscale: Option<Arc<lab_apis::tailscale::TailscaleClient>>,
     #[cfg(feature = "tautulli")]
@@ -137,6 +139,8 @@ impl ServiceClients {
             notebooklm: crate::dispatch::notebooklm::client_from_env().map(Arc::new),
             #[cfg(feature = "memos")]
             memos: crate::dispatch::memos::client_from_env().map(Arc::new),
+            #[cfg(feature = "beads")]
+            beads: crate::dispatch::beads::client_from_env().map(Arc::new),
             #[cfg(feature = "tailscale")]
             tailscale: crate::dispatch::tailscale::client_from_env().map(Arc::new),
             #[cfg(feature = "tautulli")]

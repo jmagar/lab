@@ -105,22 +105,16 @@ export function ServiceForm({
     }
   }, [])
 
-  // Flush the form's current values to the parent on unmount so a
-  // controlled remount (e.g. wizard tab switch) can rehydrate from the
-  // cached values. Captured via ref so a parent re-render that hands a
-  // new onUnmount identity in does not re-arm the cleanup.
+  // Flush current values to the parent on unmount. Ref keeps the latest
+  // callback identity without re-arming the cleanup effect.
   const onUnmountRef = useRef(onUnmount)
-  useEffect(() => {
-    onUnmountRef.current = onUnmount
-  }, [onUnmount])
+  onUnmountRef.current = onUnmount
   useEffect(() => {
     return () => {
       onUnmountRef.current?.(form.getValues())
     }
-  // form is stable across the component's life; intentionally empty deps
-  // so this fires only on actual unmount, not every render.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // empty deps — fires only on unmount
 
   const { visibleFields, advancedFields } = useMemo(() => ({
     visibleFields: fields.filter((f) => !f.ui.advanced),

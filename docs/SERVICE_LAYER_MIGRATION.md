@@ -406,5 +406,5 @@ That gives one full vertical proof before larger migrations.
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
 - [OBSERVABILITY.md](./OBSERVABILITY.md)
 - [ERRORS.md](./ERRORS.md)
-- [SERIALIZATION.md](./SERIALIZATION.md)
-- [reports/2026-04-08-service-onboarding-review.md](/home/jmagar/workspace/lab/docs/reports/2026-04-08-service-onboarding-review.md)
+- [design/SERIALIZATION.md](./design/SERIALIZATION.md)
+- [reports/2026-04-08-service-onboarding-review.md](./reports/2026-04-08-service-onboarding-review.md)

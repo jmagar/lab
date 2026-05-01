@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use anyhow::Result;
 use clap::Args;
 
-use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
+use crate::cli::helpers::{action_parser, print_dry_run, run_action_command};
 use crate::dispatch::openacp::ACTIONS;
 use crate::output::OutputFormat;
 
@@ -21,9 +21,6 @@ pub struct OpenAcpArgs {
     /// Select a named OpenACP instance.
     #[arg(long)]
     pub instance: Option<String>,
-    /// Accepted for consistency; OpenACP actions are not destructive-gated.
-    #[arg(short = 'y', long, alias = "no-confirm")]
-    pub yes: bool,
     /// Print what would be done without executing.
     #[arg(long)]
     pub dry_run: bool,
@@ -46,12 +43,10 @@ pub async fn run(args: OpenAcpArgs, format: OutputFormat) -> Result<ExitCode> {
         print_dry_run("openacp", &args.action, &params);
         return Ok(ExitCode::SUCCESS);
     }
-    run_confirmable_action_command(
+    run_action_command(
         "openacp",
-        ACTIONS,
         args.action,
         params,
-        args.yes,
         format,
         |action, params| async move { crate::dispatch::openacp::dispatch(&action, params).await },
     )

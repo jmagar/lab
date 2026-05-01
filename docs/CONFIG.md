@@ -24,7 +24,7 @@ Preferences live in (first found wins):
 - `~/.lab/config.toml` (user-level, next to `.env`)
 - `~/.config/lab/config.toml` (XDG-style fallback)
 
-A reference file is provided at the repo root: `config.example.toml`.
+A reference file is provided at `config/config.example.toml`.
 
 ## Load Order
 
@@ -33,7 +33,7 @@ Startup sequence:
 1. `config.toml` (first found from the search order above)
 2. Tracing init (using `[log]` section from config.toml)
 3. `~/.lab/.env` (secrets + URLs via `dotenvy`)
-4. `./env` from CWD (dev convenience, non-fatal if missing)
+4. `./.env` from CWD (dev convenience, non-fatal if missing)
 
 Value precedence at point of use (highest wins):
 
@@ -108,7 +108,8 @@ Rules:
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `master` | — | local hostname | Hostname of the fleet master node. |
+| `controller` | — | local hostname | Hostname of the fleet controller node. |
+| `log_retention_days` | — | `7` | Retention window for durable node log events. |
 
 Example:
 
@@ -119,9 +120,10 @@ controller = "tootie"
 
 Rules:
 
-- when omitted, the local machine resolves itself as `master`
-- non-controller nodes use this hostname plus `mcp.port` to reach `http://<master>:<port>`
+- when omitted, the local machine resolves itself as the controller
+- non-controller nodes use this hostname plus `mcp.port` to reach `http://<controller>:<port>`
 - the node runtime uses this for websocket node sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab nodes list`
+- legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`
 
 ### `[web]`
 
@@ -213,7 +215,7 @@ lab oauth relay-local --machine dookie --port 38935
 
 `oauth.machines` config is TOML-only. There is no env-var override for the named machine map.
 
-The node runtime reuses the same target model when `POST /v1/device/oauth/relay/start` is used to start a local relay remotely on a node.
+The node runtime reuses the same target model when `POST /v1/nodes/oauth/relay/start` is used to start a local relay remotely on a node.
 
 ### `[admin]`
 

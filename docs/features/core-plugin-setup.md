@@ -96,7 +96,7 @@ The first acceptance criterion below is to reopen the three premature closures a
 ### Env-aware CLI
 - [ ] `lab help` shows only services whose required env vars are present. Always-visible operator commands (`init`, `setup`, `doctor`, `plugins`, `extract`, `gateway`, `help`, `completions`, `scaffold`, `audit`, `marketplace`) are never filtered.
 - [ ] `LAB_SHOW_ALL=1` and `lab help --all` bypass the filter.
-- [ ] The MCP `lab.help` tool and `lab://catalog` resource use the same filter (registry filter). `--services foo,bar` continues to override at `lab serve` / `lab mcp` level.
+- [ ] The MCP `lab://catalog` resource uses the same filter (registry filter). `--services foo,bar` continues to override at `lab serve` / `lab mcp` level.
 - [ ] (Optional polish) `lab --help` (clap-derived, top-level) honors the same filter via `Cli::command_for_update()` + `mut_subcommand("<svc>", |c| c.hide(true))`.
 
 ### Verification
@@ -343,5 +343,5 @@ CLI shims honor `-y` / `--no-confirm` / `--dry-run` per `crates/lab/src/cli/CLAU
 - `docs/DISPATCH.md` — dispatch layer contract; this plan adds one new invariant (loopback-only mount for plugin lifecycle).
 - `docs/OBSERVABILITY.md` — logging requirements; bg3e.3's redaction rules apply unchanged.
 - `docs/ERRORS.md` — canonical error vocabulary; new kinds listed in the Error Handling section.
-- `docs/SERIALIZATION.md` — output boundary rules; envelope shape unchanged.
+- `docs/design/SERIALIZATION.md` — output boundary rules; envelope shape unchanged.
 - Bead tree: `lab-bg3e` epic and children `.1`–`.5` (close-without-land for `.3`/`.4`/`.5` flagged in Prerequisite Status above).

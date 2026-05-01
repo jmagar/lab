@@ -7,7 +7,7 @@ This document captures the locked stack and tooling choices for `lab`.
 - Rust 2024 edition
 - single workspace version
 - dual MIT / Apache-2.0 license
-- targets: Linux x86_64, Linux aarch64, Windows x86_64
+- targets: Linux x86_64, Linux aarch64
 - workspace resolver 3
 
 ## Core Runtime
@@ -95,7 +95,7 @@ Scoped commands:
 
 ```bash
 cargo test -p lab-apis
-cargo test -p lab
+cargo test --manifest-path crates/lab/Cargo.toml
 ```
 
 Documentation verification target:
@@ -122,7 +122,7 @@ More operational detail lives in [OPERATIONS.md](./OPERATIONS.md).
 ## Release Tooling
 
 - `cargo-release` for versioning and tagging
-- `git-cliff` for changelog generation
+- GitHub-generated release notes
 - GitHub Actions for release builds
 - GitHub Releases for artifacts
 - no automatic update checks at startup
@@ -131,6 +131,6 @@ More operational detail lives in [OPERATIONS.md](./OPERATIONS.md).
 
 - no telemetry
 - no background analytics
-- no phone-home behavior
+- no analytics or telemetry phone-home to third-party services; first-party node-to-controller fleet reporting is intentional runtime behavior
 
 That is a product rule, not just a tooling preference.

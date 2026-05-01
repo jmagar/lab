@@ -207,7 +207,7 @@ just test
 just lint
 cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features
 cargo test -p lab-apis
-cargo test -p lab
+cargo test --manifest-path crates/lab/Cargo.toml
 ```
 
 Use narrower commands first when iterating, then broaden before completion.
@@ -233,7 +233,7 @@ Rules:
 
 - [OBSERVABILITY.md](./OBSERVABILITY.md)
 - [ERRORS.md](./ERRORS.md)
-- [SERIALIZATION.md](./SERIALIZATION.md)
+- [design/SERIALIZATION.md](./design/SERIALIZATION.md)
 - [DISPATCH.md](./DISPATCH.md)
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
 - [OPERATIONS.md](./OPERATIONS.md)

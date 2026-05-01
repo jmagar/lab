@@ -36,6 +36,8 @@ pub async fn dispatch_with_client(
             action_schema(ACTIONS, action)
         }
         "contract.status" => to_json(client.contract_status()),
+        "health.status" => to_json(client.health_status().await?),
+        "config.summary" => to_json(client.config_summary().await?),
         unknown => Err(unknown_action(unknown)),
     }
 }

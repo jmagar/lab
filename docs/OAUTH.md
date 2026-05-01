@@ -118,7 +118,7 @@ Important constraints:
 The same local relay can be started remotely on a fleet device through:
 
 ```http
-POST /v1/device/oauth/relay/start
+POST /v1/nodes/oauth/relay/start
 ```
 
 Example body:

@@ -7,7 +7,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 
 use super::catalog::ACTIONS;
 use super::client::require_client;
-use super::params::{hours, monitor_id, optional_monitor_id};
+use super::params::{config, hours, monitor_id, optional_monitor_id};
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
@@ -40,6 +40,15 @@ pub async fn dispatch_with_client(
         }
         "monitor.list" => to_json(client.monitor_list().await?),
         "monitor.get" => to_json(client.monitor_get(monitor_id(&params, "id")?).await?),
+        "monitor.create" => to_json(client.monitor_create(config(&params)?).await?),
+        "monitor.update" => to_json(
+            client
+                .monitor_update(monitor_id(&params, "id")?, config(&params)?)
+                .await?,
+        ),
+        "monitor.delete" => to_json(client.monitor_delete(monitor_id(&params, "id")?).await?),
+        "monitor.pause" => to_json(client.monitor_pause(monitor_id(&params, "id")?).await?),
+        "monitor.resume" => to_json(client.monitor_resume(monitor_id(&params, "id")?).await?),
         "heartbeat.list" => to_json(
             client
                 .heartbeat_list(optional_monitor_id(&params)?, hours(&params)?)
@@ -47,6 +56,12 @@ pub async fn dispatch_with_client(
         ),
         "status.summary" => to_json(client.status_summary().await?),
         "notification.list" => to_json(client.notification_list().await?),
+        "notification.test" => to_json(
+            client
+                .notification_test(monitor_id(&params, "notification_id")?)
+                .await?,
+        ),
+        "notification.add" => to_json(client.notification_add(config(&params)?).await?),
         unknown => Err(unknown_action(unknown)),
     }
 }

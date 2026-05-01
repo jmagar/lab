@@ -45,7 +45,7 @@ Canonical websocket contract (see `docs/FLEET_METHODS.md` for full spec):
 - `nodes/command.output` — stream command output chunks
 - `nodes/command.result` — report final exit status
 - `nodes/peer.invoke` — peer RPC (not yet implemented)
-- MCP demux allowlist: `lab.help`, `lab.catalog`, `lab.status`
+- MCP demux allowlist: `lab://catalog` plus service `help`/`schema` actions
 
 Canonical config:
 

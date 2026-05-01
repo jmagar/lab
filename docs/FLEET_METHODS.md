@@ -328,9 +328,9 @@ Reserved for peer-to-peer RPC between fleet nodes. Currently returns `-32601 not
 Methods not in the `nodes/` namespace are demuxed through the MCP registry with an allowlist gate. Only the following methods are permitted:
 
 ```
-lab.help
-lab.catalog
-lab.status
+lab://catalog
+<service>.help
+<service>.schema
 ```
 
 Any other non-`nodes/` method returns:

@@ -14,7 +14,7 @@ This contract applies to human-readable output only. JSON output remains machine
 
 Related documents:
 
-- [CLI](./CLI.md)
+- [CLI](../CLI.md)
 - [SERIALIZATION](./SERIALIZATION.md)
 - [CLI Output Theme API Proposal](./CLI_OUTPUT_THEME_API.md)
 - [Labby Design System Contract](./design-system-contract.md)

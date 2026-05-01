@@ -18,23 +18,20 @@ transport = "http"
 # session_ttl_secs = 300
 
 [log]
-# level: "error" | "warn" | "info" | "debug" | "trace"
-# Overridden by LAB_LOG env var (or RUST_LOG for tracing crates).
-level = "info"
-# format: "pretty" | "json" | "compact"
+# Tracing filter directive. Overridden by LAB_LOG env var.
+filter = "lab=info,lab_apis=warn"
+# Log output format: "text" or "json". Overridden by LAB_LOG_FORMAT env var.
 format = "json"
 
 [auth]
-# Mode: "token" | "oauth" | "disabled"
+# Mode: "bearer" | "oauth"
 #
-#   token  — set LAB_MCP_HTTP_TOKEN in .env (or docker-compose environment:).
+#   bearer — set LAB_MCP_HTTP_TOKEN in .env (or docker-compose environment:).
 #             Simplest option for a single-user / internal deployment.
 #
-#   oauth  — set LAB_PUBLIC_URL + LAB_OAUTH_ENCRYPTION_KEY in .env.
+#   oauth  — set LAB_PUBLIC_URL + LAB_GOOGLE_CLIENT_ID + LAB_GOOGLE_CLIENT_SECRET
+#             + LAB_AUTH_ADMIN_EMAIL in .env.
 #             Required for multi-user or externally-accessible deployments.
-#
-#   disabled — no authentication. Only safe when port is NOT exposed externally
-#              (e.g. 127.0.0.1 binding in docker-compose.override.yml).
 mode = "bearer"
 
 # Optional: explicit path for the OAuth SQLite store.

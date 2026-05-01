@@ -290,6 +290,13 @@ impl_tool_error_from!(
 );
 
 impl_tool_error_from!(
+    "beads",
+    lab_apis::beads::error::BeadsError,
+    Command { .. } => "upstream_error",
+    Decode { .. } => "decode_error"
+);
+
+impl_tool_error_from!(
     "dozzle",
     lab_apis::dozzle::error::DozzleError,
     Api(api) => api.kind(),
@@ -371,6 +378,13 @@ impl_tool_error_from!(
     Api(api) => api.kind(),
     InvalidParam(_) => "invalid_param",
     MissingAuthToken => "auth_failed"
+);
+
+impl_tool_error_from!(
+    "loggifly",
+    lab_apis::loggifly::error::LoggiflyError,
+    Api(api) => api.kind(),
+    Io(_) => "internal_error"
 );
 
 impl_tool_error_from!(

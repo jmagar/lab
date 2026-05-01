@@ -1,6 +1,11 @@
 # Environment Variables
 
-This document lists the `lab` environment variables that matter for transport and auth setup.
+This document lists the `lab` environment variables that matter for transport
+and auth setup, plus deployment-ready examples for selected homelab services.
+It is not the complete service env inventory. The complete per-service source
+of truth is each service `PluginMeta`, surfaced through
+[SERVICES.md](./SERVICES.md), [coverage docs](./coverage/README.md), and
+generated help.
 
 ## HTTP Auth
 
@@ -45,7 +50,7 @@ Rules:
 - the old external issuer variables (`LAB_OAUTH_ISSUER`, `LAB_OAUTH_AUDIENCE`, `LAB_OAUTH_CLIENT_ID`) are no longer used
 - `LAB_PUBLIC_URL` also feeds RFC 9728 metadata, JWT issuer/audience, and HTTP allowed-host derivation
 
-## Requested Homelab Services
+## Selected Homelab Service Examples
 
 Immich:
 
@@ -127,6 +132,13 @@ UPTIME_KUMA_USERNAME=admin
 UPTIME_KUMA_PASSWORD=replace-me
 ```
 
+Beads:
+
+```env
+# Optional; defaults to bd on PATH.
+BEADS_BIN=bd
+```
+
 Jellyfin:
 
 ```env
@@ -159,10 +171,14 @@ OPENACP_NODE2_URL=http://node2.local:21420
 OPENACP_NODE2_TOKEN=replace-me
 ```
 
-LoggiFly is intentionally implementation-deferred in v1 and exposes only
-`contract.status`. Optional documentation/config planning hints:
+LoggiFly exposes a local heartbeat/config contract. `LOGGIFLY_CONFIG_ROOT`
+is optional and enables redacted `config.summary`; `LOGGIFLY_HEARTBEAT_PATH`
+and `LOGGIFLY_HEARTBEAT_INTERVAL_SECS` tune `health.status` for deployments
+using LoggiFly's documented `ENABLE_HEALTHCHECK=true` heartbeat file.
 
 ```env
 LOGGIFLY_DOCS_URL=https://clemcer.github.io/LoggiFly/
 LOGGIFLY_CONFIG_ROOT=/etc/loggifly
+LOGGIFLY_HEARTBEAT_PATH=/dev/shm/loggifly-heartbeat
+LOGGIFLY_HEARTBEAT_INTERVAL_SECS=60
 ```

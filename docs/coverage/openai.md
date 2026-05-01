@@ -1,7 +1,7 @@
 # OpenAI API Coverage
 
 **Last updated:** 2026-04-14
-**OpenAPI spec:** docs/api-specs/openai.openapi.yaml
+**OpenAPI spec:** docs/upstream-api/openai.openapi.yaml
 **OpenAPI version:** 3.0.0
 **API version:** 2.3.0
 **Paths:** 148

@@ -1,12 +1,12 @@
 # Fleet Logs
 
-Fleet logs are normalized device log events ingested by the master from non-master device runtimes.
+Fleet logs are normalized node log events ingested by the controller from non-controller node runtimes.
 
 ## Event Shape
 
 Each log event uses the shared `DeviceLogEvent` schema:
 
-- `device_id`
+- `node_id`
 - `source`
 - `timestamp_unix_ms`
 - optional `level`
@@ -17,20 +17,20 @@ This keeps fleet log ingestion independent from the raw source format.
 
 ## Ingestion Flow
 
-1. a non-master device collects bootstrap log events
-2. it appends a `syslog_batch` envelope to `~/.lab/device-runtime-queue.jsonl`
-3. it sends the envelope over the live websocket session as `fleet/log.event`
-4. the master stores the normalized events in the in-memory fleet store
+1. a non-controller node collects bootstrap log events
+2. it appends a `syslog_batch` envelope to `~/.lab/node-runtime-queue.jsonl`
+3. it sends the envelope over the live websocket session as `nodes/log.event`
+4. the controller stores the normalized events in the durable SQLite node log store
 5. the local queue entry is acknowledged only after a successful websocket response
 
 The queue exists to make early-runtime log upload resilient to temporary master outages.
 
 ## Query Surfaces
 
-Fleet log search is available on the master through:
+Fleet log search is available on the controller through:
 
-- CLI: `lab logs search <device> <query>`
-- HTTP: `POST /v1/device/logs/search`
+- CLI: `lab logs search <node> <query>`
+- HTTP: `POST /v1/nodes/logs/search`
 
 Example:
 
@@ -39,9 +39,9 @@ lab logs search dookie oauth
 ```
 
 ```json
-POST /v1/device/logs/search
+POST /v1/nodes/logs/search
 {
-  "device_id": "dookie",
+  "node_id": "dookie",
   "query": "oauth"
 }
 ```
@@ -50,18 +50,18 @@ The current implementation performs a case-insensitive substring match against `
 
 ## Fleet Device Queries
 
-The master also exposes:
+The controller also exposes:
 
-- `lab device list`
-- `lab device get <device_id>`
-- `GET /v1/device/devices`
-- `GET /v1/device/devices/{device_id}`
+- `lab nodes list`
+- `lab nodes get <node_id>`
+- `GET /v1/nodes/devices`
+- `GET /v1/nodes/devices/{node_id}`
 
 Those responses include per-device log counts so operators can quickly see whether a device is checking in and sending data.
 
 ## Current Limits
 
-- fleet state is in-process only; restarting the master clears the inventory and ingested logs
-- enrollment state is durable, but accepted metadata/status/log snapshots are still in-memory
+- fleet inventory/session state is in-process, but accepted node log events are persisted to `~/.lab/node-logs.sqlite`
+- enrollment state is durable; node log retention is controlled by `[node].log_retention_days`
 - log search currently matches `message` only
 - the bootstrap collector is intentionally conservative and may return no events on hosts without supported sources

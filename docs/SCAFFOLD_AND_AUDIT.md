@@ -51,7 +51,8 @@ registration point, file, and structural contract without human guesswork.
 lab scaffold service <name>   →  generates skeleton files and repo patches
 # ... engineer implements the service ...
 lab audit onboarding <name>   →  verifies all wiring is in place
-cargo test --all-features     →  confirms it compiles and passes tests
+cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features
+                               →  confirms it compiles and passes tests
 ```
 
 These three steps, in order, are the only recognized path to declaring a service "online".
@@ -908,7 +909,7 @@ Fix every `Fail`. `Skip` results are informational. All registration checks shou
 ### Step 6: Build and test
 
 ```bash
-cargo test --all-features
+cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features
 cargo clippy --all-features -- -D warnings
 ```
 

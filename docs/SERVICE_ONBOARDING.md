@@ -23,7 +23,7 @@ The service is not considered done if only one surface works.
 For new service work, prefer the onboarding scaffold first and then run the
 onboarding audit before claiming the service is aligned with repo conventions.
 `lab scaffold service` should generate the initial shape; `lab audit onboarding`
-should verify it; `cargo test --all-features` is the final gate.
+should verify it; `cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features` is the final gate.
 
 ## Source Of Truth
 
@@ -94,7 +94,7 @@ Registry and metadata wiring live in:
 - `crates/lab/src/api/router.rs` — feature-gated `.nest("/v1/<service>", services::<service>::routes(state.clone()))` block
 - `crates/lab/src/tui/metadata.rs`
 
-The catalog (`lab.help` meta-tool, `lab://catalog` resource, `lab help` CLI) is built automatically from `ToolRegistry` via `build_catalog()` — no separate catalog registration step is needed beyond `registry.rs`.
+The catalog (`lab://catalog` resource and `lab help` CLI) is built automatically from `ToolRegistry` via `build_catalog()` — no separate catalog registration step is needed beyond `registry.rs`.
 
 Feature gating and re-exports live in:
 
@@ -475,7 +475,7 @@ In the client:
 - use service-specific ID newtypes where appropriate
 - return `Result<T, <Service>Error>`
 
-The canonical error and serialization contracts live in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+The canonical error and serialization contracts live in [ERRORS.md](./ERRORS.md) and [design/SERIALIZATION.md](./design/SERIALIZATION.md).
 
 Do not add transport-specific concerns here. No `clap`, no MCP envelopes, no output formatting.
 
@@ -535,11 +535,11 @@ The CLI must:
 - respect destructive confirmation rules
 - support `--json` through the common output layer
 
-CLI output and machine-readable shape must follow [SERIALIZATION.md](./SERIALIZATION.md).
+CLI output and machine-readable shape must follow [design/SERIALIZATION.md](./design/SERIALIZATION.md).
 
 Then register it in `crates/lab/src/cli.rs`.
 
-If the command is destructive, require `-y` / `--yes` to bypass confirmation. `--no-confirm` is defined in the CLI contract as an alias for `-y` but has not yet been implemented across all services — wire it only when the shared implementation is available. Support `--dry-run` where the command semantics allow it (prints what would happen without calling the client).
+If the command is destructive, require `-y` / `--yes` to bypass confirmation. Use the shared CLI helpers for the `--no-confirm` alias where the command uses common destructive-confirmation wiring. Support `--dry-run` where the command semantics allow it (prints what would happen without calling the client).
 
 CLI verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
@@ -551,7 +551,7 @@ Only create a module under `crates/lab/src/mcp/services/` when the service owns 
 
 All action routing, param validation, client construction, and business logic live in `dispatch/<service>/`.
 
-The canonical error and envelope behavior lives in [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+The canonical error and envelope behavior lives in [ERRORS.md](./ERRORS.md) and [design/SERIALIZATION.md](./design/SERIALIZATION.md).
 
 Register the service in `crates/lab/src/registry.rs`.
 
@@ -561,7 +561,7 @@ Important rules:
 - `help` and `schema` are routed by `dispatch()` — both must be declared in `catalog.rs`'s `ACTIONS` array so the `help` response lists them
 - destructive actions must be marked `destructive: true` in `ActionSpec`
 - MCP exception adapters must not contain business logic, param coercion, or their own action catalog unless the catalog is intentionally MCP-specific
-- MCP elicitation for destructive ops is **not yet implemented** — MCP currently dispatches destructive actions without a confirmation gate; the `ActionSpec.destructive` flag is the single source of truth for dangerous operations across all surfaces: the HTTP surface enforces it via `handle_action` in `api/services/helpers.rs`, and the CLI enforces it via `-y/--yes` gating; both must be honored consistently
+- MCP destructive-op handling is implemented at the server boundary: the server uses MCP elicitation when the client supports it and otherwise requires `params.confirm: true`; the `ActionSpec.destructive` flag remains the single source of truth for dangerous operations across MCP, HTTP, and CLI.
 
 MCP verification is not complete unless dispatch logs carry the required caller context from [OBSERVABILITY.md](./OBSERVABILITY.md).
 
@@ -627,7 +627,7 @@ Add `pub <service>: Option<Arc<<Service>Client>>` to `AppState`'s clients struct
 
 API handlers run inside the shared middleware stack from `router.rs` (request ID, tracing, 30s timeout, gzip, CORS). Do not add your own timeout, CORS, or compression logic — the middleware handles it automatically.
 
-API error semantics must stay aligned with [ERRORS.md](./ERRORS.md) and [SERIALIZATION.md](./SERIALIZATION.md).
+API error semantics must stay aligned with [ERRORS.md](./ERRORS.md) and [design/SERIALIZATION.md](./design/SERIALIZATION.md).
 
 API verification is not complete unless request IDs and dispatch context are observable under the shared contract.
 
@@ -694,7 +694,7 @@ Update these docs as part of the same change:
 - `docs/MCP.md` or `docs/CLI.md` if the public surface model changes
 - `docs/OBSERVABILITY.md` if the shared contract changes
 - `docs/ERRORS.md` if the shared error contract changes
-- `docs/SERIALIZATION.md` if the shared serde or envelope contract changes
+- `docs/design/SERIALIZATION.md` if the shared serde or envelope contract changes
 
 ## Step 12: Test And Verify
 
@@ -935,7 +935,7 @@ What still applies:
 - [DISPATCH.md](./DISPATCH.md)
 - [OBSERVABILITY.md](./OBSERVABILITY.md)
 - [ERRORS.md](./ERRORS.md)
-- [SERIALIZATION.md](./SERIALIZATION.md)
+- [design/SERIALIZATION.md](./design/SERIALIZATION.md)
 - [TESTING.md](./TESTING.md)
 
 What changes:
@@ -961,6 +961,6 @@ reference exception for a product-local control-plane surface that remains in
 - [CONVENTIONS.md](./CONVENTIONS.md)
 - [OBSERVABILITY.md](./OBSERVABILITY.md)
 - [ERRORS.md](./ERRORS.md)
-- [SERIALIZATION.md](./SERIALIZATION.md)
+- [design/SERIALIZATION.md](./design/SERIALIZATION.md)
 - [TESTING.md](./TESTING.md)
 - [EXTRACT.md](./EXTRACT.md)

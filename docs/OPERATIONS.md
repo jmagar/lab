@@ -187,7 +187,7 @@ Useful HTTP checks:
 
 ```bash
 curl http://<device>:8765/health
-curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<master>:8765/v1/device/devices
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/devices
 ```
 
 Current operational limits:
@@ -235,7 +235,7 @@ Locked release expectations:
 - release artifacts per supported platform
 - GitHub Releases as the artifact distribution surface
 - `cargo-release` for version bumps and tagging
-- `git-cliff` for changelog generation
+- GitHub-generated release notes
 
 Tag format should stay `vX.Y.Z`.
 

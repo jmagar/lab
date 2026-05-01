@@ -85,6 +85,52 @@
 # If unset, `lab serve` auto-detects the repo-local fallback at apps/gateway-admin/out.
 # assets_dir = "/srv/labby/out"
 
+# Disable /v1/* auth for the hosted web UI. Only for trusted reverse-proxy setups.
+# Override with LAB_WEB_UI_AUTH_DISABLED=true.
+# disable_auth = false                    # default: false
+
+# ── Workspace ────────────────────────────────────────────────────────────────
+
+[workspace]
+# Root directory for Lab-managed files (fs browsing, stash workspaces).
+# No env var override — config-file only.
+# root = "~/.lab/stash"                  # default: ~/.lab/stash
+
+# ── MCP Registry ─────────────────────────────────────────────────────────────
+
+[mcpregistry]
+# Upstream MCP Registry base URL.
+# url = "https://registry.modelcontextprotocol.io"   # default
+
+# ── Node Runtime ─────────────────────────────────────────────────────────────
+
+[node]
+# Hostname or IP of the master lab instance this node should phone home to.
+# Determines whether this device operates as master or non-master.
+# No env var override — config-file only.
+# controller = "http://dookie:8765"
+
+# How many days to retain node logs in the SQLite store.
+# log_retention_days = 30                # default: 30
+
+# ── Local Log Store ───────────────────────────────────────────────────────────
+
+[local_logs]
+# Override with LAB_LOCAL_LOGS_STORE_PATH env var.
+# store_path = "~/.lab/logs.db"
+
+# Override with LAB_LOCAL_LOGS_RETENTION_DAYS env var.
+# retention_days = 7                     # default: 7
+
+# Override with LAB_LOCAL_LOGS_MAX_BYTES env var.
+# max_bytes = 268435456                  # default: 256 MiB
+
+# Override with LAB_LOCAL_LOGS_QUEUE_CAPACITY env var.
+# queue_capacity = 1024                  # default: 1024
+
+# Override with LAB_LOCAL_LOGS_SUBSCRIBER_CAPACITY env var.
+# subscriber_capacity = 256              # default: 256
+
 # ── Gateway Tool Search ──────────────────────────────────────────────────────
 
 [tool_search]

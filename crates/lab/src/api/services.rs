@@ -49,6 +49,8 @@ pub mod tailscale;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 
+#[cfg(feature = "beads")]
+pub mod beads;
 #[cfg(feature = "memos")]
 pub mod memos;
 #[cfg(feature = "mcpregistry")]

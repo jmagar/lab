@@ -126,6 +126,7 @@ all = [
     "arcane",
     "linkding",
     "memos",
+    "beads",
     "bytestash",
     "paperless",
     "gotify",
@@ -154,6 +155,7 @@ all = [
 ]
 apprise = ["lab-apis/apprise"]
 arcane = ["lab-apis/arcane"]
+beads = ["lab-apis/beads"]
 bytestash = ["lab-apis/bytestash"]
 default = ["all"]
 deploy = [

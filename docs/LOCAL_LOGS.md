@@ -2,9 +2,9 @@
 
 `lab` now has a dedicated local-master runtime log subsystem.
 
-This is separate from fleet device log search:
+This is separate from fleet node log search:
 
-- fleet device log search remains `lab logs search <device> <query>` and `POST /v1/device/logs/search`
+- fleet node log search remains `lab logs search <node> <query>` and `POST /v1/nodes/logs/search`
 - local-master runtime logs live in the shared `dispatch::logs` subsystem and power `lab logs local *`, MCP `logs.*`, `POST /v1/logs`, `GET /v1/logs/stream`, and the gateway-admin `/logs` page
 
 ## Scope

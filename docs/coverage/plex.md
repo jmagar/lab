@@ -1,7 +1,7 @@
 # Plex API Coverage
 
 **Last updated:** 2026-04-14
-**OpenAPI spec:** docs/api-specs/plex.openapi.yaml
+**OpenAPI spec:** docs/upstream-api/plex.openapi.yaml
 **OpenAPI version:** 3.1.1
 **API version:** 1.1.1
 **Paths:** 241

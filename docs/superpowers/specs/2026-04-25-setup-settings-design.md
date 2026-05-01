@@ -4,8 +4,8 @@
 **Bead:** lab-bg3e (epic) → lab-bg3e.1–5  
 **Mockups:** `/dev/setup`, `/dev/settings`  
 **Date:** 2026-04-25  
-**Primary contract:** [Design System Contract](../../../design/design-system-contract.md)  
-**Component development process:** [Component Development](../../../design/component-development.md)
+**Primary contract:** [Design System Contract](../../design/design-system-contract.md)
+**Component development process:** [Component Development](../../design/component-development.md)
 
 ---
 

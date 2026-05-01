@@ -14,11 +14,15 @@ The CLI is the human-facing surface for `lab`. It must remain thin, predictable,
 The CLI includes:
 
 - one subcommand per service
-- `device`
+- `mcp`
+- `nodes`
 - `logs`
 - `serve`
 - `gateway`
+- `marketplace`
+- `stash`
 - `plugins`
+- `setup`
 - `install`
 - `uninstall`
 - `init`
@@ -36,11 +40,15 @@ Representative command tree:
 ```text
 lab
 ├── <service> ...
-├── device
+├── mcp
+├── nodes
 ├── logs
 ├── serve
 ├── gateway
+├── marketplace
+├── stash
 ├── plugins
+├── setup
 ├── install
 ├── uninstall
 ├── init
@@ -60,12 +68,12 @@ Each service subcommand must expose operations in a way that mirrors the service
 
 Examples:
 
-- `lab radarr search`
-- `lab sonarr series`
-- `lab plex libraries`
-- `lab unraid array`
+- `lab radarr movie-lookup --params '{"query":"The Matrix"}'`
+- `lab sonarr series.list`
+- `lab plex library.list`
+- `lab unraid system.array`
 - `lab openai models`
-- `lab qdrant collections`
+- `lab qdrant collections.list`
 - `lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
 
 The CLI must not invent a second semantic model that drifts from MCP or the SDK.
@@ -77,8 +85,8 @@ Supported output modes are:
 - human-readable terminal output
 - JSON
 
-The canonical serialization and output-boundary contract lives in [SERIALIZATION.md](./SERIALIZATION.md).
-The canonical human-readable output language and color policy live in [CLI_DESIGN_SYSTEM.md](./CLI_DESIGN_SYSTEM.md).
+The canonical serialization and output-boundary contract lives in [design/SERIALIZATION.md](./design/SERIALIZATION.md).
+The canonical human-readable output language and color policy live in [design/CLI_DESIGN_SYSTEM.md](./design/CLI_DESIGN_SYSTEM.md).
 
 Rules:
 
@@ -181,33 +189,33 @@ It must expose normalized service health results using the shared `ServiceStatus
 
 Rules:
 
-- local hostname plus `[device].master` decide whether the process is `master` or non-master
-- the `master` exposes the Web UI, MCP, `/v1/{service}`, `/v1/gateway`, and `/v1/device/*`
-- a non-master device exposes only `/health`, `/ready`, and `/v1/device/*`
+- local hostname plus `[node].controller` decide whether the process is controller or non-controller
+- the controller exposes the Web UI, MCP, `/v1/{service}`, `/v1/gateway`, and `/v1/nodes/*`
+- a non-controller node exposes only `/health`, `/ready`, and `/v1/nodes/*`
 - non-master startup queues metadata and bootstrap logs, then opens a long-lived fleet websocket session to the master
 
-## `lab device`
+## `lab nodes`
 
-`lab device` is the fleet inventory command group. It routes to the configured master.
+`lab nodes` is the fleet inventory command group. It routes to the configured controller.
 
 Commands:
 
-- `lab device list`
-- `lab device get <device_id>`
-- `lab device enrollments list`
-- `lab device enrollments approve <device_id> [--note <text>]`
-- `lab device enrollments deny <device_id> [--reason <text>]`
+- `lab nodes list`
+- `lab nodes get <node_id>`
+- `lab nodes enrollments list`
+- `lab nodes enrollments approve <node_id> [--note <text>]`
+- `lab nodes enrollments deny <node_id> [--reason <text>]`
 
 ## `lab logs`
 
 `lab logs` now has two additive paths:
 
-- fleet search routed to the configured master
+- fleet search routed to the configured controller
 - local-master log search and bounded follow-up queries against the embedded runtime store
 
 Commands:
 
-- `lab logs search <device_id> <query>`
+- `lab logs search <node_id> <query>`
 - `lab logs local search [--subsystem <name>] [--level <level>] [--text <needle>] [--limit <n>]`
 - `lab logs local tail [--after-ts <unix_ms>] [--since-event-id <id>] [--limit <n>]`
 - `lab logs local stats`
@@ -215,7 +223,7 @@ Commands:
 
 Rules:
 
-- `lab logs search <device_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/device/logs/search`
+- `lab logs search <node_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/nodes/logs/search`
 - `lab logs local *` is strictly local-master and uses the shared `dispatch::logs` contract
 - true live streaming is not a CLI capability in v1; operators should use `GET /v1/logs/stream` or the gateway-admin `/logs` page
 - CLI local log commands stay thin adapters; normalization, retention, search, and tail semantics are owned by `dispatch::logs`
@@ -313,4 +321,4 @@ Runtime behavior:
   - upstream timeout -> `504`
   - unsupported method -> `405`
 
-The device runtime also exposes this relay capability remotely through `POST /v1/device/oauth/relay/start`.
+The node runtime also exposes this relay capability remotely through `POST /v1/nodes/oauth/relay/start`.

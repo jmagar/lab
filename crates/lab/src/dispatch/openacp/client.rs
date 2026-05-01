@@ -15,13 +15,10 @@ struct OpenAcpInstancePool {
 
 static POOL: OnceLock<OpenAcpInstancePool> = OnceLock::new();
 
-fn build_client(
-    url: &str,
-    token: Option<&str>,
-) -> Result<OpenAcpClient, lab_apis::openacp::OpenAcpError> {
-    let auth = token.map_or(Auth::None, |token| Auth::Bearer {
+fn build_client(url: &str, token: &str) -> Result<OpenAcpClient, lab_apis::openacp::OpenAcpError> {
+    let auth = Auth::Bearer {
         token: token.to_string(),
-    });
+    };
     OpenAcpClient::new(url, auth)
 }
 
@@ -38,11 +35,14 @@ fn pool() -> &'static OpenAcpInstancePool {
             else {
                 continue;
             };
-            let token = vars
+            let Some(token) = vars
                 .get("TOKEN")
                 .map(|v| v.expose().to_string())
-                .filter(|v| !v.is_empty());
-            if let Ok(client) = build_client(&url, token.as_deref()) {
+                .filter(|v| !v.is_empty())
+            else {
+                continue;
+            };
+            if let Ok(client) = build_client(&url, &token) {
                 clients.insert(label, Arc::new(client));
             }
         }
@@ -56,8 +56,8 @@ fn pool() -> &'static OpenAcpInstancePool {
 /// Build a default OpenACP client from env vars.
 pub fn client_from_env() -> Option<OpenAcpClient> {
     let url = env_non_empty("OPENACP_URL")?;
-    let token = env_non_empty("OPENACP_TOKEN");
-    build_client(&url, token.as_deref())
+    let token = env_non_empty("OPENACP_TOKEN")?;
+    build_client(&url, &token)
         .map_err(|e| tracing::warn!(error = %e, "openacp client construction failed"))
         .ok()
 }
@@ -79,7 +79,7 @@ pub fn client_from_instance(label: Option<&str>) -> Result<Arc<OpenAcpClient>, T
         return Err(ToolError::Sdk {
             sdk_kind: "internal_error".to_string(),
             message: format!(
-                "instance `{label}` is configured but OPENACP_URL is missing or invalid"
+                "instance `{label}` is configured but OPENACP_URL or OPENACP_TOKEN is missing or invalid"
             ),
         });
     }
@@ -100,6 +100,6 @@ pub fn require_client() -> Result<OpenAcpClient, ToolError> {
 pub fn not_configured_error() -> ToolError {
     ToolError::Sdk {
         sdk_kind: "internal_error".to_string(),
-        message: "OPENACP_URL not configured".to_string(),
+        message: "OPENACP_URL and OPENACP_TOKEN not configured".to_string(),
     }
 }

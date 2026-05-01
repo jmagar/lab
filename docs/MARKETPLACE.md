@@ -67,13 +67,26 @@ Missing files are treated as empty — a fresh Claude Code install returns zero 
 | `plugin.save` | Save a file into the plugin workspace mirror | |
 | `plugin.deploy.preview` | Preview changed, skipped, removed, and failed files before deploy | |
 | `plugin.deploy` | Deploy the saved workspace to the local Claude Code target | **yes** |
+| `plugin.cherry_pick` | Copy selected files from a plugin artifact set into a target workspace | **yes** |
 | `plugin.install` | Install a plugin via `claude plugin install` | **yes** |
 | `plugin.uninstall` | Uninstall a plugin via `claude plugin uninstall` | **yes** |
+| `artifact.fork` | Fork an installed plugin artifact into an editable workspace | |
+| `artifact.list` | List forked plugin artifact workspace status | |
+| `artifact.unfork` | Remove a forked artifact workspace | **yes** |
+| `artifact.reset` | Reset a forked artifact workspace to source content | **yes** |
+| `mcp.config` | Return the resolved MCP Registry base URL | |
+| `mcp.list` | List MCP servers from the upstream registry with Lab metadata filters | |
+| `mcp.get` | Get one MCP Registry server record | |
+| `mcp.versions` | List versions for an MCP Registry server | |
+| `mcp.validate` | Validate a ServerJSON document against the registry schema | |
+| `mcp.meta.get` | Read Lab-owned metadata for a registry server | |
+| `mcp.meta.set` | Upsert Lab-owned registry metadata | **yes** |
+| `mcp.meta.delete` | Delete Lab-owned registry metadata | **yes** |
 
 ### Parameters
 
 - `sources.add` — pass exactly one of `repo` (`owner/repo` slug) or `url` (git URL). Passing both returns `invalid_param`; passing neither returns `missing_param`.
-- `plugins.list` — optional `marketplace` filter (by id) to scope results.
+- `plugins.list` — optional `marketplace`, `kind`, `installed`, and `query` filters. Filters are additive.
 - `plugin.get`, `plugin.artifacts`, `plugin.workspace`, `plugin.deploy.preview`, `plugin.deploy`, `plugin.install`, `plugin.uninstall` — require `id` in `name@marketplace` form. Malformed ids return `invalid_param`.
 - `plugin.save` — requires `id`, `path`, and `content`. `path` is always relative to the plugin workspace mirror.
 

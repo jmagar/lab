@@ -89,6 +89,10 @@ pub mod linkding;
 #[cfg(feature = "memos")]
 pub mod memos;
 
+/// Beads local issue tracker client.
+#[cfg(feature = "beads")]
+pub mod beads;
+
 /// ByteStash code snippet client.
 #[cfg(feature = "bytestash")]
 pub mod bytestash;

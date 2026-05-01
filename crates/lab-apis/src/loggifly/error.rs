@@ -8,4 +8,7 @@ pub enum LoggiflyError {
     /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
+    /// Local config or heartbeat file could not be inspected.
+    #[error("io error: {0}")]
+    Io(String),
 }

@@ -21,7 +21,7 @@ Rules:
 - transport changes must not change dispatch or catalog behavior
 - HTTP transport may expose opt-in CORS origins
 
-When the process resolves as a non-master device, MCP is not exposed at all. Non-master devices keep only the local device runtime and the `/v1/device/*` HTTP namespace.
+When the process resolves as a non-controller node, MCP is not exposed at all. Non-controller nodes keep only the local node runtime and the `/v1/nodes/*` HTTP namespace.
 
 ## Server Capabilities
 
@@ -128,7 +128,7 @@ There are three discovery surfaces:
 
 - per-service `help` action
 - per-service resources such as `lab://radarr/actions`
-- top-level `lab` meta-tool and `lab://catalog`
+- top-level `lab://catalog`
 
 This means agents can discover the available tool shape without guessing.
 
@@ -140,28 +140,20 @@ The top-level discovery resource is:
 
 - `lab://catalog`
 
-## Meta-Tool
+## Top-Level Catalog
 
-`lab` always registers one extra tool named `lab`.
+`lab://catalog` is generated from the same action metadata that powers
+per-service help. It must never be maintained as a second hand-written
+registry.
 
-It handles:
-
-- `help`
-- `services`
-- `status`
-- `version`
-
-Its job is discovery and server-level visibility, not service-specific business logic.
-
-The top-level catalog is generated from the same action metadata that powers per-service help. It must never be maintained as a second hand-written registry.
-
-The catalog/help surface may also describe the operator-facing `device` and `logs` command groups. In this implementation those are master-routed CLI and HTTP workflows, not standalone MCP tools.
+Operator-facing surfaces such as `device` and `logs` are registered MCP
+services when they are present in the runtime registry.
 
 ## Result Envelope
 
 All MCP tool responses follow a consistent envelope so callers do not need to parse arbitrary strings.
 
-The canonical envelope and error contract lives in [SERIALIZATION.md](./SERIALIZATION.md) and [ERRORS.md](./ERRORS.md).
+The canonical envelope and error contract lives in [design/SERIALIZATION.md](./design/SERIALIZATION.md) and [ERRORS.md](./ERRORS.md).
 
 Success shape:
 
@@ -254,8 +246,7 @@ Cross-service error vocabulary includes:
 
 Additional dispatch-level cases include:
 
-- `elicitation_declined`
-- `elicitation_unsupported`
+- `confirmation_required`
 
 The goal is self-correcting clients, not human-only diagnostics.
 
@@ -291,15 +282,10 @@ Representative destructive actions include:
 
 ## Elicitation Policy
 
-MCP destructive calls require explicit confirmation unless policy is relaxed intentionally.
-
-Modes:
-
-- `always`
-- `session`
-- `never`
-
-The default is to require confirmation, not to silently proceed.
+MCP destructive calls require explicit confirmation. The server first uses MCP
+elicitation when the client supports it. If elicitation is unavailable, callers
+must pass `params.confirm: true`; otherwise the dispatcher returns
+`confirmation_required`.
 
 Prompts must include:
 
@@ -316,11 +302,11 @@ That means:
 
 - compiled features matter
 - `--services` filtering matters
-- `lab.help` only shows what is actually available
+- `lab://catalog` only shows what is actually available
 
 The same catalog builder must feed:
 
-- `lab.help`
+- `lab://catalog`
 - `lab://catalog`
 - CLI help/catalog rendering
 
@@ -423,7 +409,6 @@ Primary resource surfaces:
 
 - `lab://catalog`
 - `lab://<service>/actions`
-- `lab://<service>/actions/<action>`
 - `lab://upstream/{name}/{original_uri}` (when upstream resource proxying is enabled)
 
 These are generated from the same catalog data as tool-based help, with upstream resources appended at runtime.

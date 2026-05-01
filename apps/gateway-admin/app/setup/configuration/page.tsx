@@ -50,6 +50,7 @@ export default function ConfigurationPage(): React.ReactElement {
           const { fields, defaults } = buildServiceFormDefaults(schema.env, draftMap)
           next.push({ schema, fields, defaultValues: defaults })
         }
+        valuesCache.current.clear()
         setServices(next)
       })
       .catch((err) => {
@@ -132,9 +133,6 @@ export default function ConfigurationPage(): React.ReactElement {
             // ServiceForms simultaneously means 22 useForm + zodResolver
             // builds up front. Only render the active tab's form to keep
             // mount cost O(1) regardless of selected-service count.
-            // ServiceForm.onUnmount flushes its in-progress values into
-            // valuesCache so tab switches don't lose typed input; on
-            // remount we hydrate from the cache when present.
             if (!current) return null
             const cached = valuesCache.current.get(s.schema.name)
             return (
