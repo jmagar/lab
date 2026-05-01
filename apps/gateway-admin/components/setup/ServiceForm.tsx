@@ -15,8 +15,8 @@
 //   already holds a value.
 // - Advanced fields hide behind a single collapsible disclosure.
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useForm, type SubmitHandler } from 'react-hook-form'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Controller, useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Loader2 } from 'lucide-react'
 
@@ -98,9 +98,17 @@ export function ServiceForm({
     }
   }, [])
 
-  const visibleFields = fields.filter((f) => !f.ui.advanced)
-  const advancedFields = fields.filter((f) => f.ui.advanced)
+  const { visibleFields, advancedFields } = useMemo(() => ({
+    visibleFields: fields.filter((f) => !f.ui.advanced),
+    advancedFields: fields.filter((f) => f.ui.advanced),
+  }), [fields])
   const hasAdvanced = advancedFields.length > 0
+
+  // Stable handlers so FieldRow can be memoized in the future without
+  // re-renders driven by callback identity churn.
+  const toggleSecret = useCallback((name: string) => {
+    setSecretShown((prev) => ({ ...prev, [name]: !prev[name] }))
+  }, [])
 
   const submit: SubmitHandler<Record<string, string>> = async (values) => {
     const stripped = stripBlankSecrets(values, fields)
@@ -145,9 +153,7 @@ export function ServiceForm({
           field={field}
           form={form}
           secretShown={secretShown[field.name] ?? false}
-          onToggleSecret={() =>
-            setSecretShown((prev) => ({ ...prev, [field.name]: !prev[field.name] }))
-          }
+          onToggleSecret={toggleSecret}
           onBlurProbe={runProbe}
           disabled={disabled}
         />
@@ -171,12 +177,7 @@ export function ServiceForm({
                   field={field}
                   form={form}
                   secretShown={secretShown[field.name] ?? false}
-                  onToggleSecret={() =>
-                    setSecretShown((prev) => ({
-                      ...prev,
-                      [field.name]: !prev[field.name],
-                    }))
-                  }
+                  onToggleSecret={toggleSecret}
                   onBlurProbe={runProbe}
                   disabled={disabled}
                 />
@@ -218,7 +219,7 @@ interface FieldRowProps {
   field: FieldView
   form: ReturnType<typeof useForm<Record<string, string>>>
   secretShown: boolean
-  onToggleSecret: () => void
+  onToggleSecret: (name: string) => void
   onBlurProbe: () => void
   disabled: boolean
 }
@@ -249,13 +250,20 @@ function FieldRow({
             <p className="text-sm text-muted-foreground">{field.description}</p>
           ) : null}
         </div>
-        <Switch
-          id={id}
-          checked={form.watch(field.name) === 'true'}
-          onCheckedChange={(checked) =>
-            form.setValue(field.name, checked ? 'true' : 'false', { shouldDirty: true })
-          }
-          disabled={disabled}
+        {/* Controller scopes the subscription to this field — `form.watch`
+            in render would re-render the entire form on every keystroke
+            in any field. */}
+        <Controller
+          control={form.control}
+          name={field.name}
+          render={({ field: f }) => (
+            <Switch
+              id={id}
+              checked={f.value === 'true'}
+              onCheckedChange={(checked) => f.onChange(checked ? 'true' : 'false')}
+              disabled={disabled}
+            />
+          )}
         />
       </div>
     )
@@ -319,7 +327,7 @@ function FieldRow({
           <button
             type="button"
             aria-label={secretShown ? 'Hide secret' : 'Show secret'}
-            onClick={onToggleSecret}
+            onClick={() => onToggleSecret(field.name)}
             className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
           >
             {secretShown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
