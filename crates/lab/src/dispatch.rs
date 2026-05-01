@@ -24,6 +24,8 @@ pub mod marketplace;
 #[cfg(feature = "memos")]
 pub mod memos;
 pub mod node;
+#[cfg(feature = "notebooklm")]
+pub mod notebooklm;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "overseerr")]
@@ -44,6 +46,7 @@ pub mod radarr;
 pub mod redact;
 #[cfg(feature = "sabnzbd")]
 pub mod sabnzbd;
+pub mod setup;
 #[cfg(feature = "sonarr")]
 pub mod sonarr;
 pub mod stash;

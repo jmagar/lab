@@ -267,6 +267,9 @@ pub fn build_default_registry() -> ToolRegistry {
             dispatch: dispatch_fn!(crate::dispatch::doctor::dispatch),
         });
     }
+    // setup registration is deferred to Chunk E (Phase 3 API routes); see
+    // registry_and_router_service_sets_are_identical — registration must
+    // land in the same commit as the HTTP route group.
 
     reg.register(RegisteredService {
         name: "logs",
@@ -419,6 +422,7 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "overseerr", overseerr);
     register_service!(reg, "gotify", gotify);
     register_service!(reg, "openai", openai);
+    register_service!(reg, "notebooklm", notebooklm);
     register_service!(reg, "qdrant", qdrant);
     register_service!(reg, "tei", tei);
     register_service!(reg, "apprise", apprise);
@@ -516,6 +520,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "gotify" => Some(&lab_apis::gotify::META),
         #[cfg(feature = "openai")]
         "openai" => Some(&lab_apis::openai::META),
+        #[cfg(feature = "notebooklm")]
+        "notebooklm" => Some(&lab_apis::notebooklm::META),
         #[cfg(feature = "qdrant")]
         "qdrant" => Some(&lab_apis::qdrant::META),
         #[cfg(feature = "tei")]
@@ -620,6 +626,8 @@ mod tests {
         assert!(names.contains(&"gotify"), "gotify missing");
         #[cfg(feature = "openai")]
         assert!(names.contains(&"openai"), "openai missing");
+        #[cfg(feature = "notebooklm")]
+        assert!(names.contains(&"notebooklm"), "notebooklm missing");
         #[cfg(feature = "qdrant")]
         assert!(names.contains(&"qdrant"), "qdrant missing");
         #[cfg(feature = "tei")]
@@ -702,6 +710,8 @@ mod tests {
             s.insert(lab_apis::gotify::META.name);
             #[cfg(feature = "openai")]
             s.insert(lab_apis::openai::META.name);
+            #[cfg(feature = "notebooklm")]
+            s.insert(lab_apis::notebooklm::META.name);
             #[cfg(feature = "qdrant")]
             s.insert(lab_apis::qdrant::META.name);
             #[cfg(feature = "tei")]

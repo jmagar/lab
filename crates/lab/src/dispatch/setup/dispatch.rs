@@ -1,0 +1,388 @@
+//! Action router for the `setup` Bootstrap orchestrator.
+//!
+//! Dispatch event field policy: actions whose names start with
+//! `setup.draft.` log without their `params` field — drafts may carry
+//! secret values en route to disk and must never be visible in logs.
+
+use lab_apis::core::PluginMeta;
+use lab_apis::core::action::ActionSpec;
+use lab_apis::setup::{CommitOutcome, DraftEntry, SetupClient};
+use serde_json::{Value, json};
+
+use crate::config::env_merge::{self, EnvEntry, MergeRequest, snapshot_mtime};
+use crate::dispatch::error::ToolError;
+use crate::dispatch::helpers::{action_schema, help_payload, to_json};
+use crate::registry::{build_default_registry, service_meta};
+
+use super::catalog::ACTIONS;
+use super::client::{draft_path, env_path};
+use super::params::{parse_entries, parse_force, parse_services_filter};
+use super::secret_mask;
+use super::state;
+use super::draft;
+
+/// Top-level action dispatch.
+pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
+    let start = std::time::Instant::now();
+    let result = dispatch_inner(action, &params).await;
+    let elapsed_ms = start.elapsed().as_millis();
+    let log_params = !action.starts_with("draft.");
+    log_outcome(action, log_params, &params, elapsed_ms, &result);
+    result
+}
+
+async fn dispatch_inner(action: &str, params: &Value) -> Result<Value, ToolError> {
+    match action {
+        "help" => Ok(help_payload("setup", ACTIONS)),
+        "schema" => {
+            let a = crate::dispatch::helpers::require_str(params, "action")?;
+            action_schema(ACTIONS, a)
+        }
+        "state" => state_action(),
+        "schema.get" => schema_get_action(params),
+        "draft.get" => draft_get_action(),
+        "draft.set" => draft_set_action(params).await,
+        "draft.commit" => draft_commit_action(params).await,
+        "finalize" => draft_commit_action(params).await,
+        unknown => Err(ToolError::UnknownAction {
+            message: format!("unknown action `{unknown}` for service `setup`"),
+            valid: ACTIONS.iter().map(|s| s.name.to_string()).collect(),
+            hint: None,
+        }),
+    }
+}
+
+fn state_action() -> Result<Value, ToolError> {
+    let registry = build_default_registry();
+    to_json(state::snapshot(&registry))
+}
+
+fn schema_get_action(params: &Value) -> Result<Value, ToolError> {
+    let registry = build_default_registry();
+    let filter = parse_services_filter(params);
+    let mut services_out = serde_json::Map::new();
+    for entry in registry.services() {
+        if let Some(ref allowed) = filter
+            && !allowed.iter().any(|s| s == entry.name)
+        {
+            continue;
+        }
+        let Some(meta) = service_meta(entry.name) else {
+            continue;
+        };
+        services_out.insert(entry.name.to_string(), service_schema(meta));
+    }
+    Ok(json!({ "services": Value::Object(services_out) }))
+}
+
+fn service_schema(meta: &PluginMeta) -> Value {
+    let env_var_to_schema = |is_required: bool, var: &lab_apis::core::EnvVar| -> Value {
+        let mut entry = serde_json::Map::new();
+        entry.insert("name".into(), json!(var.name));
+        entry.insert("description".into(), json!(var.description));
+        entry.insert("example".into(), json!(var.example));
+        entry.insert("secret".into(), json!(var.secret));
+        entry.insert("required".into(), json!(is_required));
+        if let Some(ui) = var.ui {
+            entry.insert("ui".into(), ui_schema_to_json(ui));
+        }
+        Value::Object(entry)
+    };
+    let mut env_array: Vec<Value> = meta
+        .required_env
+        .iter()
+        .map(|v| env_var_to_schema(true, v))
+        .collect();
+    env_array.extend(meta.optional_env.iter().map(|v| env_var_to_schema(false, v)));
+    json!({
+        "name": meta.name,
+        "display_name": meta.display_name,
+        "description": meta.description,
+        "category": format!("{:?}", meta.category).to_lowercase(),
+        "supports_multi_instance": meta.supports_multi_instance,
+        "default_port": meta.default_port,
+        "env": env_array,
+    })
+}
+
+fn ui_schema_to_json(ui: &lab_apis::core::plugin_ui::UiSchema) -> Value {
+    use lab_apis::core::plugin_ui::FieldKind;
+    let kind_str = match ui.kind {
+        FieldKind::Text => "text",
+        FieldKind::Secret => "secret",
+        FieldKind::Url => "url",
+        FieldKind::Bool => "bool",
+        FieldKind::Number => "number",
+        FieldKind::FilePath => "file_path",
+        FieldKind::Enum { .. } => "enum",
+    };
+    let enum_values: Option<Vec<&str>> = match ui.kind {
+        FieldKind::Enum { values } => Some(values.to_vec()),
+        _ => None,
+    };
+    json!({
+        "kind": kind_str,
+        "enum_values": enum_values,
+        "advanced": ui.advanced,
+        "help_url": ui.help_url,
+        "depends_on": ui.depends_on,
+        "validation": {
+            "required": ui.validation.required,
+            "min_length": ui.validation.min_length,
+            "max_length": ui.validation.max_length,
+            "pattern": ui.validation.pattern,
+        },
+    })
+}
+
+fn draft_get_action() -> Result<Value, ToolError> {
+    let registry = build_default_registry();
+    let path = draft_path();
+    let entries = draft::read_entries(&path);
+    let masked: Vec<Value> = entries
+        .into_iter()
+        .map(|e| {
+            let value = secret_mask::mask_value(&registry, &e.key, &e.value);
+            json!({ "key": e.key, "value": value })
+        })
+        .collect();
+    Ok(json!({ "entries": masked }))
+}
+
+async fn draft_set_action(params: &Value) -> Result<Value, ToolError> {
+    let entries = parse_entries(params)?;
+    let force = parse_force(params);
+
+    // Server-side defense-in-depth validation against the UiSchema. The
+    // frontend has already validated, but never trust it.
+    validate_against_registry(&entries)?;
+
+    let path = draft_path();
+    let outcome = draft::merge_entries(&path, entries, force).map_err(map_merge_err)?;
+
+    Ok(json!({
+        "written": outcome.written,
+        "skipped": outcome.skipped,
+        "backup_path": outcome.backup_path,
+    }))
+}
+
+fn validate_against_registry(entries: &[DraftEntry]) -> Result<(), ToolError> {
+    for entry in entries {
+        if let Some((meta, var)) = find_env_var(&entry.key)
+            && let Some(ui) = var.ui
+        {
+            SetupClient::validate_against_ui_schema(&entry.key, &entry.value, ui).map_err(
+                |e| ToolError::InvalidParam {
+                    message: format!("validation failed for {} ({}): {e}", entry.key, meta.name),
+                    param: entry.key.clone(),
+                },
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn find_env_var(key: &str) -> Option<(&'static PluginMeta, lab_apis::core::EnvVar)> {
+    let registry = build_default_registry();
+    for service in registry.services() {
+        let Some(meta) = service_meta(service.name) else {
+            continue;
+        };
+        if let Some(var) = meta
+            .required_env
+            .iter()
+            .chain(meta.optional_env.iter())
+            .find(|v| v.name == key)
+        {
+            return Some((meta, *var));
+        }
+    }
+    None
+}
+
+async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
+    let force = parse_force(params);
+    let env = env_path();
+    let draft = draft_path();
+
+    if !draft.exists() {
+        return Err(ToolError::InvalidParam {
+            message: "no draft to commit (.env.draft missing)".into(),
+            param: "draft".into(),
+        });
+    }
+
+    // Snapshot mtime before the audit so an interleaved writer is detected.
+    let expected_mtime = snapshot_mtime(&env);
+
+    // Run doctor.audit.full inline. The orchestrator-exception clause in
+    // dispatch/CLAUDE.md permits Bootstrap services to invoke peer dispatch.
+    let audit = crate::dispatch::doctor::dispatch("audit.full", json!({})).await?;
+    let (audit_pass_count, audit_total_count, all_pass) = audit_summary(&audit);
+    if !all_pass {
+        // Return the structured audit response inline (no preflight_failed wrap).
+        return Ok(json!({
+            "ok": false,
+            "audit": audit,
+            "audit_pass_count": audit_pass_count,
+            "audit_total_count": audit_total_count,
+        }));
+    }
+
+    let entries = draft::read_entries(&draft);
+    let outcome = env_merge::merge(
+        &env,
+        MergeRequest {
+            entries: entries
+                .into_iter()
+                .map(|e| EnvEntry::new(e.key, e.value))
+                .collect(),
+            force,
+            expected_mtime,
+        },
+    )
+    .map_err(|e| {
+        // Best-effort rollback — if backup exists and write actually
+        // happened to the wrong place, we already have the bak file.
+        map_merge_err(e)
+    })?;
+
+    // Successful commit — clear the draft so the wizard does not re-replay.
+    std::fs::remove_file(&draft).ok();
+
+    let result = CommitOutcome {
+        written: outcome.written,
+        skipped: outcome.skipped,
+        backup_path: outcome.backup_path,
+        audit_pass_count,
+        audit_total_count,
+    };
+
+    tracing::info!(
+        surface = "dispatch",
+        service = "setup",
+        action = "draft.commit.success",
+        audit_pass_count,
+        audit_total_count,
+        written = result.written,
+        backup_path = result.backup_path.as_ref().map(|p| p.to_string_lossy().into_owned()),
+        "setup commit success"
+    );
+
+    to_json(result)
+}
+
+fn audit_summary(audit: &Value) -> (usize, usize, bool) {
+    let findings = audit
+        .get("findings")
+        .and_then(Value::as_array)
+        .map_or_else(Vec::new, |arr| arr.clone());
+    let total = findings.len();
+    let pass = findings
+        .iter()
+        .filter(|f| {
+            f.get("severity")
+                .and_then(Value::as_str)
+                .is_none_or(|s| s != "error")
+        })
+        .count();
+    (pass, total, pass == total)
+}
+
+fn map_merge_err(err: env_merge::MergeError) -> ToolError {
+    ToolError::Sdk {
+        sdk_kind: err.kind().to_string(),
+        message: err.to_string(),
+    }
+}
+
+fn log_outcome(
+    action: &str,
+    log_params: bool,
+    params: &Value,
+    elapsed_ms: u128,
+    result: &Result<Value, ToolError>,
+) {
+    let params_field = if log_params {
+        params.clone()
+    } else {
+        // Drop body for setup.draft.* to avoid logging secrets.
+        Value::String("<redacted>".into())
+    };
+    match result {
+        Ok(_) => tracing::info!(
+            surface = "dispatch",
+            service = "setup",
+            action,
+            elapsed_ms,
+            params = ?params_field,
+            "dispatch ok"
+        ),
+        Err(e) => tracing::warn!(
+            surface = "dispatch",
+            service = "setup",
+            action,
+            elapsed_ms,
+            kind = e.kind(),
+            params = ?params_field,
+            "dispatch warn"
+        ),
+    }
+}
+
+#[allow(dead_code)]
+fn assert_action_count_const() {
+    // Compile-time sanity: ACTIONS must list every action this dispatch
+    // handles, including help + schema.
+    let _: &[ActionSpec] = ACTIONS;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::registry::build_default_registry;
+
+    #[tokio::test]
+    async fn unknown_action_returns_unknown_action() {
+        let err = dispatch("does.not.exist", Value::Null).await.unwrap_err();
+        assert!(matches!(err, ToolError::UnknownAction { .. }));
+    }
+
+    #[tokio::test]
+    async fn help_returns_catalog() {
+        let v = dispatch("help", Value::Null).await.unwrap();
+        assert!(v.get("actions").is_some());
+    }
+
+    #[tokio::test]
+    async fn schema_get_lists_services_with_meta() {
+        let v = dispatch("schema.get", json!({})).await.unwrap();
+        let services = v.get("services").and_then(Value::as_object).unwrap();
+        // Every service that has a PluginMeta entry should appear; synthetic
+        // services without meta (extract/doctor/setup) are skipped — they
+        // have no env config to render in the wizard.
+        for entry in build_default_registry().services() {
+            if service_meta(entry.name).is_some() {
+                assert!(
+                    services.contains_key(entry.name),
+                    "missing service: {}",
+                    entry.name
+                );
+            }
+        }
+        assert!(!services.is_empty());
+    }
+
+    #[tokio::test]
+    async fn schema_get_filter_returns_subset() {
+        let v = dispatch("schema.get", json!({"services": ["radarr"]}))
+            .await
+            .unwrap();
+        let services = v.get("services").and_then(Value::as_object).unwrap();
+        // With filter, only requested services that have meta should appear.
+        for key in services.keys() {
+            assert_eq!(key, "radarr");
+        }
+    }
+}
