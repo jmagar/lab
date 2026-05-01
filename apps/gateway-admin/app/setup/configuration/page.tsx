@@ -62,9 +62,9 @@ export default function ConfigurationPage(): React.ReactElement {
     }
   }
 
-  async function probeService(slug: string): Promise<ProbeOutcome> {
+  async function probeService(slug: string, signal: AbortSignal): Promise<ProbeOutcome> {
     try {
-      const finding = await doctorApi.serviceProbe(slug)
+      const finding = await doctorApi.serviceProbe(slug, undefined, signal)
       return {
         status: finding.severity === 'ok' ? 'ok' : 'fail',
         message: finding.message,
@@ -122,7 +122,7 @@ export default function ConfigurationPage(): React.ReactElement {
                 fields={s.fields}
                 defaultValues={s.defaultValues}
                 onSave={saveService}
-                onProbe={() => probeService(s.schema.name)}
+                onProbe={(_values, signal) => probeService(s.schema.name, signal)}
               />
             </TabsContent>
           ))}

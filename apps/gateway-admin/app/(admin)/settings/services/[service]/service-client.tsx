@@ -75,9 +75,9 @@ export default function ServicePage({
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function probe(): Promise<ProbeOutcome> {
+  async function probe(_values: Record<string, string>, signal: AbortSignal): Promise<ProbeOutcome> {
     try {
-      const finding = await doctorApi.serviceProbe(service)
+      const finding = await doctorApi.serviceProbe(service, undefined, signal)
       return {
         status: finding.severity === 'ok' ? 'ok' : 'fail',
         message: finding.message,

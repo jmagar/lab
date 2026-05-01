@@ -15,7 +15,7 @@
 //   already holds a value.
 // - Advanced fields hide behind a single collapsible disclosure.
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Loader2 } from 'lucide-react'
@@ -53,8 +53,10 @@ export interface ServiceFormProps {
       setup.draft.set, setup.draft.commit, or both. */
   onSave: (values: Record<string, string>) => Promise<void> | void
   /** Optional async probe (doctor.service.probe) called on blur once
-      every required field is populated. */
-  onProbe?: (values: Record<string, string>) => Promise<ProbeOutcome>
+      every required field is populated. The signal is aborted when a new
+      probe supersedes this one or when the form unmounts; consumers must
+      thread it into the underlying fetch. */
+  onProbe?: (values: Record<string, string>, signal: AbortSignal) => Promise<ProbeOutcome>
   /** Submit button label. Defaults to "Save". */
   submitLabel?: string
   /** Disable the form (e.g. while a parent commit is in flight). */
@@ -97,6 +99,15 @@ export function ServiceForm({
   })
   const probeAbortRef = useRef<AbortController | null>(null)
 
+  // Abort any in-flight probe when the form unmounts. Without this the
+  // probe's promise resolves after the component is gone and setProbe
+  // logs to a dead state setter.
+  useEffect(() => {
+    return () => {
+      probeAbortRef.current?.abort()
+    }
+  }, [])
+
   const visibleFields = fields.filter((f) => !f.ui.advanced)
   const advancedFields = fields.filter((f) => f.ui.advanced)
   const hasAdvanced = advancedFields.length > 0
@@ -124,7 +135,7 @@ export function ServiceForm({
     probeAbortRef.current = controller
     setProbe({ status: 'pending' })
     try {
-      const outcome = await onProbe(stripBlankSecrets(values, fields))
+      const outcome = await onProbe(stripBlankSecrets(values, fields), controller.signal)
       if (controller.signal.aborted) return
       setProbe({ status: outcome.status, message: outcome.message })
     } catch (err) {
