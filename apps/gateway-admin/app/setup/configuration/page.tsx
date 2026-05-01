@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -23,6 +23,12 @@ export default function ConfigurationPage(): React.ReactElement {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
   const [activeTab, setActiveTab] = useState<string | undefined>(undefined)
+
+  // In-progress field values per service slug. ServiceForm flushes its
+  // current values to this cache on unmount via onUnmount; on remount
+  // we prefer the cached values over the draft snapshot so a tab switch
+  // doesn't silently discard typed-but-unsaved input.
+  const valuesCache = useRef<Map<string, Record<string, string>>>(new Map())
 
   useEffect(() => {
     if (wizard.selectedServices.length === 0) {
@@ -126,20 +132,19 @@ export default function ConfigurationPage(): React.ReactElement {
             // ServiceForms simultaneously means 22 useForm + zodResolver
             // builds up front. Only render the active tab's form to keep
             // mount cost O(1) regardless of selected-service count.
-            //
-            // KNOWN TRADE: switching tabs unmounts the previous ServiceForm
-            // and its in-progress RHF state is lost. Users must click Save
-            // before switching. A proper fix lifts form values to a parent
-            // cache (or an unmount-flush callback on ServiceForm) — tracked
-            // as a follow-up.
+            // ServiceForm.onUnmount flushes its in-progress values into
+            // valuesCache so tab switches don't lose typed input; on
+            // remount we hydrate from the cache when present.
             if (!current) return null
+            const cached = valuesCache.current.get(s.schema.name)
             return (
               <TabsContent key={s.schema.name} value={s.schema.name} className="pt-4">
                 <ServiceForm
                   fields={s.fields}
-                  defaultValues={s.defaultValues}
+                  defaultValues={cached ?? s.defaultValues}
                   onSave={saveService}
                   onProbe={(_values, signal) => probeService(s.schema.name, signal)}
+                  onUnmount={(values) => valuesCache.current.set(s.schema.name, values)}
                 />
               </TabsContent>
             )

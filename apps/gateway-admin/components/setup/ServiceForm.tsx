@@ -56,6 +56,11 @@ export interface ServiceFormProps {
       probe supersedes this one or when the form unmounts; consumers must
       thread it into the underlying fetch. */
   onProbe?: (values: Record<string, string>, signal: AbortSignal) => Promise<ProbeOutcome>
+  /** Called once on unmount with the form's last-known values. Used by
+      the wizard's configuration tab so switching tabs doesn't lose
+      in-progress edits. The callback fires in the useEffect cleanup, so
+      it sees values that were typed but not yet submitted. */
+  onUnmount?: (values: Record<string, string>) => void
   /** Submit button label. Defaults to "Save". */
   submitLabel?: string
   /** Disable the form (e.g. while a parent commit is in flight). */
@@ -67,6 +72,7 @@ export function ServiceForm({
   defaultValues,
   onSave,
   onProbe,
+  onUnmount,
   submitLabel = 'Save',
   disabled = false,
 }: ServiceFormProps): React.ReactElement {
@@ -97,6 +103,23 @@ export function ServiceForm({
     return () => {
       probeAbortRef.current?.abort()
     }
+  }, [])
+
+  // Flush the form's current values to the parent on unmount so a
+  // controlled remount (e.g. wizard tab switch) can rehydrate from the
+  // cached values. Captured via ref so a parent re-render that hands a
+  // new onUnmount identity in does not re-arm the cleanup.
+  const onUnmountRef = useRef(onUnmount)
+  useEffect(() => {
+    onUnmountRef.current = onUnmount
+  }, [onUnmount])
+  useEffect(() => {
+    return () => {
+      onUnmountRef.current?.(form.getValues())
+    }
+  // form is stable across the component's life; intentionally empty deps
+  // so this fires only on actual unmount, not every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const { visibleFields, advancedFields } = useMemo(() => ({
