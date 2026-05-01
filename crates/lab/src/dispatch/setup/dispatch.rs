@@ -274,19 +274,17 @@ async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
 }
 
 fn audit_summary(audit: &Value) -> (usize, usize, bool) {
-    let findings = audit
+    // Single-pass count without cloning the findings array.
+    let (pass, total) = audit
         .get("findings")
         .and_then(Value::as_array)
-        .map_or_else(Vec::new, |arr| arr.clone());
-    let total = findings.len();
-    let pass = findings
-        .iter()
-        .filter(|f| {
-            f.get("severity")
-                .and_then(Value::as_str)
-                .is_none_or(|s| s != "error")
+        .map(|arr| {
+            arr.iter().fold((0usize, 0usize), |(pass, total), f| {
+                let is_err = f.get("severity").and_then(Value::as_str) == Some("error");
+                (pass + usize::from(!is_err), total + 1)
+            })
         })
-        .count();
+        .unwrap_or((0, 0));
     (pass, total, pass == total)
 }
 
