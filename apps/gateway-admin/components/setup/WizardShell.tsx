@@ -5,7 +5,7 @@
 // across sessions: setup.draft.set is the durable record; this context
 // just keeps things visible across step navigation within one tab.
 
-import { createContext, useContext, useMemo, useState } from 'react'
+import { createContext, useContext, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 
@@ -34,8 +34,6 @@ export const WIZARD_STEPS: WizardStep[] = [
 interface WizardState {
   selectedServices: string[]
   setSelectedServices: (services: string[]) => void
-  draftValues: Record<string, string>
-  setDraftValue: (key: string, value: string) => void
 }
 
 const WizardContext = createContext<WizardState | undefined>(undefined)
@@ -48,19 +46,7 @@ export function useWizard(): WizardState {
 
 export function WizardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [selectedServices, setSelectedServices] = useState<string[]>([])
-  const [draftValues, setDraftValues] = useState<Record<string, string>>({})
-
-  const value = useMemo<WizardState>(
-    () => ({
-      selectedServices,
-      setSelectedServices,
-      draftValues,
-      setDraftValue: (key, val) =>
-        setDraftValues((prev) => ({ ...prev, [key]: val })),
-    }),
-    [selectedServices, draftValues],
-  )
-
+  const value: WizardState = { selectedServices, setSelectedServices }
   return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>
 }
 
