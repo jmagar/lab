@@ -19,10 +19,10 @@ use crate::config::env_merge::{self, EnvEntry, MergeRequest, snapshot_mtime};
 const AUDIT_TIMEOUT: Duration = Duration::from_secs(30);
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
-use crate::registry::{build_default_registry, service_meta};
+use crate::registry::service_meta;
 
 use super::catalog::ACTIONS;
-use super::client::{draft_path, env_path};
+use super::client::{cached_env_var_index, cached_registry, draft_path, env_path};
 use super::params::{parse_entries, parse_force, parse_services_filter};
 use super::secret_mask;
 use super::state;
@@ -60,12 +60,11 @@ async fn dispatch_inner(action: &str, params: &Value) -> Result<Value, ToolError
 }
 
 fn state_action() -> Result<Value, ToolError> {
-    let registry = build_default_registry();
-    to_json(state::snapshot(&registry))
+    to_json(state::snapshot(cached_registry()))
 }
 
 fn schema_get_action(params: &Value) -> Result<Value, ToolError> {
-    let registry = build_default_registry();
+    let registry = cached_registry();
     let filter = parse_services_filter(params);
     let mut services_out = serde_json::Map::new();
     for entry in registry.services() {
@@ -143,13 +142,12 @@ fn ui_schema_to_json(ui: &lab_apis::core::plugin_ui::UiSchema) -> Value {
 }
 
 fn draft_get_action() -> Result<Value, ToolError> {
-    let registry = build_default_registry();
     let path = draft_path();
     let entries = draft::read_entries(&path);
     let masked: Vec<Value> = entries
         .into_iter()
         .map(|e| {
-            let value = secret_mask::mask_value(&registry, &e.key, &e.value);
+            let value = secret_mask::mask_value(&e.key, &e.value);
             json!({ "key": e.key, "value": value })
         })
         .collect();
@@ -175,37 +173,20 @@ async fn draft_set_action(params: &Value) -> Result<Value, ToolError> {
 }
 
 fn validate_against_registry(entries: &[DraftEntry]) -> Result<(), ToolError> {
+    let index = cached_env_var_index();
     for entry in entries {
-        if let Some((meta, var)) = find_env_var(&entry.key)
+        if let Some(var) = index.get(entry.key.as_str())
             && let Some(ui) = var.ui
         {
             SetupClient::validate_against_ui_schema(&entry.key, &entry.value, ui).map_err(
                 |e| ToolError::InvalidParam {
-                    message: format!("validation failed for {} ({}): {e}", entry.key, meta.name),
+                    message: format!("validation failed for {}: {e}", entry.key),
                     param: entry.key.clone(),
                 },
             )?;
         }
     }
     Ok(())
-}
-
-fn find_env_var(key: &str) -> Option<(&'static PluginMeta, lab_apis::core::EnvVar)> {
-    let registry = build_default_registry();
-    for service in registry.services() {
-        let Some(meta) = service_meta(service.name) else {
-            continue;
-        };
-        if let Some(var) = meta
-            .required_env
-            .iter()
-            .chain(meta.optional_env.iter())
-            .find(|v| v.name == key)
-        {
-            return Some((meta, *var));
-        }
-    }
-    None
 }
 
 async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
