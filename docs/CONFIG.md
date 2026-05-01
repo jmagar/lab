@@ -560,11 +560,9 @@ env_file:
 
 - Changes to `~/.lab/config.toml` take effect on the next container restart
   (`docker compose restart lab-master`).
-- `config/config.toml` in the repository is **not** used by the Docker
-  deployment. It exists as a reference/example for the repo. Copy it to
-  `~/.lab/config.toml` to initialise your personal config.
 - `config/config.example.toml` is the canonical reference for all available
-  TOML options.
+  TOML options. Copy it to `~/.lab/config.toml` to bootstrap your personal
+  config, then edit as needed.
 - The container overrides two env vars that would be wrong inside the container
   even if set in `~/.lab/.env`:
   - `LAB_WEB_ASSETS_DIR=""` — clears any host filesystem path so the binary

@@ -1,12 +1,10 @@
 # Lab configuration — preferences only, no secrets.
 #
-# Copy to ~/.lab/config.toml (standalone) or ./config.toml (per-repo override)
-# and uncomment sections as needed.
+# Copy to ~/.lab/config.toml and uncomment sections as needed.
+# A ./config.toml in the working directory also works as a per-repo override.
 #
-# Docker: docker-compose.yml mounts ${HOME}/.lab/config.toml directly into the
-# container, so Docker and local `lab serve` share the same config. The file
-# config/config.toml in the repo is not used by Docker; it exists as a personal
-# reference only.
+# Docker: docker-compose.yml mounts ${HOME}/.lab/config.toml directly, so
+# Docker and local `lab serve` share the same config.
 #
 # Secrets (API keys, tokens, passwords, URLs) belong in ~/.lab/.env.
 # Everything else belongs here. All values below can still be overridden
