@@ -246,3 +246,10 @@ that work belongs in the shared dispatch layer so all three surfaces share
 identical orchestration semantics. If you find yourself reaching into
 another service from a surface module, move the orchestration into
 `dispatch/` instead.
+
+The one-way direction is enforced by
+`crates/lab/tests/architecture_orchestrator.rs` — the test fails when any
+file outside the allowlist (orchestrator's own modules, surface adapters,
+registry) imports `crate::dispatch::setup`. If you need to extend the
+exception, update the test's `ALLOWED_PATHS` and explain why in the same
+PR.
