@@ -35,11 +35,9 @@ export default function ServiceSelectionPage(): React.ReactElement {
   }, [])
 
   function toggle(service: string): void {
-    if (wizard.selectedServices.includes(service)) {
-      wizard.setSelectedServices(wizard.selectedServices.filter((s) => s !== service))
-    } else {
-      wizard.setSelectedServices([...wizard.selectedServices, service])
-    }
+    wizard.setSelectedServices((prev) =>
+      prev.includes(service) ? prev.filter((s) => s !== service) : [...prev, service],
+    )
   }
 
   return (

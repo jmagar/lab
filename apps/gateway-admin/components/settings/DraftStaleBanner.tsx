@@ -47,11 +47,20 @@ export function DraftStaleBanner(): React.ReactElement | null {
       }, 1000)
     }
 
+    function onVisibility(): void {
+      if (document.visibilityState === 'visible') schedule()
+    }
+
     void check()
     window.addEventListener('focus', schedule)
+    // visibilitychange covers tab-switch on browsers where 'focus' doesn't
+    // fire when switching between tabs in the same window (Chrome on
+    // mobile, some multi-tab desktop workflows).
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       cancelled = true
       window.removeEventListener('focus', schedule)
+      document.removeEventListener('visibilitychange', onVisibility)
       if (debounceTimer) clearTimeout(debounceTimer)
       inFlight?.abort()
     }

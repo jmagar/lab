@@ -34,9 +34,11 @@ export const WIZARD_STEPS: WizardStep[] = [
   { slug: 'finalize', title: 'Finalize' },
 ]
 
+type SelectedServicesUpdater = string[] | ((prev: string[]) => string[])
+
 interface WizardState {
   selectedServices: string[]
-  setSelectedServices: (services: string[]) => void
+  setSelectedServices: (next: SelectedServicesUpdater) => void
   /** Wipe persisted selection. Call after a successful finalize/commit. */
   clearWizardState: () => void
 }
@@ -79,15 +81,18 @@ export function WizardProvider({ children }: { children: React.ReactNode }): Rea
     if (persisted.length > 0) setSelectedServicesState(persisted)
   }, [])
 
-  const setSelectedServices = (services: string[]): void => {
-    setSelectedServicesState(services)
-    if (typeof window !== 'undefined') {
-      try {
-        window.sessionStorage.setItem(SELECTED_SERVICES_KEY, JSON.stringify(services))
-      } catch {
-        // Quota exceeded or storage disabled — selection just won't survive refresh.
+  const setSelectedServices = (next: SelectedServicesUpdater): void => {
+    setSelectedServicesState((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next
+      if (typeof window !== 'undefined') {
+        try {
+          window.sessionStorage.setItem(SELECTED_SERVICES_KEY, JSON.stringify(resolved))
+        } catch {
+          // Quota exceeded or storage disabled — selection just won't survive refresh.
+        }
       }
-    }
+      return resolved
+    })
   }
 
   const clearWizardState = (): void => {

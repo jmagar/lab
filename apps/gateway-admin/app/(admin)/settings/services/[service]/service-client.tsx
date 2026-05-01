@@ -4,7 +4,7 @@
 // current draft values, renders <ServiceForm>, and on save fires
 // setup.draft.set + setup.draft.commit (per-section apply-on-save).
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
@@ -33,6 +33,12 @@ export default function ServicePage({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | undefined>()
   const [saved, setSaved] = useState(false)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Clear any pending "saved" auto-reset on unmount.
+  useEffect(() => () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+  }, [])
 
   useEffect(() => {
     if (!isKnownService(service)) {
@@ -72,7 +78,8 @@ export default function ServicePage({
     await setupApi.draftSet(entries, { force: true })
     await setupApi.draftCommit({ force: true })
     setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
   }
 
   async function probe(_values: Record<string, string>, signal: AbortSignal): Promise<ProbeOutcome> {

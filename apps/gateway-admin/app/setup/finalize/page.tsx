@@ -35,6 +35,15 @@ export default function FinalizePage(): React.ReactElement {
     void runAudit()
   }, [])
 
+  // Tie the post-commit redirect to a cleanup-able timer. If the user
+  // navigates away during the 1.2s grace window, clearTimeout prevents
+  // router.replace from firing on a dead component.
+  useEffect(() => {
+    if (commitOutcome === undefined || commitOutcome.ok === false) return
+    const t = setTimeout(() => router.replace('/settings/'), 1200)
+    return () => clearTimeout(t)
+  }, [commitOutcome, router])
+
   async function commit(): Promise<void> {
     setCommitting(true)
     setCommitError(undefined)
@@ -42,10 +51,10 @@ export default function FinalizePage(): React.ReactElement {
       const outcome = await setupApi.finalize()
       setCommitOutcome(outcome)
       // On success, wipe wizard selection (so a new wizard run starts fresh)
-      // and route to /settings — wizard is done.
+      // — actual redirect runs from a useEffect tied to commitOutcome so it
+      // can be cleaned up on unmount.
       if (outcome.ok !== false) {
         wizard.clearWizardState()
-        setTimeout(() => router.replace('/settings/'), 1200)
       }
     } catch (err) {
       setCommitError(err instanceof Error ? err.message : 'finalize failed')
