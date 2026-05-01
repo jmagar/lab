@@ -5,7 +5,9 @@ use std::path::Path;
 
 use lab_apis::setup::DraftEntry;
 
-use crate::config::env_merge::{self, EnvEntry, MergeError, MergeOutcome, MergeRequest};
+use crate::config::env_merge::{
+    self, EnvEntry, MergeError, MergeOutcome, MergeRequest, strip_quotes,
+};
 
 /// Parse an `.env`-style file into `(key, value)` entries. Comments and
 /// blank lines are dropped; quoted values are unwrapped.
@@ -28,16 +30,6 @@ pub fn read_entries(path: &Path) -> Vec<DraftEntry> {
             })
         })
         .collect()
-}
-
-fn strip_quotes(value: &str) -> String {
-    if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
-        value[1..value.len() - 1]
-            .replace(r#"\""#, "\"")
-            .replace(r"\\", r"\")
-    } else {
-        value.to_owned()
-    }
 }
 
 /// Merge `entries` into `path` (typically `.env.draft`).

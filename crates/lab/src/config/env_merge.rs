@@ -25,13 +25,17 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::SystemTime;
 
 use tempfile::NamedTempFile;
 
 /// Maximum number of `.env.bak.*` files retained after a successful merge.
-#[allow(dead_code)]
 pub const BACKUP_RETENTION: usize = 10;
+
+/// Process-wide counter used to disambiguate same-millisecond backup names
+/// without spinning on filesystem existence checks.
+static BACKUP_COUNTER: AtomicU32 = AtomicU32::new(0);
 
 /// Single key-value entry to merge into the target file.
 #[derive(Debug, Clone)]
@@ -63,7 +67,6 @@ pub struct MergeRequest {
 }
 
 /// Outcome of a successful [`merge`].
-#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct MergeOutcome {
     /// Number of entries that resulted in a key change (new key or override).
@@ -77,7 +80,6 @@ pub struct MergeOutcome {
     pub pruned: PruneStats,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct PruneStats {
     pub kept: usize,
@@ -122,24 +124,19 @@ pub enum MergeError {
     },
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone, Copy)]
 pub enum WriteConflictReason {
     MtimeSkew,
-    /// Reserved for v2 fs2 lock contention. Not constructed in v1.
-    LockContentionV2,
 }
 
 impl std::fmt::Display for WriteConflictReason {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MtimeSkew => write!(f, "mtime_skew"),
-            Self::LockContentionV2 => write!(f, "lock_contention_v2"),
         }
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum WriteFailReason {
     StorageFull,
@@ -368,29 +365,19 @@ fn set_secure_perms(_path: &Path) {
 }
 
 fn create_backup(path: &Path) -> Result<PathBuf, MergeError> {
-    // Millisecond precision plus a uniqueness retry guards against
-    // back-to-back commits within the same second.
-    for attempt in 0..16u32 {
-        let ms = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .map_or(0, |d| d.as_millis());
-        let candidate = if attempt == 0 {
-            PathBuf::from(format!("{}.bak.{ms}", path.display()))
-        } else {
-            PathBuf::from(format!("{}.bak.{ms}.{attempt}", path.display()))
-        };
-        if !candidate.exists() {
-            fs::copy(path, &candidate).map_err(|e| MergeError::WriteFailed {
-                path: candidate.clone(),
-                reason: WriteFailReason::from_io(&e),
-            })?;
-            return Ok(candidate);
-        }
-    }
-    Err(MergeError::WriteFailed {
-        path: path.to_path_buf(),
-        reason: WriteFailReason::Other("could not allocate unique backup name".into()),
-    })
+    // Millisecond timestamp + monotonic process counter + pid disambiguates
+    // same-millisecond commits without filesystem existence checks.
+    let ms = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let counter = BACKUP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let pid = std::process::id();
+    let backup = PathBuf::from(format!("{}.bak.{ms}.{pid}.{counter}", path.display()));
+    fs::copy(path, &backup).map_err(|e| MergeError::WriteFailed {
+        path: backup.clone(),
+        reason: WriteFailReason::from_io(&e),
+    })?;
+    Ok(backup)
 }
 
 fn prune_backups(parent: &Path, target: &Path) -> std::io::Result<PruneStats> {
@@ -422,8 +409,15 @@ fn prune_backups(parent: &Path, target: &Path) -> std::io::Result<PruneStats> {
     let to_remove = backups.len() - BACKUP_RETENTION;
     let mut removed = 0;
     for (path, _) in backups.iter().take(to_remove) {
-        if fs::remove_file(path).is_ok() {
-            removed += 1;
+        match fs::remove_file(path) {
+            Ok(()) => removed += 1,
+            Err(e) => tracing::warn!(
+                subsystem = "env_merge",
+                phase = "backup.prune",
+                path = %path.display(),
+                error = %e,
+                "could not remove old backup; continuing"
+            ),
         }
     }
     Ok(PruneStats {
@@ -463,7 +457,12 @@ fn quote_value(value: &str) -> String {
     out
 }
 
-fn strip_quotes(value: &str) -> String {
+/// Strip enclosing double quotes from a serialized `.env` value and undo
+/// the `\"` / `\\` escapes applied by [`quote_value`]. Pub so the dispatch
+/// layer can use the same parser when reading `.env.draft` directly
+/// (no second copy of the same logic in `dispatch/setup/draft.rs`).
+#[must_use]
+pub fn strip_quotes(value: &str) -> String {
     if value.len() >= 2 && value.starts_with('"') && value.ends_with('"') {
         value[1..value.len() - 1]
             .replace(r#"\""#, "\"")

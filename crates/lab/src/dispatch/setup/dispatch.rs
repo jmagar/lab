@@ -258,11 +258,10 @@ async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
             expected_mtime,
         },
     )
-    .map_err(|e| {
-        // Best-effort rollback — if backup exists and write actually
-        // happened to the wrong place, we already have the bak file.
-        map_merge_err(e)
-    })?;
+    .map_err(map_merge_err)?;
+    // env_merge::merge owns rollback semantics: on a post-backup failure
+    // it surfaces commit_rollback_failed with the backup_path so the
+    // operator can recover manually. Dispatch does not retry the merge.
 
     // Successful commit — clear the draft so the wizard does not re-replay.
     std::fs::remove_file(&draft).ok();
