@@ -14,40 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { setupApi } from '@/lib/api/setup-client'
-
-interface CoreField {
-  key: string
-  label: string
-  description: string
-  example: string
-}
-
-const CORE_FIELDS: CoreField[] = [
-  {
-    key: 'LAB_MCP_HTTP_HOST',
-    label: 'Bind host',
-    description: 'Host the lab HTTP server binds to.',
-    example: '127.0.0.1',
-  },
-  {
-    key: 'LAB_MCP_HTTP_PORT',
-    label: 'Bind port',
-    description: 'TCP port for the lab HTTP server.',
-    example: '8765',
-  },
-  {
-    key: 'LAB_LOG',
-    label: 'Log filter',
-    description: 'tracing-subscriber filter directive.',
-    example: 'lab=info,lab_apis=warn',
-  },
-  {
-    key: 'LAB_LOG_FORMAT',
-    label: 'Log format',
-    description: 'Set to "json" for structured logs in production.',
-    example: 'text',
-  },
-]
+import { CORE_FIELDS } from '@/lib/setup/coreFields'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
