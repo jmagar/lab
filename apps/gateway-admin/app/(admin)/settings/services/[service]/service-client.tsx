@@ -13,7 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ServiceForm, type ProbeOutcome } from '@/components/setup/ServiceForm'
 import { setupApi, type ServiceSchema } from '@/lib/api/setup-client'
 import { doctorApi } from '@/lib/api/doctor-client'
-import { envVarToFieldView, type FieldView } from '@/lib/setup/schemaBuilder'
+import { type FieldView } from '@/lib/setup/schemaBuilder'
+import { buildServiceFormDefaults, draftEntriesToMap } from '@/lib/setup/draft'
 import { isKnownService } from '@/lib/setup/buildServiceSlugs'
 
 interface PageState {
@@ -51,18 +52,8 @@ export default function ServicePage({
           setError(`Service ${service} not present in schema response`)
           return
         }
-        const draftMap: Record<string, string> = {}
-        for (const entry of draft.entries) {
-          draftMap[entry.key] = entry.value
-        }
-        const fields = schema.env.map((envVar) =>
-          envVarToFieldView(envVar, draftMap[envVar.name] === '***'),
-        )
-        const defaults: Record<string, string> = {}
-        for (const field of fields) {
-          const cur = draftMap[field.name]
-          defaults[field.name] = cur && cur !== '***' ? cur : ''
-        }
+        const draftMap = draftEntriesToMap(draft.entries)
+        const { fields, defaults } = buildServiceFormDefaults(schema.env, draftMap)
         setState({ schema, fields, defaults })
       })
       .catch((err) => {

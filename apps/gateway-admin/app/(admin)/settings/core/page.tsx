@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { setupApi } from '@/lib/api/setup-client'
 import { CORE_FIELDS } from '@/lib/setup/coreFields'
+import { unmaskValue } from '@/lib/setup/draft'
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
@@ -46,8 +47,7 @@ export default function CorePage(): React.ReactElement {
             if (next[entry.key]) {
               next[entry.key] = {
                 ...next[entry.key]!,
-                // Don't show secret sentinel as a real value.
-                value: entry.value === '***' ? '' : entry.value,
+                value: unmaskValue(entry.value),
               }
             }
           }

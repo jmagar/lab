@@ -8,7 +8,8 @@ import { NavButtons, useWizard } from '@/components/setup/WizardShell'
 import { ServiceForm, type ProbeOutcome } from '@/components/setup/ServiceForm'
 import { setupApi, type ServiceSchema } from '@/lib/api/setup-client'
 import { doctorApi } from '@/lib/api/doctor-client'
-import { envVarToFieldView, type FieldView } from '@/lib/setup/schemaBuilder'
+import { type FieldView } from '@/lib/setup/schemaBuilder'
+import { buildServiceFormDefaults, draftEntriesToMap } from '@/lib/setup/draft'
 
 interface ServiceState {
   schema: ServiceSchema
@@ -34,22 +35,12 @@ export default function ConfigurationPage(): React.ReactElement {
     ])
       .then(([schemaResponse, draft]) => {
         if (controller.signal.aborted) return
-        const draftMap: Record<string, string> = {}
-        for (const entry of draft.entries) {
-          draftMap[entry.key] = entry.value
-        }
+        const draftMap = draftEntriesToMap(draft.entries)
         const next: ServiceState[] = []
         for (const slug of wizard.selectedServices) {
           const schema = schemaResponse.services[slug]
           if (!schema) continue
-          const fields = schema.env.map((envVar) =>
-            envVarToFieldView(envVar, draftMap[envVar.name] === '***'),
-          )
-          const defaults: Record<string, string> = {}
-          for (const field of fields) {
-            const cur = draftMap[field.name]
-            defaults[field.name] = cur && cur !== '***' ? cur : ''
-          }
+          const { fields, defaults } = buildServiceFormDefaults(schema.env, draftMap)
           next.push({ schema, fields, defaultValues: defaults })
         }
         setServices(next)
