@@ -128,3 +128,6 @@ pub mod uptime_kuma;
 
 #[cfg(feature = "pihole")]
 pub mod pihole;
+
+#[cfg(feature = "neo4j")]
+pub mod neo4j;

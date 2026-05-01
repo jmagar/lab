@@ -49,7 +49,7 @@ pub const ACTIONS: &[ActionSpec] = &[
         returns: "UptimeKumaResponse",
         params: &[ParamSpec {
             name: "id",
-            ty: "string",
+            ty: "integer",
             required: true,
             description: "Monitor id",
         }],
@@ -59,12 +59,20 @@ pub const ACTIONS: &[ActionSpec] = &[
         description: "List heartbeat rows through the Socket.IO actor",
         destructive: false,
         returns: "UptimeKumaResponse",
-        params: &[ParamSpec {
-            name: "monitor_id",
-            ty: "string",
-            required: false,
-            description: "Optional monitor id filter",
-        }],
+        params: &[
+            ParamSpec {
+                name: "monitor_id",
+                ty: "integer",
+                required: true,
+                description: "Monitor id",
+            },
+            ParamSpec {
+                name: "hours",
+                ty: "integer",
+                required: false,
+                description: "History window in hours, default 24, max 168",
+            },
+        ],
     },
     ActionSpec {
         name: "status.summary",

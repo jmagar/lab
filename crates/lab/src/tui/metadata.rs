@@ -357,6 +357,16 @@ pub async fn check_all_services(env: &std::path::Path) -> Vec<ServiceHealth> {
         }
     }
 
+    #[cfg(feature = "neo4j")]
+    {
+        if let Some(client) = crate::dispatch::helpers::with_env_override(
+            vars.clone(),
+            crate::dispatch::neo4j::client_from_env,
+        ) {
+            spawn_health!("neo4j", client);
+        }
+    }
+
     #[cfg(feature = "uptime_kuma")]
     {
         if let Some(client) = crate::dispatch::helpers::with_env_override(

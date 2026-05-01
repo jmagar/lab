@@ -106,6 +106,7 @@ The following services are always compiled in and require no feature flag or ups
 - Scrutiny (`docs/upstream-api/scrutiny.md`; cautious read-only endpoint contract)
 - LoggiFly (`docs/upstream-api/loggifly.md`; implementation-deferred contract status only)
 - Glances (`docs/upstream-api/glances.md`; REST API v4)
+- Neo4j (`docs/upstream-api/neo4j.md`; Bolt protocol via `neo4rs`)
 - Uptime Kuma (`docs/upstream-api/uptime-kuma.md`; Socket.IO-backed monitor API, live reads deferred)
 
 ### Deferred

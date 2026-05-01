@@ -633,7 +633,7 @@ mod tests {
     fn v1_database_migrates_actor_key_without_backfilling_history() {
         let conn = Connection::open_in_memory().expect("open db");
         conn.execute_batch(
-            r#"
+            r"
             CREATE TABLE log_events (
                 event_id          TEXT PRIMARY KEY,
                 ts                INTEGER NOT NULL,
@@ -663,7 +663,7 @@ mod tests {
                 'evt-history', 123, 'info', 'core_runtime', 'core_runtime', 'old row', '{}'
             );
             PRAGMA user_version = 1;
-            "#,
+            ",
         )
         .expect("create v1 db");
 

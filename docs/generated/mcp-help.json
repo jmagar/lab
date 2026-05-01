@@ -10451,6 +10451,395 @@
       ]
     },
     {
+      "name": "openacp",
+      "description": "Upstream OpenACP daemon for agent sessions and messaging adapters",
+      "category": "ai",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "system.health",
+          "description": "Return OpenACP daemon health",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "system.version",
+          "description": "Return OpenACP daemon version",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "system.restart",
+          "description": "Request a daemon restart",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "adapters.list",
+          "description": "List registered channel adapters",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.list",
+          "description": "List OpenACP sessions",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.get",
+          "description": "Get one OpenACP session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.create",
+          "description": "Create an OpenACP session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "agent",
+              "ty": "string",
+              "required": false,
+              "description": "Agent name"
+            },
+            {
+              "name": "workspace",
+              "ty": "string",
+              "required": false,
+              "description": "Workspace path"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.prompt",
+          "description": "Enqueue a prompt for a session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            },
+            {
+              "name": "prompt",
+              "ty": "string",
+              "required": true,
+              "description": "Prompt text"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.cancel",
+          "description": "Cancel an OpenACP session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            }
+          ],
+          "returns": "void"
+        },
+        {
+          "name": "sessions.bypass.set",
+          "description": "Enable or disable bypass permissions for a session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            },
+            {
+              "name": "enabled",
+              "ty": "bool",
+              "required": true,
+              "description": "Whether bypass permissions are enabled"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.permission.resolve",
+          "description": "Resolve a pending permission request",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            },
+            {
+              "name": "permission_id",
+              "ty": "string",
+              "required": true,
+              "description": "Permission request id"
+            },
+            {
+              "name": "option_id",
+              "ty": "string",
+              "required": true,
+              "description": "Selected permission option id"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.archive",
+          "description": "Archive an OpenACP session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "sessions.adopt",
+          "description": "Adopt an existing external agent session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "agent",
+              "ty": "string",
+              "required": true,
+              "description": "Agent name"
+            },
+            {
+              "name": "agent_session_id",
+              "ty": "string",
+              "required": true,
+              "description": "External agent session id"
+            },
+            {
+              "name": "cwd",
+              "ty": "string",
+              "required": false,
+              "description": "Working directory"
+            },
+            {
+              "name": "channel",
+              "ty": "string",
+              "required": false,
+              "description": "Channel adapter name"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "agents.list",
+          "description": "List configured agents",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "config.get",
+          "description": "Return upstream-redacted OpenACP config",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "config.editable",
+          "description": "Return editable config metadata",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "config.patch",
+          "description": "Patch one safe OpenACP config value",
+          "destructive": false,
+          "params": [
+            {
+              "name": "path",
+              "ty": "string",
+              "required": true,
+              "description": "Dot-notation config path"
+            },
+            {
+              "name": "value",
+              "ty": "json",
+              "required": true,
+              "description": "Config value"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "topics.list",
+          "description": "List channel topics",
+          "destructive": false,
+          "params": [
+            {
+              "name": "status",
+              "ty": "string",
+              "required": false,
+              "description": "Comma-separated status filter"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "topics.delete",
+          "description": "Delete the topic for one session",
+          "destructive": false,
+          "params": [
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": true,
+              "description": "OpenACP session id"
+            },
+            {
+              "name": "force",
+              "ty": "bool",
+              "required": false,
+              "description": "Delete even if the session is active"
+            }
+          ],
+          "returns": "void"
+        },
+        {
+          "name": "topics.cleanup",
+          "description": "Delete topics matching statuses",
+          "destructive": false,
+          "params": [
+            {
+              "name": "statuses",
+              "ty": "array<string>",
+              "required": false,
+              "description": "Statuses to clean up"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "tunnel.status",
+          "description": "Return primary tunnel status",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "tunnel.list",
+          "description": "List active user tunnels",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "tunnel.create",
+          "description": "Create a tunnel to a local port",
+          "destructive": false,
+          "params": [
+            {
+              "name": "port",
+              "ty": "integer",
+              "required": true,
+              "description": "Local port"
+            },
+            {
+              "name": "label",
+              "ty": "string",
+              "required": false,
+              "description": "Display label"
+            },
+            {
+              "name": "session_id",
+              "ty": "string",
+              "required": false,
+              "description": "Associated session id"
+            }
+          ],
+          "returns": "Value"
+        },
+        {
+          "name": "tunnel.delete",
+          "description": "Stop the tunnel for one local port",
+          "destructive": false,
+          "params": [
+            {
+              "name": "port",
+              "ty": "integer",
+              "required": true,
+              "description": "Local port"
+            }
+          ],
+          "returns": "void"
+        },
+        {
+          "name": "tunnel.delete_all",
+          "description": "Stop all user tunnels",
+          "destructive": false,
+          "params": [],
+          "returns": "Value"
+        },
+        {
+          "name": "notify.send",
+          "description": "Send a notification to registered channel adapters",
+          "destructive": false,
+          "params": [
+            {
+              "name": "message",
+              "ty": "string",
+              "required": true,
+              "description": "Notification message"
+            }
+          ],
+          "returns": "Value"
+        }
+      ]
+    },
+    {
       "name": "openai",
       "description": "OpenAI API (chat, embeddings, models, images, audio)",
       "category": "ai",
@@ -11653,6 +12042,1146 @@
             }
           ],
           "returns": "PlainLogFetchResponse"
+        }
+      ]
+    },
+    {
+      "name": "immich",
+      "description": "Self-hosted photo and video metadata",
+      "category": "media",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.health",
+          "description": "Probe Immich server reachability",
+          "destructive": false,
+          "params": [],
+          "returns": "null"
+        },
+        {
+          "name": "server.info",
+          "description": "Fetch allowlisted Immich server info",
+          "destructive": false,
+          "params": [],
+          "returns": "ServerInfo"
+        },
+        {
+          "name": "server.version",
+          "description": "Fetch Immich server version",
+          "destructive": false,
+          "params": [],
+          "returns": "ServerInfo"
+        },
+        {
+          "name": "user.me",
+          "description": "Fetch the authenticated Immich user summary",
+          "destructive": false,
+          "params": [],
+          "returns": "UserMe"
+        },
+        {
+          "name": "asset.search",
+          "description": "Search Immich assets with a hard result cap",
+          "destructive": false,
+          "params": [
+            {
+              "name": "query",
+              "ty": "string",
+              "required": false,
+              "description": "Optional search query"
+            },
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": true,
+              "description": "Maximum assets to return, 1-50"
+            },
+            {
+              "name": "page",
+              "ty": "integer",
+              "required": false,
+              "description": "Optional upstream page"
+            }
+          ],
+          "returns": "AssetSearchResponse"
+        },
+        {
+          "name": "asset.get",
+          "description": "Fetch redacted metadata for one Immich asset",
+          "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "string",
+              "required": true,
+              "description": "Immich asset id"
+            }
+          ],
+          "returns": "AssetMetadata"
+        }
+      ]
+    },
+    {
+      "name": "jellyfin",
+      "description": "Jellyfin media server inventory and operator status",
+      "category": "media",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "system.ping",
+          "description": "Ping the Jellyfin server",
+          "destructive": false,
+          "params": [],
+          "returns": "String"
+        },
+        {
+          "name": "system.info",
+          "description": "Fetch authenticated Jellyfin system information",
+          "destructive": false,
+          "params": [],
+          "returns": "SystemInfo"
+        },
+        {
+          "name": "system.public_info",
+          "description": "Fetch public Jellyfin system information",
+          "destructive": false,
+          "params": [],
+          "returns": "PublicSystemInfo"
+        },
+        {
+          "name": "users.list",
+          "description": "List Jellyfin users",
+          "destructive": false,
+          "params": [],
+          "returns": "Vec<User>"
+        },
+        {
+          "name": "users.me",
+          "description": "Fetch the current Jellyfin user",
+          "destructive": false,
+          "params": [],
+          "returns": "User"
+        },
+        {
+          "name": "libraries.list",
+          "description": "List Jellyfin virtual folders/libraries",
+          "destructive": false,
+          "params": [],
+          "returns": "Vec<VirtualFolder>"
+        },
+        {
+          "name": "items.search",
+          "description": "Search Jellyfin items with a bounded read-only query subset",
+          "destructive": false,
+          "params": [
+            {
+              "name": "user_id",
+              "ty": "string",
+              "required": false,
+              "description": "Optional Jellyfin user ID"
+            },
+            {
+              "name": "search_term",
+              "ty": "string",
+              "required": false,
+              "description": "Optional item search term"
+            },
+            {
+              "name": "parent_id",
+              "ty": "string",
+              "required": false,
+              "description": "Optional parent item/library ID"
+            },
+            {
+              "name": "include_item_types",
+              "ty": "string[]",
+              "required": false,
+              "description": "Optional item types such as Movie, Series, Episode"
+            },
+            {
+              "name": "recursive",
+              "ty": "boolean",
+              "required": false,
+              "description": "Whether to recurse into child folders"
+            },
+            {
+              "name": "start_index",
+              "ty": "integer",
+              "required": false,
+              "description": "Optional zero-based result offset"
+            },
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": false,
+              "description": "Optional maximum result count"
+            }
+          ],
+          "returns": "ItemsResult"
+        },
+        {
+          "name": "items.get",
+          "description": "Fetch one Jellyfin item by ID",
+          "destructive": false,
+          "params": [
+            {
+              "name": "item_id",
+              "ty": "string",
+              "required": true,
+              "description": "Jellyfin item ID"
+            }
+          ],
+          "returns": "Item"
+        },
+        {
+          "name": "items.counts",
+          "description": "Fetch Jellyfin item counts",
+          "destructive": false,
+          "params": [],
+          "returns": "ItemCounts"
+        },
+        {
+          "name": "sessions.list",
+          "description": "List active Jellyfin sessions",
+          "destructive": false,
+          "params": [],
+          "returns": "Vec<SessionInfo>"
+        },
+        {
+          "name": "plugins.list",
+          "description": "List installed Jellyfin plugins",
+          "destructive": false,
+          "params": [],
+          "returns": "Vec<PluginInfo>"
+        }
+      ]
+    },
+    {
+      "name": "navidrome",
+      "description": "Subsonic-compatible music library metadata",
+      "category": "media",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.ping",
+          "description": "Ping Navidrome through the Subsonic API",
+          "destructive": false,
+          "params": [],
+          "returns": "QueryResponse"
+        },
+        {
+          "name": "artist.list",
+          "description": "List Navidrome artists",
+          "destructive": false,
+          "params": [],
+          "returns": "QueryResponse"
+        },
+        {
+          "name": "album.list",
+          "description": "List albums with bounded Subsonic size/offset",
+          "destructive": false,
+          "params": [
+            {
+              "name": "type",
+              "ty": "string",
+              "required": false,
+              "description": "Subsonic album list type, defaults to newest"
+            },
+            {
+              "name": "size",
+              "ty": "integer",
+              "required": true,
+              "description": "Page size, 1-100"
+            },
+            {
+              "name": "offset",
+              "ty": "integer",
+              "required": false,
+              "description": "Page offset, defaults to 0"
+            }
+          ],
+          "returns": "QueryResponse"
+        },
+        {
+          "name": "album.get",
+          "description": "Fetch one album by string id",
+          "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "string",
+              "required": true,
+              "description": "Navidrome/Subsonic album id"
+            }
+          ],
+          "returns": "QueryResponse"
+        },
+        {
+          "name": "search.query",
+          "description": "Search artists, albums, and songs with bounded size/offset",
+          "destructive": false,
+          "params": [
+            {
+              "name": "query",
+              "ty": "string",
+              "required": true,
+              "description": "Search query"
+            },
+            {
+              "name": "size",
+              "ty": "integer",
+              "required": true,
+              "description": "Page size per resource, 1-100"
+            },
+            {
+              "name": "offset",
+              "ty": "integer",
+              "required": false,
+              "description": "Page offset, defaults to 0"
+            }
+          ],
+          "returns": "QueryResponse"
+        },
+        {
+          "name": "playlist.list",
+          "description": "List playlists",
+          "destructive": false,
+          "params": [],
+          "returns": "QueryResponse"
+        }
+      ]
+    },
+    {
+      "name": "scrutiny",
+      "description": "SMART disk health summaries",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.health",
+          "description": "Probe Scrutiny health endpoint",
+          "destructive": false,
+          "params": [],
+          "returns": "null"
+        },
+        {
+          "name": "dashboard.summary",
+          "description": "Fetch redacted Scrutiny dashboard summary",
+          "destructive": false,
+          "params": [],
+          "returns": "ScrutinyResponse"
+        },
+        {
+          "name": "device.list",
+          "description": "Fetch redacted Scrutiny device list",
+          "destructive": false,
+          "params": [],
+          "returns": "ScrutinyResponse"
+        }
+      ]
+    },
+    {
+      "name": "freshrss",
+      "description": "FreshRSS feed reader via Google Reader API",
+      "category": "notes",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "subscription.list",
+          "description": "List FreshRSS subscriptions",
+          "destructive": false,
+          "params": [],
+          "returns": "FreshRssResponse"
+        },
+        {
+          "name": "tag.list",
+          "description": "List FreshRSS tags",
+          "destructive": false,
+          "params": [],
+          "returns": "FreshRssResponse"
+        },
+        {
+          "name": "unread.counts",
+          "description": "Fetch FreshRSS unread counts",
+          "destructive": false,
+          "params": [],
+          "returns": "FreshRssResponse"
+        },
+        {
+          "name": "stream.items",
+          "description": "Fetch one bounded FreshRSS reading-list page",
+          "destructive": false,
+          "params": [
+            {
+              "name": "n",
+              "ty": "integer",
+              "required": true,
+              "description": "Maximum items, 1-100"
+            },
+            {
+              "name": "continuation",
+              "ty": "string",
+              "required": false,
+              "description": "Continuation token from a previous response"
+            }
+          ],
+          "returns": "FreshRssResponse"
+        }
+      ]
+    },
+    {
+      "name": "loggifly",
+      "description": "Docker log/event monitor source-contract status",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "contract.status",
+          "description": "Return LoggiFly implementation deferral status",
+          "destructive": false,
+          "params": [],
+          "returns": "ContractStatus"
+        }
+      ]
+    },
+    {
+      "name": "adguard",
+      "description": "AdGuard Home DNS filtering and query-log summaries",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.status",
+          "description": "Fetch AdGuard Home status",
+          "destructive": false,
+          "params": [],
+          "returns": "AdguardResponse"
+        },
+        {
+          "name": "server.version",
+          "description": "Fetch AdGuard Home version",
+          "destructive": false,
+          "params": [],
+          "returns": "AdguardResponse"
+        },
+        {
+          "name": "stats.summary",
+          "description": "Fetch AdGuard Home stats summary",
+          "destructive": false,
+          "params": [],
+          "returns": "AdguardResponse"
+        },
+        {
+          "name": "querylog.search",
+          "description": "Search bounded AdGuard Home DNS query log",
+          "destructive": false,
+          "params": [
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": true,
+              "description": "Maximum rows, 1-200"
+            },
+            {
+              "name": "search",
+              "ty": "string",
+              "required": false,
+              "description": "Optional AdGuard query-log search"
+            },
+            {
+              "name": "older_than",
+              "ty": "string",
+              "required": false,
+              "description": "Optional upstream cursor timestamp"
+            }
+          ],
+          "returns": "QueryLogResponse"
+        },
+        {
+          "name": "filtering.status",
+          "description": "Fetch DNS filtering status",
+          "destructive": false,
+          "params": [],
+          "returns": "AdguardResponse"
+        },
+        {
+          "name": "filtering.check-host",
+          "description": "Check whether a hostname is filtered",
+          "destructive": false,
+          "params": [
+            {
+              "name": "host",
+              "ty": "string",
+              "required": true,
+              "description": "Hostname to check"
+            }
+          ],
+          "returns": "AdguardResponse"
+        }
+      ]
+    },
+    {
+      "name": "glances",
+      "description": "Host metrics via Glances REST API v4",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.health",
+          "description": "Probe Glances API health",
+          "destructive": false,
+          "params": [],
+          "returns": "null"
+        },
+        {
+          "name": "system.info",
+          "description": "Fetch Glances system info",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "quicklook.summary",
+          "description": "Fetch Glances quicklook summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "cpu.summary",
+          "description": "Fetch Glances CPU summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "memory.summary",
+          "description": "Fetch Glances memory summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "load.summary",
+          "description": "Fetch Glances load summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "network.summary",
+          "description": "Fetch Glances network summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "diskio.summary",
+          "description": "Fetch Glances disk I/O summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "fs.summary",
+          "description": "Fetch Glances filesystem summary",
+          "destructive": false,
+          "params": [],
+          "returns": "GlancesResponse"
+        },
+        {
+          "name": "process.top",
+          "description": "Fetch top Glances processes with process args redacted",
+          "destructive": false,
+          "params": [
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": true,
+              "description": "Maximum processes, 1-50"
+            }
+          ],
+          "returns": "GlancesResponse"
+        }
+      ]
+    },
+    {
+      "name": "uptime-kuma",
+      "description": "Self-hosted uptime monitor with a Socket.IO-backed API",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "contract.status",
+          "description": "Show the Uptime Kuma integration contract and live-read status",
+          "destructive": false,
+          "params": [],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "server.health",
+          "description": "Probe the Uptime Kuma web UI root",
+          "destructive": false,
+          "params": [],
+          "returns": "null"
+        },
+        {
+          "name": "monitor.list",
+          "description": "List monitors through the Socket.IO actor",
+          "destructive": false,
+          "params": [],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "monitor.get",
+          "description": "Fetch one monitor through the Socket.IO actor",
+          "destructive": false,
+          "params": [
+            {
+              "name": "id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "heartbeat.list",
+          "description": "List heartbeat rows through the Socket.IO actor",
+          "destructive": false,
+          "params": [
+            {
+              "name": "monitor_id",
+              "ty": "integer",
+              "required": true,
+              "description": "Monitor id"
+            },
+            {
+              "name": "hours",
+              "ty": "integer",
+              "required": false,
+              "description": "History window in hours, default 24, max 168"
+            }
+          ],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "status.summary",
+          "description": "Summarize monitor status through the Socket.IO actor",
+          "destructive": false,
+          "params": [],
+          "returns": "UptimeKumaResponse"
+        },
+        {
+          "name": "notification.list",
+          "description": "List notification channels through the Socket.IO actor",
+          "destructive": false,
+          "params": [],
+          "returns": "UptimeKumaResponse"
+        }
+      ]
+    },
+    {
+      "name": "pihole",
+      "description": "Pi-hole v6 DNS sinkhole API",
+      "category": "network",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "server.summary",
+          "description": "Fetch Pi-hole summary counters",
+          "destructive": false,
+          "params": [],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "server.settings",
+          "description": "Fetch Pi-hole settings",
+          "destructive": false,
+          "params": [],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "blocking.status",
+          "description": "Fetch DNS blocking status",
+          "destructive": false,
+          "params": [],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "blocking.set",
+          "description": "Enable or disable DNS blocking",
+          "destructive": true,
+          "params": [
+            {
+              "name": "blocking",
+              "ty": "boolean",
+              "required": true,
+              "description": "Whether blocking should be enabled"
+            },
+            {
+              "name": "timer_seconds",
+              "ty": "integer",
+              "required": false,
+              "description": "Optional duration for temporary enable/disable"
+            }
+          ],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "querylog.search",
+          "description": "Search bounded Pi-hole query logs",
+          "destructive": false,
+          "params": [
+            {
+              "name": "offset",
+              "ty": "integer",
+              "required": false,
+              "description": "Offset, defaults to 0"
+            },
+            {
+              "name": "limit",
+              "ty": "integer",
+              "required": true,
+              "description": "Maximum rows, 1-500"
+            }
+          ],
+          "returns": "QueryLogResponse"
+        },
+        {
+          "name": "adlist.list",
+          "description": "List Pi-hole adlists",
+          "destructive": false,
+          "params": [],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "adlist.add",
+          "description": "Add a Pi-hole adlist",
+          "destructive": true,
+          "params": [
+            {
+              "name": "address",
+              "ty": "string",
+              "required": true,
+              "description": "Adlist URL/address"
+            }
+          ],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "adlist.remove",
+          "description": "Remove a Pi-hole adlist by id",
+          "destructive": true,
+          "params": [
+            {
+              "name": "id",
+              "ty": "string",
+              "required": true,
+              "description": "Adlist id"
+            }
+          ],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "domain.list",
+          "description": "List Pi-hole domain rules",
+          "destructive": false,
+          "params": [],
+          "returns": "PiholeResponse"
+        },
+        {
+          "name": "domain.add",
+          "description": "Add a Pi-hole domain rule",
+          "destructive": true,
+          "params": [
+            {
+              "name": "domain",
+              "ty": "string",
+              "required": true,
+              "description": "Domain or regex pattern"
+            },
+            {
+              "name": "domain_type",
+              "ty": "integer",
+              "required": true,
+              "description": "0 exact-allow, 1 exact-deny, 2 regex-allow, 3 regex-deny"
+            },
+            {
+              "name": "comment",
+              "ty": "string",
+              "required": false,
+              "description": "Optional comment"
+            }
+          ],
+          "returns": "PiholeResponse"
+        }
+      ]
+    },
+    {
+      "name": "neo4j",
+      "description": "Neo4j graph database over the Bolt protocol",
+      "category": "ai",
+      "status": "available",
+      "requires_http_subject": false,
+      "actions": [
+        {
+          "name": "help",
+          "description": "Show this action catalog",
+          "destructive": false,
+          "params": [],
+          "returns": "Catalog"
+        },
+        {
+          "name": "schema",
+          "description": "Return the parameter schema for a named action",
+          "destructive": false,
+          "params": [
+            {
+              "name": "action",
+              "ty": "string",
+              "required": true,
+              "description": "Action name to describe"
+            }
+          ],
+          "returns": "Schema"
+        },
+        {
+          "name": "cypher.read",
+          "description": "Execute a read-only Cypher statement with parameter substitution",
+          "destructive": false,
+          "params": [
+            {
+              "name": "statement",
+              "ty": "string",
+              "required": true,
+              "description": "Cypher statement. Use parameters; do not concatenate user input into Cypher."
+            },
+            {
+              "name": "parameters",
+              "ty": "object",
+              "required": false,
+              "description": "Cypher parameter object"
+            }
+          ],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "cypher.write",
+          "description": "Execute a write Cypher statement with parameter substitution",
+          "destructive": true,
+          "params": [
+            {
+              "name": "statement",
+              "ty": "string",
+              "required": true,
+              "description": "Cypher statement. Use parameters; do not concatenate user input into Cypher."
+            },
+            {
+              "name": "parameters",
+              "ty": "object",
+              "required": false,
+              "description": "Cypher parameter object"
+            }
+          ],
+          "returns": "WriteResponse"
+        },
+        {
+          "name": "schema.labels",
+          "description": "List labels",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "schema.relationships",
+          "description": "List relationship types",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "schema.constraints",
+          "description": "List constraints",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "schema.indexes",
+          "description": "List indexes",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "db.list",
+          "description": "List databases",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "db.info",
+          "description": "Show database info",
+          "destructive": false,
+          "params": [
+            {
+              "name": "database",
+              "ty": "string",
+              "required": false,
+              "description": "Optional database name"
+            }
+          ],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "server.status",
+          "description": "Fetch Neo4j server component status",
+          "destructive": false,
+          "params": [],
+          "returns": "CypherResponse"
+        },
+        {
+          "name": "txn.run",
+          "description": "Run multiple parameterized statements in read or write mode",
+          "destructive": true,
+          "params": [
+            {
+              "name": "statements",
+              "ty": "array",
+              "required": true,
+              "description": "Array of {statement, parameters}"
+            },
+            {
+              "name": "mode",
+              "ty": "string",
+              "required": true,
+              "description": "`r` for sequential read statements, `w` for one write transaction"
+            }
+          ],
+          "returns": "object"
         }
       ]
     }

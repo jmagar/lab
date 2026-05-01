@@ -5,7 +5,7 @@ Generated from `target/debug/lab --help` recursively after `cargo build --worksp
 ## `lab`
 
 ```text
-Pluggable homelab CLI + MCP server. One binary, 21 services, runtime tool selection.
+Pluggable homelab CLI + MCP server. One binary, runtime service selection.
 
 Usage: lab [OPTIONS] <COMMAND>
 
@@ -48,12 +48,24 @@ Commands:
   overseerr    Overseerr media request manager
   gotify       Gotify push notifications
   openai       `OpenAI` API client
+  openacp      Upstream OpenACP daemon
   notebooklm   Google NotebookLM client
   qdrant       Qdrant vector database
   tei          HF Text Embeddings Inference
   apprise      Apprise notification dispatcher
   deploy       Deploy the local lab release binary to SSH targets
   dozzle       `lab dozzle` arguments
+  immich       `lab immich` arguments
+  jellyfin     Jellyfin media server
+  navidrome    `lab navidrome` arguments
+  scrutiny     `lab scrutiny` arguments
+  freshrss     `lab freshrss` arguments
+  loggifly     `lab loggifly` arguments
+  adguard      `lab adguard` arguments
+  glances      `lab glances` arguments
+  uptime-kuma  `lab uptime-kuma` arguments
+  pihole       `lab pihole` arguments
+  neo4j        `lab neo4j` arguments
 
 Options:
       --json           Emit JSON instead of human-readable tables
@@ -80,6 +92,20 @@ Options:
       --port <PORT>            Bind port for the HTTP transport
       --log-level <LOG_LEVEL>  Override the log filter level for this process. Sets `LAB_LOG=lab=<level>,warn` before tracing init. Example: `--log-level debug`
   -h, --help                   Print help
+```
+
+## `lab serve mcp`
+
+```text
+Run the MCP server over stdio instead of the default HTTP transport
+
+Usage: lab serve mcp [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --stdio          Confirm that MCP should run over stdio
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
 ```
 
 ## `lab mcp`
@@ -116,6 +142,61 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab doctor auth`
+
+```text
+Check auth/OAuth configuration (env vars, files, permissions)
+
+Usage: lab doctor auth [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab doctor system`
+
+```text
+Run local system checks (env vars, Docker, disk, toolchain)
+
+Usage: lab doctor system [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab doctor service`
+
+```text
+Probe a single configured service
+
+Usage: lab doctor service [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  Service name (e.g. radarr, sonarr, plex)
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab doctor services`
+
+```text
+Probe all configured services
+
+Usage: lab doctor services [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab nodes`
 
 ```text
@@ -133,6 +214,117 @@ Options:
       --json           Emit JSON instead of human-readable tables
       --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
   -h, --help           Print help
+```
+
+## `lab nodes list`
+
+```text
+List all registered nodes visible from the controller
+
+Usage: lab nodes list [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes get`
+
+```text
+Get details for a specific node by `node_id`
+
+Usage: lab nodes get [OPTIONS] <NODE_ID>
+
+Arguments:
+  <NODE_ID>  
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes update`
+
+```text
+Build and roll out the local release binary to selected nodes
+
+Usage: lab nodes update [OPTIONS] [TARGETS]...
+
+Arguments:
+  [TARGETS]...  Explicit node targets to update
+
+Options:
+      --all            Update every configured node and, when running on the controller, run the local controller last
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes enrollments`
+
+```text
+Manage pending, approved, and denied node enrollments
+
+Usage: lab nodes enrollments [OPTIONS] <COMMAND>
+
+Commands:
+  list     List pending, approved, and denied enrollments
+  approve  Approve a pending enrollment
+  deny     Deny a pending or approved enrollment
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes enrollments list`
+
+```text
+List pending, approved, and denied enrollments
+
+Usage: lab nodes enrollments list [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes enrollments approve`
+
+```text
+Approve a pending enrollment
+
+Usage: lab nodes enrollments approve [OPTIONS] <NODE_ID>
+
+Arguments:
+  <NODE_ID>  
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --note <NOTE>    
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab nodes enrollments deny`
+
+```text
+Deny a pending or approved enrollment
+
+Usage: lab nodes enrollments deny [OPTIONS] <NODE_ID>
+
+Arguments:
+  <NODE_ID>  
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --reason <REASON>  
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help             Print help
 ```
 
 ## `lab health`
@@ -170,6 +362,22 @@ Usage: lab audit [OPTIONS] <COMMAND>
 
 Commands:
   onboarding  Audit onboarding for one or more services
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab audit onboarding`
+
+```text
+Audit onboarding for one or more services
+
+Usage: lab audit onboarding [OPTIONS] <SERVICES>...
+
+Arguments:
+  <SERVICES>...  Services to audit
 
 Options:
       --json           Emit JSON instead of human-readable tables
@@ -267,6 +475,46 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab scaffold service`
+
+```text
+Scaffold one service
+
+Usage: lab scaffold service [OPTIONS] <SERVICE>
+
+Arguments:
+  <SERVICE>
+          Service name
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+
+      --kind <KIND>
+          Service kind
+
+          Possible values:
+          - http:     HTTP service with CLI, MCP, and API adapters
+          - non-http: Non-HTTP service that still participates in the onboarding contract
+          
+          [default: http]
+
+      --color <COLOR>
+          Control human-readable CLI styling
+          
+          [default: auto]
+          [possible values: auto, plain, color]
+
+      --dry-run
+          Only show the planned file operations
+
+  -y, --yes
+          Confirm that scaffold writes are allowed
+
+  -h, --help
+          Print help (see a summary with '-h')
+```
+
 ## `lab completions`
 
 ```text
@@ -328,757 +576,6 @@ Options:
       --json           Emit JSON instead of human-readable tables
       --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
   -h, --help           Print help
-```
-
-## `lab oauth`
-
-```text
-Run local OAuth callback relay helpers
-
-Usage: lab oauth [OPTIONS] <COMMAND>
-
-Commands:
-  relay-local  
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab logs`
-
-```text
-Search fleet logs on the configured master
-
-Usage: lab logs [OPTIONS] <COMMAND>
-
-Commands:
-  search   Search fleet logs for a device from the master control plane
-  local    Search or inspect the local-master runtime log store
-  forward  Forward this node's syslog to the master log store (peer mode)
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab marketplace`
-
-```text
-Claude plugin marketplace manager
-
-Usage: lab marketplace [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. sources.list, plugins.list, plugin.install) [default: help] [possible values: help, schema, sources.list, plugins.list, plugin.get, plugin.artifacts, plugin.workspace, plugin.save, plugin.deploy, plugin.deploy.preview, artifact.fork, artifact.list, artifact.unfork, artifact.reset, artifact.diff, artifact.patch, artifact.update.check, artifact.update.preview, artifact.update.apply, artifact.merge.suggest, artifact.config.set, sources.add, plugin.install, plugin.uninstall, agent.list, agent.get, agent.install, plugin.cherry_pick, agent.uninstall, mcp.config, mcp.list, mcp.get, mcp.versions, mcp.validate, mcp.install, mcp.uninstall, mcp.meta.get, mcp.meta.set, mcp.meta.delete, mcp.sync]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab stash`
-
-```text
-Component versioning and deployment
-
-Usage: lab stash [OPTIONS] <ACTION> [KEY=VALUE]...
-
-Arguments:
-  <ACTION>        Action to run, e.g. `help`, `components.list`, `component.get` [possible values: help, schema, components.list, component.get, component.create, component.import, component.workspace, component.save, component.revisions, component.export, component.deploy, providers.list, provider.link, provider.push, provider.pull, targets.list, target.add, target.remove]
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-  -y, --yes            Skip confirmation for destructive actions
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --dry-run        Print what would be done without executing
-  -h, --help           Print help
-```
-
-## `lab radarr`
-
-```text
-Radarr movie collection manager
-
-Usage: lab radarr [OPTIONS] [COMMAND]
-
-Commands:
-  help                        Return the Radarr action catalog
-  system-status               Return Radarr system status and version
-  system-health               Return Radarr health check results
-  system-disk-space           Return disk space information for all drives
-  system-logs                 Return list of available log files
-  system-updates              Return available Radarr updates
-  movie-list                  List all movies in the Radarr library
-  movie-get                   Get a single movie by its Radarr ID
-  movie-lookup                Search for movies to add (TMDB / IMDB lookup)
-  movie-add                   Add a movie to Radarr for monitoring and download
-  movie-delete                Delete a movie from Radarr
-  queue-list                  List all items currently in the download queue
-  queue-remove                Remove an item from the download queue
-  calendar-list               List upcoming movie releases
-  command-refresh             Refresh metadata for one movie or all movies
-  command-search              Trigger a file search for one or more movies
-  command-get                 Get the status of a previously issued command
-  history-list                List download history
-  blocklist-list              List blocked releases
-  release-search              Search indexers for available releases for a movie
-  indexer-list                List configured indexers
-  indexer-test                Test an indexer connection
-  quality-profile-list        List quality profiles
-  quality-definition-list     List quality definitions
-  root-folder-list            List root folders
-  tag-list                    List all tags
-  tag-detail-list             List tags with full details
-  download-client-list        List configured download clients
-  download-client-test        Test a download client connection
-  remote-path-mapping-list    List remote path mappings
-  config-host                 Get host configuration
-  config-naming               Get file naming configuration
-  config-ui                   Get UI configuration
-  notification-list           List configured notifications
-  notification-test           Test a notification connection
-  import-list-list            List configured import lists
-  import-list-exclusion-list  List import list exclusions
-  language-list               List available languages
-  metadata-list               List metadata providers
-  filesystem-list             Browse the server filesystem
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab sonarr`
-
-```text
-Sonarr TV series manager
-
-Usage: lab sonarr [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help, series.list, episode.list) [default: help] [possible values: help, schema, series.list, series.get, series.lookup, series.add, series.delete, episode.list, episode.get, queue.list, queue.delete, history.list, wanted.list, calendar.list, health, system.status, tag.list, tag.create, tag.delete, rootfolder.list, qualityprofile.list, languageprofile.list, series.edit, episode.monitor, wanted.cutoff, release.search, release.grab, history.series, history.failed-retry, blocklist.list, blocklist.delete, episodefile.delete, system.restart, system.backup]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab prowlarr`
-
-```text
-Prowlarr indexer manager
-
-Usage: lab prowlarr [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, indexer.list, indexer.get, indexer.delete, indexer.test, indexer.testall, indexer.categories, history.list, application.list, application.get, application.delete, indexer.edit, indexer.add, indexer.stats, indexer.status, indexer.search, indexer.grab, history.indexer, application.add, system.restart, system.backup, tag.list, system.status, system.health]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab plex`
-
-```text
-Plex media server
-
-Usage: lab plex [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.info, server.capabilities, library.list, library.get, library.scan, library.refresh, media.search, media.get, session.list, session.terminate, playlist.list, playlist.get, playlist.create, playlist.delete, library.browse, library.empty-trash, metadata.delete, metadata.edit, metadata.refresh, session.history, hubs.continue-watching, butler.list, butler.run, item.scrobble, item.unscrobble, updater.status, health]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab tautulli`
-
-```text
-Tautulli Plex analytics
-
-Usage: lab tautulli [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, activity.list, activity.stream, history.list, users.list, users.get, users.watch_time, users.player_stats, libraries.list, libraries.get, libraries.media_info, stats.home, stats.plays_by_date, media.recently-added, media.metadata, media.children, media.export-metadata, user.item-stats, user.delete-history, plays.by-day, plays.by-hour, plays.by-stream-type, plays.by-month, server.pms-update, system.info, system.settings]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab sabnzbd`
-
-```text
-`SABnzbd` download client
-
-Usage: lab sabnzbd [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, server.version, queue.list, queue.delete, history.list, history.delete, history.purge, server.stats, server.warnings, queue.pause, queue.resume, queue.speed.limit, queue.addurl, history.retry, history.retry-all, server.fullstatus, category.list, queue.set-complete-action, pp.pause, pp.resume, rss.fetch-now, config.get]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab qbittorrent`
-
-```text
-qBittorrent download client
-
-Usage: lab qbittorrent [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, transfer.info, transfer.download.limit, transfer.upload.limit, torrent.list, torrent.properties, torrent.trackers, torrent.pause, torrent.resume, torrent.delete, torrent.recheck, torrent.category.set, torrent.download.limit, torrent.upload.limit, category.list, app.version, app.preferences, log.list, torrent.add, transfer.toggle-speed-limits, torrent.files, torrent.set-file-prio, torrent.set-location, torrent.add-tags, torrent.remove-tags, torrent.reannounce, torrent.set-share-limits, category.create, category.edit, sync.maindata]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab tailscale`
-
-```text
-Tailscale VPN network
-
-Usage: lab tailscale [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, device.list, device.get, device.delete, device.authorize, key.list, key.get, key.delete, dns.nameservers, dns.search_paths, dns.split-get, dns.split-set, acl.get, acl.validate, acl.set, device.routes-get, device.routes-set, device.tag, device.expire, user.list, tailnet.settings-get, tailnet.settings-patch, key.create]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab linkding`
-
-```text
-Linkding bookmark manager
-
-Usage: lab linkding [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, bookmark.list, bookmark.archived.list, bookmark.get, bookmark.check, bookmark.create, bookmark.update, bookmark.archive, bookmark.unarchive, bookmark.delete, tag.list, tag.get, tag.create, user.profile, bundle.list, bundle.create, bundle.update, bundle.delete, bookmark.assets, bookmark.assets-upload]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab memos`
-
-```text
-Memos note-taking service
-
-Usage: lab memos [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, memos.list, memos.get, memos.create, memos.update, memos.delete, tags.list, workspace.profile, user.me, user.list, user.stats, webhook.list, webhook.create, attachment.upload, attachment.delete, memo.comment-list, memo.comment-create, memo.share-list, memo.share-create]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab bytestash`
-
-```text
-Bytestash snippet manager
-
-Usage: lab bytestash [OPTIONS] <ACTION> [KEY=VALUE]...
-
-Arguments:
-  <ACTION>        Action to run, e.g. `help`, `snippets.list`, `categories.list` [possible values: help, schema, auth.config, auth.register, auth.login, snippets.list, snippets.get, snippets.create, snippets.update, snippets.delete, snippets.public.list, snippets.public.get, snippets.share.create, snippets.share.get, categories.list, users.list, users.toggle-active, users.delete]
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-  -y, --yes            Skip confirmation for destructive actions
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --dry-run        Print what would be done without executing
-  -h, --help           Print help
-```
-
-## `lab paperless`
-
-```text
-Paperless-ngx document manager
-
-Usage: lab paperless [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, documents.list, documents.get, documents.metadata, documents.update, documents.delete, tags.list, tags.get, tags.create, tags.delete, correspondents.list, correspondents.get, correspondents.create, correspondents.delete, document_types.list, document_types.get, document_types.create, document_types.delete, statistics, tasks.list, document.upload, document.bulk-edit, document.download, tag.update, saved-view.list, saved-view.create, custom-field.list, custom-field.create, storage-path.list, storage-path.create]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab arcane`
-
-```text
-Arcane Docker management UI
-
-Usage: lab arcane [OPTIONS] [ACTION] [KEY=VALUE]...
-
-Arguments:
-  [ACTION]        Action to run, e.g. `help`, `system.health`, `container.list` [default: help] [possible values: help, schema, health, environment.list, environment.get, container.list, container.get, container.start, container.stop, container.restart, container.redeploy, project.list, project.create, project.up, project.down, project.redeploy, volume.list, volume.delete, volume.prune, image.list, image.pull, image.prune, image.update-summary]
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-  -y, --yes            Skip confirmation for destructive actions
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --dry-run        Print what would be done without executing
-  -h, --help           Print help
-```
-
-## `lab unraid`
-
-```text
-Unraid server management
-
-Usage: lab unraid [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, system.info, system.metrics, system.array, system.online, docker.list, docker.start, docker.stop, docker.restart, disk.list, vm.list, vm.start, vm.stop, vm.pause, vm.resume, notification.list, notification.create, notification.archive, parity.history, parity.check-start, parity.check-pause, parity.check-cancel, share.list, plugin.list, network.list, ups.devices, ups.config, log.read, flash.status, flash.backup]
-
-Options:
-      --instance <INSTANCE>  Optional named instance label
-      --json                 Emit JSON instead of human-readable tables
-      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --params <PARAMS>      Action-specific parameters as JSON
-  -y, --yes                  Skip confirmation prompt for destructive actions (docker.start/stop/restart)
-      --dry-run              Print what would be done without executing
-  -h, --help                 Print help
-```
-
-## `lab unifi`
-
-```text
-`UniFi` network management
-
-Usage: lab unifi [OPTIONS] <ACTION> [KEY=VALUE]...
-
-Arguments:
-  <ACTION>        Action to run, e.g. `help`, `sites.list`, `firewall.zones.list` [possible values: help, system.info, sites.list, wans.list, vpn.site-to-site-tunnels.list, vpn.servers.list, radius.profiles.list, device-tags.list, dpi.categories.list, dpi.applications.list, countries.list, wan.get, devices.list, devices.get, devices.stats, pending-devices.list, devices.create, devices.port-action, devices.action, devices.delete, device.update, clients.list, clients.get, clients.action, client.history, client.block, client.unblock, networks.list, networks.get, networks.references, networks.create, networks.update, networks.delete, wifi.broadcasts.list, wifi.broadcasts.get, wifi.broadcasts.create, wifi.broadcasts.update, wifi.broadcasts.delete, wifi.update, hotspot.vouchers.list, hotspot.vouchers.create, hotspot.vouchers.delete, hotspot.vouchers.get, firewall.zones.list, firewall.zones.get, firewall.zones.create, firewall.zones.update, firewall.zones.delete, firewall.policies.list, firewall.policies.get, firewall.policies.create, firewall.policies.update, firewall.policies.patch, firewall.policies.ordering.get, firewall.policies.ordering.set, acl.rules.list, acl.rules.get, acl.rules.create, acl.rules.update, acl.rules.delete, acl.rules.ordering.get, acl.rules.ordering.set, switching.switch-stacks.list, switching.switch-stacks.get, switching.mc-lag-domains.list, switching.mc-lag-domains.get, switching.lags.list, switching.lags.get, port-profile.list, port-profile.create, port-profile.update, dns.policies.list, dns.policies.get, dns.policies.create, dns.policies.update, dns.policies.delete, traffic-matching-lists.list, traffic-matching-lists.get, traffic-matching-lists.create, traffic-matching-lists.update, traffic-matching-lists.delete]
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --instance <INSTANCE>  Optional named instance label
-      --json                 Emit JSON instead of human-readable tables
-      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes                  Skip confirmation for destructive actions
-      --dry-run              Print what would be done without executing
-  -h, --help                 Print help
-```
-
-## `lab overseerr`
-
-```text
-Overseerr media request manager
-
-Usage: lab overseerr [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, health, status, request.list, request.get, request.create, request.approve, request.decline, request.delete, movie.search, tv.search, movie.get, tv.get, user.list, user.get, issue.list, issue.get, issue.create, issue.comment, request.retry, request.count, issue.update, media.delete, media.update-status, user.requests, user.quota, user.edit, job.run, discover.trending]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab gotify`
-
-```text
-Gotify push notifications
-
-Usage: lab gotify [OPTIONS] <ACTION> [KEY=VALUE]...
-
-Arguments:
-  <ACTION>        Action to run, e.g. `help`, `message.send`, `app.list` [possible values: help, schema, message.send, message.list, message.delete, message.purge, app.list, app.create, app.delete, client.list, client.create, client.delete, application.update, application.messages, application.messages-delete, client.update, plugin.list, plugin.enable, plugin.disable, plugin.config-get, plugin.config-set, user.list, user.create, user.delete, server.health, server.version]
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-  -y, --yes            Skip confirmation for destructive actions
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-      --dry-run        Print what would be done without executing
-  -h, --help           Print help
-```
-
-## `lab openai`
-
-```text
-`OpenAI` API client
-
-Usage: lab openai [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, model.list, chat.complete, embed.create, server.health]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help             Print help
-```
-
-## `lab notebooklm`
-
-```text
-Google NotebookLM client
-
-Usage: lab notebooklm [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, notebook.list, notebook.create, notebook.get, notebook.delete, source.list, source.add_url, server.health]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab qdrant`
-
-```text
-Qdrant vector database
-
-Usage: lab qdrant [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, collections.list, collections.get, collection.create, collection.delete, point.upsert, point.search, point.query, point.scroll, point.count, point.delete, snapshot.create, index.create]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab tei`
-
-```text
-HF Text Embeddings Inference
-
-Usage: lab tei [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, server.info, embed.create, embed.rerank, embed.tokenize, embed.similarity, embed.sparse, embed.openai]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help             Print help
-```
-
-## `lab apprise`
-
-```text
-Apprise notification dispatcher
-
-Usage: lab apprise [OPTIONS] [ACTION]
-
-Arguments:
-  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, notify.send, notify.key.send, config.add, config.get, config.delete, config.urls, server.details]
-
-Options:
-      --json             Emit JSON instead of human-readable tables
-      --params <PARAMS>  Action-specific parameters as JSON
-      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -y, --yes              Skip confirmation for destructive actions
-      --dry-run          Print what would be done without executing
-  -h, --help             Print help
-```
-
-## `lab deploy`
-
-```text
-Deploy the local lab release binary to SSH targets
-
-Usage: lab deploy [OPTIONS] <COMMAND>
-
-Commands:
-  config-list  Show resolved deploy hosts and defaults
-  plan         Dry-run: resolve targets, hash local artifact, show what would happen
-  run          Destructive: build, transfer, install, restart, verify
-  rollback     Destructive: restore the most recent backup on each target
-  monitor      Watch SSH hosts and emit JSON events when they go online or offline
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab dozzle`
-
-```text
-`lab dozzle` arguments
-
-Usage: lab dozzle [OPTIONS] <ACTION> [KEY=VALUE]...
-
-Arguments:
-  <ACTION>        Action to run, e.g. `help` or `schema`
-  [KEY=VALUE]...  Optional `key=value` params for the action
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-  -y, --yes            Skip confirmation for destructive actions
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab serve mcp`
-
-```text
-Run the MCP server over stdio instead of the default HTTP transport
-
-Usage: lab serve mcp [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --stdio          Confirm that MCP should run over stdio
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab doctor auth`
-
-```text
-Check auth/OAuth configuration (env vars, files, permissions)
-
-Usage: lab doctor auth [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab doctor system`
-
-```text
-Run local system checks (env vars, Docker, disk, toolchain)
-
-Usage: lab doctor system [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab doctor service`
-
-```text
-Probe a single configured service
-
-Usage: lab doctor service [OPTIONS] <NAME>
-
-Arguments:
-  <NAME>  Service name (e.g. radarr, sonarr, plex)
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab doctor services`
-
-```text
-Probe all configured services
-
-Usage: lab doctor services [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes list`
-
-```text
-List all registered nodes visible from the controller
-
-Usage: lab nodes list [OPTIONS]
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes get`
-
-```text
-Get details for a specific node by `node_id`
-
-Usage: lab nodes get [OPTIONS] <NODE_ID>
-
-Arguments:
-  <NODE_ID>  
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes update`
-
-```text
-Build and roll out the local release binary to selected nodes
-
-Usage: lab nodes update [OPTIONS] [TARGETS]...
-
-Arguments:
-  [TARGETS]...  Explicit node targets to update
-
-Options:
-      --all            Update every configured node and, when running on the controller, run the local controller last
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab nodes enrollments`
-
-```text
-Manage pending, approved, and denied node enrollments
-
-Usage: lab nodes enrollments [OPTIONS] <COMMAND>
-
-Commands:
-  list     List pending, approved, and denied enrollments
-  approve  Approve a pending enrollment
-  deny     Deny a pending or approved enrollment
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab audit onboarding`
-
-```text
-Audit onboarding for one or more services
-
-Usage: lab audit onboarding [OPTIONS] <SERVICES>...
-
-Arguments:
-  <SERVICES>...  Services to audit
-
-Options:
-      --json           Emit JSON instead of human-readable tables
-      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
-  -h, --help           Print help
-```
-
-## `lab scaffold service`
-
-```text
-Scaffold one service
-
-Usage: lab scaffold service [OPTIONS] <SERVICE>
-
-Arguments:
-  <SERVICE>
-          Service name
-
-Options:
-      --json
-          Emit JSON instead of human-readable tables
-
-      --kind <KIND>
-          Service kind
-
-          Possible values:
-          - http:     HTTP service with CLI, MCP, and API adapters
-          - non-http: Non-HTTP service that still participates in the onboarding contract
-          
-          [default: http]
-
-      --color <COLOR>
-          Control human-readable CLI styling
-          
-          [default: auto]
-          [possible values: auto, plain, color]
-
-      --dry-run
-          Only show the planned file operations
-
-  -y, --yes
-          Confirm that scaffold writes are allowed
-
-  -h, --help
-          Print help (see a summary with '-h')
 ```
 
 ## `lab gateway list`
@@ -1207,6 +704,31 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab gateway quarantine list`
+
+```text
+Usage: lab gateway quarantine list [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab gateway quarantine restore`
+
+```text
+Usage: lab gateway quarantine restore [OPTIONS] <ID>
+
+Arguments:
+  <ID>  
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab gateway tool-search`
 
 ```text
@@ -1216,6 +738,41 @@ Commands:
   status   
   enable   
   disable  
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab gateway tool-search status`
+
+```text
+Usage: lab gateway tool-search status [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab gateway tool-search enable`
+
+```text
+Usage: lab gateway tool-search enable [OPTIONS]
+
+Options:
+      --json                           Emit JSON instead of human-readable tables
+      --top-k-default <TOP_K_DEFAULT>  
+      --color <COLOR>                  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --max-tools <MAX_TOOLS>          
+  -h, --help                           Print help
+```
+
+## `lab gateway tool-search disable`
+
+```text
+Usage: lab gateway tool-search disable [OPTIONS]
 
 Options:
       --json           Emit JSON instead of human-readable tables
@@ -1252,6 +809,200 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab gateway mcp auth`
+
+```text
+Usage: lab gateway mcp auth [OPTIONS] <COMMAND>
+
+Commands:
+  start   
+  open    
+  status  
+  clear   
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab gateway mcp auth start`
+
+```text
+Usage: lab gateway mcp auth start [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --subject <SUBJECT>
+          
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --open
+          
+      --wait
+          
+      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
+          [default: 120]
+  -h, --help
+          Print help
+```
+
+## `lab gateway mcp auth open`
+
+```text
+Usage: lab gateway mcp auth open [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --subject <SUBJECT>
+          
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --open
+          
+      --wait
+          
+      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
+          [default: 120]
+  -h, --help
+          Print help
+```
+
+## `lab gateway mcp auth status`
+
+```text
+Usage: lab gateway mcp auth status [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --subject <SUBJECT>
+          
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --open
+          
+      --wait
+          
+      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
+          [default: 120]
+  -h, --help
+          Print help
+```
+
+## `lab gateway mcp auth clear`
+
+```text
+Usage: lab gateway mcp auth clear [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --subject <SUBJECT>
+          
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --open
+          
+      --wait
+          
+      --wait-timeout-secs <WAIT_TIMEOUT_SECS>
+          [default: 120]
+  -h, --help
+          Print help
+```
+
+## `lab gateway mcp list`
+
+```text
+Usage: lab gateway mcp list [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab gateway mcp enable`
+
+```text
+Usage: lab gateway mcp enable [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --allow-stdio    
+      --json           Emit JSON instead of human-readable tables
+      --cleanup        
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --aggressive     
+  -h, --help           Print help
+```
+
+## `lab gateway mcp disable`
+
+```text
+Usage: lab gateway mcp disable [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --allow-stdio    
+      --json           Emit JSON instead of human-readable tables
+      --cleanup        
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --aggressive     
+  -h, --help           Print help
+```
+
+## `lab gateway mcp cleanup`
+
+```text
+Usage: lab gateway mcp cleanup [OPTIONS] <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+      --aggressive     
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --dry-run        
+  -h, --help           Print help
+```
+
+## `lab oauth`
+
+```text
+Run local OAuth callback relay helpers
+
+Usage: lab oauth [OPTIONS] <COMMAND>
+
+Commands:
+  relay-local  
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab oauth relay-local`
 
 ```text
@@ -1264,6 +1015,24 @@ Options:
       --forward-base <FORWARD_BASE>  
       --port <PORT>                  
   -h, --help                         Print help
+```
+
+## `lab logs`
+
+```text
+Search fleet logs on the configured master
+
+Usage: lab logs [OPTIONS] <COMMAND>
+
+Commands:
+  search   Search fleet logs for a device from the master control plane
+  local    Search or inspect the local-master runtime log store
+  forward  Forward this node's syslog to the master log store (peer mode)
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
 ```
 
 ## `lab logs search`
@@ -1302,6 +1071,92 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab logs local search`
+
+```text
+Search the persistent local log store
+
+Usage: lab logs local search [OPTIONS]
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --text <TEXT>
+          
+      --after-ts <AFTER_TS>
+          
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --before-ts <BEFORE_TS>
+          
+      --level <LEVELS>
+          [possible values: trace, debug, info, warn, error]
+      --subsystem <SUBSYSTEMS>
+          [possible values: gateway, mcp_server, mcp_client, api, web, oauth_relay, auth_webui, auth_mcp, auth_upstream, core_runtime, syslog]
+      --surface <SURFACES>
+          [possible values: cli, mcp, api, web, core_runtime]
+      --action <ACTION>
+          
+      --request-id <REQUEST_ID>
+          
+      --session-id <SESSION_ID>
+          
+      --correlation-id <CORRELATION_ID>
+          
+      --limit <LIMIT>
+          
+  -h, --help
+          Print help
+```
+
+## `lab logs local tail`
+
+```text
+Read a bounded follow-up window from the persistent local log store
+
+Usage: lab logs local tail [OPTIONS]
+
+Options:
+      --after-ts <AFTER_TS>
+          
+      --json
+          Emit JSON instead of human-readable tables
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --since-event-id <SINCE_EVENT_ID>
+          
+      --limit <LIMIT>
+          
+  -h, --help
+          Print help
+```
+
+## `lab logs local stats`
+
+```text
+Inspect local retention and drop counters
+
+Usage: lab logs local stats [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab logs local stream`
+
+```text
+Live push is HTTP SSE only in v1; this command fails with guidance
+
+Usage: lab logs local stream [OPTIONS]
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab logs forward`
 
 ```text
@@ -1318,6 +1173,99 @@ Options:
       --batch-size <BATCH_SIZE>      How many events to batch per request (default 200) [default: 200]
       --syslog-only                  Skip journald and read directly from /var/log/syslog
   -h, --help                         Print help
+```
+
+## `lab marketplace`
+
+```text
+Claude plugin marketplace manager
+
+Usage: lab marketplace [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. sources.list, plugins.list, plugin.install) [default: help] [possible values: help, schema, sources.list, plugins.list, plugin.get, plugin.artifacts, plugin.workspace, plugin.save, plugin.deploy, plugin.deploy.preview, artifact.fork, artifact.list, artifact.unfork, artifact.reset, artifact.diff, artifact.patch, artifact.update.check, artifact.update.preview, artifact.update.apply, artifact.merge.suggest, artifact.config.set, sources.add, plugin.install, plugin.uninstall, agent.list, agent.get, agent.install, plugin.cherry_pick, agent.uninstall, mcp.config, mcp.list, mcp.get, mcp.versions, mcp.validate, mcp.install, mcp.uninstall, mcp.meta.get, mcp.meta.set, mcp.meta.delete, mcp.sync]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab stash`
+
+```text
+Component versioning and deployment
+
+Usage: lab stash [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help`, `components.list`, `component.get` [possible values: help, schema, components.list, component.get, component.create, component.import, component.workspace, component.save, component.revisions, component.export, component.deploy, providers.list, provider.link, provider.push, provider.pull, targets.list, target.add, target.remove]
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --dry-run        Print what would be done without executing
+  -h, --help           Print help
+```
+
+## `lab radarr`
+
+```text
+Radarr movie collection manager
+
+Usage: lab radarr [OPTIONS] [COMMAND]
+
+Commands:
+  help                        Return the Radarr action catalog
+  system-status               Return Radarr system status and version
+  system-health               Return Radarr health check results
+  system-disk-space           Return disk space information for all drives
+  system-logs                 Return list of available log files
+  system-updates              Return available Radarr updates
+  movie-list                  List all movies in the Radarr library
+  movie-get                   Get a single movie by its Radarr ID
+  movie-lookup                Search for movies to add (TMDB / IMDB lookup)
+  movie-add                   Add a movie to Radarr for monitoring and download
+  movie-delete                Delete a movie from Radarr
+  queue-list                  List all items currently in the download queue
+  queue-remove                Remove an item from the download queue
+  calendar-list               List upcoming movie releases
+  command-refresh             Refresh metadata for one movie or all movies
+  command-search              Trigger a file search for one or more movies
+  command-get                 Get the status of a previously issued command
+  history-list                List download history
+  blocklist-list              List blocked releases
+  release-search              Search indexers for available releases for a movie
+  indexer-list                List configured indexers
+  indexer-test                Test an indexer connection
+  quality-profile-list        List quality profiles
+  quality-definition-list     List quality definitions
+  root-folder-list            List root folders
+  tag-list                    List all tags
+  tag-detail-list             List tags with full details
+  download-client-list        List configured download clients
+  download-client-test        Test a download client connection
+  remote-path-mapping-list    List remote path mappings
+  config-host                 Get host configuration
+  config-naming               Get file naming configuration
+  config-ui                   Get UI configuration
+  notification-list           List configured notifications
+  notification-test           Test a notification connection
+  import-list-list            List configured import lists
+  import-list-exclusion-list  List import list exclusions
+  language-list               List available languages
+  metadata-list               List metadata providers
+  filesystem-list             Browse the server filesystem
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
 ```
 
 ## `lab radarr help`
@@ -1898,6 +1846,443 @@ Options:
   -h, --help           Print help
 ```
 
+## `lab sonarr`
+
+```text
+Sonarr TV series manager
+
+Usage: lab sonarr [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help, series.list, episode.list) [default: help] [possible values: help, schema, series.list, series.get, series.lookup, series.add, series.delete, episode.list, episode.get, queue.list, queue.delete, history.list, wanted.list, calendar.list, health, system.status, tag.list, tag.create, tag.delete, rootfolder.list, qualityprofile.list, languageprofile.list, series.edit, episode.monitor, wanted.cutoff, release.search, release.grab, history.series, history.failed-retry, blocklist.list, blocklist.delete, episodefile.delete, system.restart, system.backup]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab prowlarr`
+
+```text
+Prowlarr indexer manager
+
+Usage: lab prowlarr [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, indexer.list, indexer.get, indexer.delete, indexer.test, indexer.testall, indexer.categories, history.list, application.list, application.get, application.delete, indexer.edit, indexer.add, indexer.stats, indexer.status, indexer.search, indexer.grab, history.indexer, application.add, system.restart, system.backup, tag.list, system.status, system.health]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab plex`
+
+```text
+Plex media server
+
+Usage: lab plex [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.info, server.capabilities, library.list, library.get, library.scan, library.refresh, media.search, media.get, session.list, session.terminate, playlist.list, playlist.get, playlist.create, playlist.delete, library.browse, library.empty-trash, metadata.delete, metadata.edit, metadata.refresh, session.history, hubs.continue-watching, butler.list, butler.run, item.scrobble, item.unscrobble, updater.status, health]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab tautulli`
+
+```text
+Tautulli Plex analytics
+
+Usage: lab tautulli [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, activity.list, activity.stream, history.list, users.list, users.get, users.watch_time, users.player_stats, libraries.list, libraries.get, libraries.media_info, stats.home, stats.plays_by_date, media.recently-added, media.metadata, media.children, media.export-metadata, user.item-stats, user.delete-history, plays.by-day, plays.by-hour, plays.by-stream-type, plays.by-month, server.pms-update, system.info, system.settings]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab sabnzbd`
+
+```text
+`SABnzbd` download client
+
+Usage: lab sabnzbd [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, server.version, queue.list, queue.delete, history.list, history.delete, history.purge, server.stats, server.warnings, queue.pause, queue.resume, queue.speed.limit, queue.addurl, history.retry, history.retry-all, server.fullstatus, category.list, queue.set-complete-action, pp.pause, pp.resume, rss.fetch-now, config.get]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab qbittorrent`
+
+```text
+qBittorrent download client
+
+Usage: lab qbittorrent [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, transfer.info, transfer.download.limit, transfer.upload.limit, torrent.list, torrent.properties, torrent.trackers, torrent.pause, torrent.resume, torrent.delete, torrent.recheck, torrent.category.set, torrent.download.limit, torrent.upload.limit, category.list, app.version, app.preferences, log.list, torrent.add, transfer.toggle-speed-limits, torrent.files, torrent.set-file-prio, torrent.set-location, torrent.add-tags, torrent.remove-tags, torrent.reannounce, torrent.set-share-limits, category.create, category.edit, sync.maindata]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab tailscale`
+
+```text
+Tailscale VPN network
+
+Usage: lab tailscale [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, device.list, device.get, device.delete, device.authorize, key.list, key.get, key.delete, dns.nameservers, dns.search_paths, dns.split-get, dns.split-set, acl.get, acl.validate, acl.set, device.routes-get, device.routes-set, device.tag, device.expire, user.list, tailnet.settings-get, tailnet.settings-patch, key.create]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab linkding`
+
+```text
+Linkding bookmark manager
+
+Usage: lab linkding [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, bookmark.list, bookmark.archived.list, bookmark.get, bookmark.check, bookmark.create, bookmark.update, bookmark.archive, bookmark.unarchive, bookmark.delete, tag.list, tag.get, tag.create, user.profile, bundle.list, bundle.create, bundle.update, bundle.delete, bookmark.assets, bookmark.assets-upload]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab memos`
+
+```text
+Memos note-taking service
+
+Usage: lab memos [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, memos.list, memos.get, memos.create, memos.update, memos.delete, tags.list, workspace.profile, user.me, user.list, user.stats, webhook.list, webhook.create, attachment.upload, attachment.delete, memo.comment-list, memo.comment-create, memo.share-list, memo.share-create]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab bytestash`
+
+```text
+Bytestash snippet manager
+
+Usage: lab bytestash [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help`, `snippets.list`, `categories.list` [possible values: help, schema, auth.config, auth.register, auth.login, snippets.list, snippets.get, snippets.create, snippets.update, snippets.delete, snippets.public.list, snippets.public.get, snippets.share.create, snippets.share.get, categories.list, users.list, users.toggle-active, users.delete]
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --dry-run        Print what would be done without executing
+  -h, --help           Print help
+```
+
+## `lab paperless`
+
+```text
+Paperless-ngx document manager
+
+Usage: lab paperless [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, documents.list, documents.get, documents.metadata, documents.update, documents.delete, tags.list, tags.get, tags.create, tags.delete, correspondents.list, correspondents.get, correspondents.create, correspondents.delete, document_types.list, document_types.get, document_types.create, document_types.delete, statistics, tasks.list, document.upload, document.bulk-edit, document.download, tag.update, saved-view.list, saved-view.create, custom-field.list, custom-field.create, storage-path.list, storage-path.create]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab arcane`
+
+```text
+Arcane Docker management UI
+
+Usage: lab arcane [OPTIONS] [ACTION] [KEY=VALUE]...
+
+Arguments:
+  [ACTION]        Action to run, e.g. `help`, `system.health`, `container.list` [default: help] [possible values: help, schema, health, environment.list, environment.get, container.list, container.get, container.start, container.stop, container.restart, container.redeploy, project.list, project.create, project.up, project.down, project.redeploy, volume.list, volume.delete, volume.prune, image.list, image.pull, image.prune, image.update-summary]
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --dry-run        Print what would be done without executing
+  -h, --help           Print help
+```
+
+## `lab unraid`
+
+```text
+Unraid server management
+
+Usage: lab unraid [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, system.info, system.metrics, system.array, system.online, docker.list, docker.start, docker.stop, docker.restart, disk.list, vm.list, vm.start, vm.stop, vm.pause, vm.resume, notification.list, notification.create, notification.archive, parity.history, parity.check-start, parity.check-pause, parity.check-cancel, share.list, plugin.list, network.list, ups.devices, ups.config, log.read, flash.status, flash.backup]
+
+Options:
+      --instance <INSTANCE>  Optional named instance label
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --params <PARAMS>      Action-specific parameters as JSON
+  -y, --yes                  Skip confirmation prompt for destructive actions (docker.start/stop/restart)
+      --dry-run              Print what would be done without executing
+  -h, --help                 Print help
+```
+
+## `lab unifi`
+
+```text
+`UniFi` network management
+
+Usage: lab unifi [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help`, `sites.list`, `firewall.zones.list` [possible values: help, system.info, sites.list, wans.list, vpn.site-to-site-tunnels.list, vpn.servers.list, radius.profiles.list, device-tags.list, dpi.categories.list, dpi.applications.list, countries.list, wan.get, devices.list, devices.get, devices.stats, pending-devices.list, devices.create, devices.port-action, devices.action, devices.delete, device.update, clients.list, clients.get, clients.action, client.history, client.block, client.unblock, networks.list, networks.get, networks.references, networks.create, networks.update, networks.delete, wifi.broadcasts.list, wifi.broadcasts.get, wifi.broadcasts.create, wifi.broadcasts.update, wifi.broadcasts.delete, wifi.update, hotspot.vouchers.list, hotspot.vouchers.create, hotspot.vouchers.delete, hotspot.vouchers.get, firewall.zones.list, firewall.zones.get, firewall.zones.create, firewall.zones.update, firewall.zones.delete, firewall.policies.list, firewall.policies.get, firewall.policies.create, firewall.policies.update, firewall.policies.patch, firewall.policies.ordering.get, firewall.policies.ordering.set, acl.rules.list, acl.rules.get, acl.rules.create, acl.rules.update, acl.rules.delete, acl.rules.ordering.get, acl.rules.ordering.set, switching.switch-stacks.list, switching.switch-stacks.get, switching.mc-lag-domains.list, switching.mc-lag-domains.get, switching.lags.list, switching.lags.get, port-profile.list, port-profile.create, port-profile.update, dns.policies.list, dns.policies.get, dns.policies.create, dns.policies.update, dns.policies.delete, traffic-matching-lists.list, traffic-matching-lists.get, traffic-matching-lists.create, traffic-matching-lists.update, traffic-matching-lists.delete]
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --instance <INSTANCE>  Optional named instance label
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes                  Skip confirmation for destructive actions
+      --dry-run              Print what would be done without executing
+  -h, --help                 Print help
+```
+
+## `lab overseerr`
+
+```text
+Overseerr media request manager
+
+Usage: lab overseerr [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, health, status, request.list, request.get, request.create, request.approve, request.decline, request.delete, movie.search, tv.search, movie.get, tv.get, user.list, user.get, issue.list, issue.get, issue.create, issue.comment, request.retry, request.count, issue.update, media.delete, media.update-status, user.requests, user.quota, user.edit, job.run, discover.trending]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab gotify`
+
+```text
+Gotify push notifications
+
+Usage: lab gotify [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help`, `message.send`, `app.list` [possible values: help, schema, message.send, message.list, message.delete, message.purge, app.list, app.create, app.delete, client.list, client.create, client.delete, application.update, application.messages, application.messages-delete, client.update, plugin.list, plugin.enable, plugin.disable, plugin.config-get, plugin.config-set, user.list, user.create, user.delete, server.health, server.version]
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --dry-run        Print what would be done without executing
+  -h, --help           Print help
+```
+
+## `lab openai`
+
+```text
+`OpenAI` API client
+
+Usage: lab openai [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, model.list, chat.complete, embed.create, server.health]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help             Print help
+```
+
+## `lab openacp`
+
+```text
+Upstream OpenACP daemon
+
+Usage: lab openacp [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run, for example `system.health` [default: help] [possible values: help, schema, system.health, system.version, system.restart, adapters.list, sessions.list, sessions.get, sessions.create, sessions.prompt, sessions.cancel, sessions.bypass.set, sessions.permission.resolve, sessions.archive, sessions.adopt, agents.list, config.get, config.editable, config.patch, topics.list, topics.delete, topics.cleanup, tunnel.status, tunnel.list, tunnel.create, tunnel.delete, tunnel.delete_all, notify.send]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --params <PARAMS>      Action-specific parameters as JSON
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Select a named OpenACP instance
+  -y, --yes                  Accepted for consistency; OpenACP actions are not destructive-gated
+      --dry-run              Print what would be done without executing
+  -h, --help                 Print help
+```
+
+## `lab notebooklm`
+
+```text
+Google NotebookLM client
+
+Usage: lab notebooklm [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, notebook.list, notebook.create, notebook.get, notebook.delete, source.list, source.add_url, server.health]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab qdrant`
+
+```text
+Qdrant vector database
+
+Usage: lab qdrant [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, collections.list, collections.get, collection.create, collection.delete, point.upsert, point.search, point.query, point.scroll, point.count, point.delete, snapshot.create, index.create]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab tei`
+
+```text
+HF Text Embeddings Inference
+
+Usage: lab tei [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, server.info, embed.create, embed.rerank, embed.tokenize, embed.similarity, embed.sparse, embed.openai]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help             Print help
+```
+
+## `lab apprise`
+
+```text
+Apprise notification dispatcher
+
+Usage: lab apprise [OPTIONS] [ACTION]
+
+Arguments:
+  [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, notify.send, notify.key.send, config.add, config.get, config.delete, config.urls, server.details]
+
+Options:
+      --json             Emit JSON instead of human-readable tables
+      --params <PARAMS>  Action-specific parameters as JSON
+      --color <COLOR>    Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -y, --yes              Skip confirmation for destructive actions
+      --dry-run          Print what would be done without executing
+  -h, --help             Print help
+```
+
+## `lab deploy`
+
+```text
+Deploy the local lab release binary to SSH targets
+
+Usage: lab deploy [OPTIONS] <COMMAND>
+
+Commands:
+  config-list  Show resolved deploy hosts and defaults
+  plan         Dry-run: resolve targets, hash local artifact, show what would happen
+  run          Destructive: build, transfer, install, restart, verify
+  rollback     Destructive: restore the most recent backup on each target
+  monitor      Watch SSH hosts and emit JSON events when they go online or offline
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
 ## `lab deploy config-list`
 
 ```text
@@ -2000,4 +2385,521 @@ Options:
 
   -h, --help
           Print help (see a summary with '-h')
+```
+
+## `lab dozzle`
+
+```text
+`lab dozzle` arguments
+
+Usage: lab dozzle [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab immich`
+
+```text
+`lab immich` arguments
+
+Usage: lab immich [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab jellyfin`
+
+```text
+Jellyfin media server
+
+Usage: lab jellyfin [OPTIONS] [COMMAND]
+
+Commands:
+  help       Return the Jellyfin action catalog
+  system     System operations
+  users      User operations
+  libraries  Library operations
+  items      Item operations
+  sessions   Session operations
+  plugins    Plugin operations
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin help`
+
+```text
+Return the Jellyfin action catalog
+
+Usage: lab jellyfin help [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin system`
+
+```text
+System operations
+
+Usage: lab jellyfin system [OPTIONS] <COMMAND>
+
+Commands:
+  ping         Ping the Jellyfin server
+  info         Fetch authenticated system information
+  public-info  Fetch public system information
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin system ping`
+
+```text
+Ping the Jellyfin server
+
+Usage: lab jellyfin system ping [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin system info`
+
+```text
+Fetch authenticated system information
+
+Usage: lab jellyfin system info [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin system public-info`
+
+```text
+Fetch public system information
+
+Usage: lab jellyfin system public-info [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin users`
+
+```text
+User operations
+
+Usage: lab jellyfin users [OPTIONS] <COMMAND>
+
+Commands:
+  list  List users
+  me    Fetch the current authenticated user
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin users list`
+
+```text
+List users
+
+Usage: lab jellyfin users list [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin users me`
+
+```text
+Fetch the current authenticated user
+
+Usage: lab jellyfin users me [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin libraries`
+
+```text
+Library operations
+
+Usage: lab jellyfin libraries [OPTIONS] <COMMAND>
+
+Commands:
+  list  List virtual folders/libraries
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin libraries list`
+
+```text
+List virtual folders/libraries
+
+Usage: lab jellyfin libraries list [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin items`
+
+```text
+Item operations
+
+Usage: lab jellyfin items [OPTIONS] <COMMAND>
+
+Commands:
+  search  Search or list items
+  get     Fetch one item by ID
+  counts  Fetch item counts
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin items search`
+
+```text
+Search or list items
+
+Usage: lab jellyfin items search [OPTIONS]
+
+Options:
+      --json
+          Emit JSON instead of human-readable tables
+      --user-id <USER_ID>
+          Optional Jellyfin user ID
+      --color <COLOR>
+          Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --search-term <SEARCH_TERM>
+          Optional item search term
+      --parent-id <PARENT_ID>
+          Optional parent item/library ID
+      --include-item-types <INCLUDE_ITEM_TYPES>
+          Include only these item types
+      --recursive <RECURSIVE>
+          Recurse into child folders [possible values: true, false]
+      --start-index <START_INDEX>
+          Zero-based result offset
+      --limit <LIMIT>
+          Maximum result count
+      --instance <INSTANCE>
+          Optional Jellyfin instance label
+  -h, --help
+          Print help
+```
+
+## `lab jellyfin items get`
+
+```text
+Fetch one item by ID
+
+Usage: lab jellyfin items get [OPTIONS] <ITEM_ID>
+
+Arguments:
+  <ITEM_ID>  Jellyfin item ID
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin items counts`
+
+```text
+Fetch item counts
+
+Usage: lab jellyfin items counts [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin sessions`
+
+```text
+Session operations
+
+Usage: lab jellyfin sessions [OPTIONS] <COMMAND>
+
+Commands:
+  list  List active sessions
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin sessions list`
+
+```text
+List active sessions
+
+Usage: lab jellyfin sessions list [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin plugins`
+
+```text
+Plugin operations
+
+Usage: lab jellyfin plugins [OPTIONS] <COMMAND>
+
+Commands:
+  list  List installed plugins
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab jellyfin plugins list`
+
+```text
+List installed plugins
+
+Usage: lab jellyfin plugins list [OPTIONS]
+
+Options:
+      --json                 Emit JSON instead of human-readable tables
+      --color <COLOR>        Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+      --instance <INSTANCE>  Optional Jellyfin instance label
+  -h, --help                 Print help
+```
+
+## `lab navidrome`
+
+```text
+`lab navidrome` arguments
+
+Usage: lab navidrome [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab scrutiny`
+
+```text
+`lab scrutiny` arguments
+
+Usage: lab scrutiny [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab freshrss`
+
+```text
+`lab freshrss` arguments
+
+Usage: lab freshrss [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab loggifly`
+
+```text
+`lab loggifly` arguments
+
+Usage: lab loggifly [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab adguard`
+
+```text
+`lab adguard` arguments
+
+Usage: lab adguard [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab glances`
+
+```text
+`lab glances` arguments
+
+Usage: lab glances [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab uptime-kuma`
+
+```text
+`lab uptime-kuma` arguments
+
+Usage: lab uptime-kuma [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab pihole`
+
+```text
+`lab pihole` arguments
+
+Usage: lab pihole [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
+```
+
+## `lab neo4j`
+
+```text
+`lab neo4j` arguments
+
+Usage: lab neo4j [OPTIONS] <ACTION> [KEY=VALUE]...
+
+Arguments:
+  <ACTION>        Action to run, e.g. `help` or `schema`
+  [KEY=VALUE]...  Optional `key=value` params for the action
+
+Options:
+      --json           Emit JSON instead of human-readable tables
+  -y, --yes            Skip confirmation for destructive actions
+      --color <COLOR>  Control human-readable CLI styling [default: auto] [possible values: auto, plain, color]
+  -h, --help           Print help
 ```

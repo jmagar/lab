@@ -124,9 +124,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn auth_dispatch_logs_request_id_action_elapsed_and_failure_kind() {
-        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
+        let _tracing_lock = crate::test_support::TRACING_TEST_LOCK.lock().await;
         let buf = crate::test_support::SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
             .with(tracing_subscriber::EnvFilter::new("lab_auth=info"))

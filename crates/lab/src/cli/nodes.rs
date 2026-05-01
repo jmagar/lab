@@ -20,11 +20,13 @@ pub enum NodesCommand {
     /// Get details for a specific node by `node_id`.
     Get { node_id: String },
     /// Build and roll out the local release binary to selected nodes.
+    #[cfg(feature = "deploy")]
     Update(UpdateArgs),
     /// Manage pending, approved, and denied node enrollments.
     Enrollments(EnrollmentArgs),
 }
 
+#[cfg(feature = "deploy")]
 #[derive(Debug, Args)]
 pub struct UpdateArgs {
     /// Update every configured node and, when running on the controller, run the local controller last.
@@ -66,6 +68,7 @@ pub async fn run(args: NodesArgs, format: OutputFormat, config: &LabConfig) -> R
         NodesCommand::Get { node_id } => {
             print(&fetch_node(config, &node_id).await?, format)?;
         }
+        #[cfg(feature = "deploy")]
         NodesCommand::Update(args) => {
             if !args.all && args.targets.is_empty() {
                 anyhow::bail!("nodes update requires one or more targets or `--all`");

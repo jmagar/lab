@@ -107,6 +107,18 @@ GLANCES_URL=http://localhost:61208
 GLANCES_TOKEN=replace-me
 ```
 
+Neo4j:
+
+```env
+NEO4J_URL=neo4j://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=replace-me
+# Optional:
+NEO4J_DB=neo4j
+NEO4J_POOL_SIZE=16
+NEO4J_CA_CERT_PATH=/etc/ssl/neo4j-ca.pem
+```
+
 Uptime Kuma:
 
 ```env

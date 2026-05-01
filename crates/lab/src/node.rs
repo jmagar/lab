@@ -13,5 +13,6 @@ pub mod runtime;
 pub mod store;
 pub mod sysmetrics;
 pub mod token;
+#[cfg(feature = "deploy")]
 pub mod update;
 pub mod ws_client;

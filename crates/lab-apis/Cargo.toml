@@ -29,6 +29,8 @@ russh-config.workspace = true
 quick-xml.workspace    = true
 rusqlite.workspace     = true
 tempfile.workspace     = true
+neo4rs = { version = "0.9.0-rc.9", features = ["json"], optional = true }
+rust_socketio = { version = "0.6.0", features = ["async"], optional = true }
 
 [dev-dependencies]
 tokio       = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
@@ -60,6 +62,7 @@ all = [
     "adguard",
     "glances",
     "pihole",
+    "neo4j",
     "uptime_kuma",
     "immich",
     "loggifly",
@@ -92,6 +95,7 @@ loggifly = []
 mcpregistry = []
 memos = []
 navidrome = []
+neo4j = ["dep:neo4rs"]
 notebooklm = []
 openacp = []
 openai = []
@@ -113,7 +117,7 @@ tei = []
 test-utils = []
 unifi = []
 unraid = []
-uptime_kuma = []
+uptime_kuma = ["dep:rust_socketio"]
 [[test]]
 name     = "plex_client"
 required-features = ["plex"]

@@ -54,6 +54,8 @@ pub mod loggifly;
 pub mod memos;
 #[cfg(feature = "navidrome")]
 pub mod navidrome;
+#[cfg(feature = "neo4j")]
+pub mod neo4j;
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;
 #[cfg(feature = "openacp")]
@@ -268,10 +270,16 @@ pub enum Command {
     UptimeKuma(uptime_kuma::UptimeKumaArgs),
     #[cfg(feature = "pihole")]
     Pihole(pihole::PiholeArgs),
+    #[cfg(feature = "neo4j")]
+    Neo4j(neo4j::Neo4jArgs),
     // [lab-scaffold: cli-variants]
 }
 
 /// Dispatch a parsed [`Cli`] to the correct handler.
+#[expect(
+    clippy::large_stack_frames,
+    reason = "all-features command enum is large and dispatch immediately moves one parsed variant"
+)]
 pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
     let format = cli.format();
     let color = cli.color;
@@ -366,6 +374,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::UptimeKuma(args) => uptime_kuma::run(args, format).await,
         #[cfg(feature = "pihole")]
         Command::Pihole(args) => pihole::run(args, format).await,
+        #[cfg(feature = "neo4j")]
+        Command::Neo4j(args) => neo4j::run(args, format).await,
         // [lab-scaffold: cli-dispatch]
     }
 }

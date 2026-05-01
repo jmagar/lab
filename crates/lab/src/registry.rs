@@ -510,6 +510,8 @@ pub fn build_default_registry() -> ToolRegistry {
 
     register_service!(reg, "pihole", pihole);
 
+    register_service!(reg, "neo4j", neo4j);
+
     reg
 }
 
@@ -781,6 +783,10 @@ mod tests {
             s.insert(lab_apis::glances::META.name);
             #[cfg(feature = "uptime_kuma")]
             s.insert(lab_apis::uptime_kuma::META.name);
+            #[cfg(feature = "pihole")]
+            s.insert(lab_apis::pihole::META.name);
+            #[cfg(feature = "neo4j")]
+            s.insert(lab_apis::neo4j::META.name);
             #[cfg(feature = "fs")]
             s.insert("fs");
             s

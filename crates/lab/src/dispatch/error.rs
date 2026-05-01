@@ -333,9 +333,22 @@ impl_tool_error_from!(
 );
 
 impl_tool_error_from!(
+    "neo4j",
+    lab_apis::neo4j::error::Neo4jError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param",
+    InsecureScheme(_) => "validation_failed",
+    Timeout(_) => "timeout"
+);
+
+impl_tool_error_from!(
     "uptime_kuma",
     lab_apis::uptime_kuma::error::UptimeKumaError,
     Api(api) => api.kind(),
+    Socket(_) => "network_error",
+    Auth(_) => "auth_failed",
+    Timeout(_) => "timeout",
+    InvalidParam(_) => "invalid_param",
     Unsupported(_) => "server_error"
 );
 

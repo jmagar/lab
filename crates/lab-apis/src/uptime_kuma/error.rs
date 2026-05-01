@@ -7,7 +7,19 @@ pub enum UptimeKumaError {
     /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
-    /// Requested action requires the Socket.IO actor that is not enabled yet.
-    #[error("{0}")]
+    /// Socket.IO operation failed.
+    #[error("socket.io error: {0}")]
+    Socket(String),
+    /// Login was rejected by Uptime Kuma.
+    #[error("authentication failed: {0}")]
+    Auth(String),
+    /// Ack did not arrive before the timeout.
+    #[error("Uptime Kuma ack timed out after {0}s")]
+    Timeout(u64),
+    /// Request parameter failed validation.
+    #[error("invalid parameter: {0}")]
+    InvalidParam(String),
+    /// Live read is not available for this action.
+    #[error("unsupported action: {0}")]
     Unsupported(String),
 }

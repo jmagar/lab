@@ -39,6 +39,8 @@ pub mod marketplace;
 pub mod memos;
 #[cfg(feature = "navidrome")]
 pub mod navidrome;
+#[cfg(feature = "neo4j")]
+pub mod neo4j;
 pub mod node;
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;

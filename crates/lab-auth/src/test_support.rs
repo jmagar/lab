@@ -35,4 +35,4 @@ pub fn captured_logs(buf: &SharedBuf) -> String {
         .expect("captured logs are utf-8")
 }
 
-pub static TRACING_TEST_LOCK: Mutex<()> = Mutex::new(());
+pub static TRACING_TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());

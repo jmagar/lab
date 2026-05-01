@@ -1,11 +1,11 @@
 # Uptime Kuma Coverage
 
-Status: first-class contract surface with live Socket.IO reads deferred.
+Status: first-class read-oriented Socket.IO surface.
 
 Actions: `contract.status`, `server.health`, `monitor.list`, `monitor.get`, `heartbeat.list`, `status.summary`, `notification.list`, plus built-in `help` and `schema`.
 
-Implemented now: service metadata, env contract, registry/CLI/MCP/API/TUI wiring, web-root health probe, and a structured `contract.status` response that makes the Socket.IO gap explicit.
+Implemented now: service metadata, env contract, registry/CLI/MCP/API/TUI wiring, web-root health probe, authenticated Socket.IO login with per-ack timeout, and read actions for monitor inventory, monitor detail, heartbeat history, status summary, and notification inventory.
 
-Deferred: authenticated Socket.IO actor, monitor/heartbeat/notification reads, monitor mutation, status-page mutation, maintenance windows, and notification tests.
+Deferred: monitor mutation, status-page mutation, maintenance windows, notification tests, notification creation, and a fuller supervised actor with explicit disconnect-drain/reconnect task management.
 
-Security: `UPTIME_KUMA_PASSWORD` is secret. Uptime Kuma does not publish a stable REST API for monitor data, so live monitor reads must go through a bounded Socket.IO actor before they can safely cross Lab surfaces.
+Security: `UPTIME_KUMA_PASSWORD` is secret. The integration does not expose side-effecting notification or monitor mutations. Heartbeat history is clamped to a maximum 168 hour window.

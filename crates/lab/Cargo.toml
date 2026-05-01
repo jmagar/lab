@@ -1,6 +1,6 @@
 [package]
 name                   = "lab"
-description            = "Pluggable homelab CLI + MCP server. One binary, 21 services, runtime tool selection."
+description            = "Pluggable homelab CLI + MCP server. One binary, runtime service selection."
 version.workspace      = true
 edition.workspace      = true
 rust-version.workspace = true
@@ -133,6 +133,7 @@ all = [
     "adguard",
     "glances",
     "pihole",
+    "neo4j",
     "uptime_kuma",
     "immich",
     "loggifly",
@@ -177,6 +178,7 @@ loggifly = ["lab-apis/loggifly"]
 mcpregistry = ["lab-apis/mcpregistry"]
 memos = ["lab-apis/memos"]
 navidrome = ["lab-apis/navidrome"]
+neo4j = ["lab-apis/neo4j"]
 notebooklm = ["lab-apis/notebooklm"]
 openacp = ["lab-apis/openacp"]
 openai = ["lab-apis/openai"]

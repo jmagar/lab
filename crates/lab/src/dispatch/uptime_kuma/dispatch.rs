@@ -7,6 +7,7 @@ use crate::dispatch::helpers::{action_schema, help_payload, require_str, to_json
 
 use super::catalog::ACTIONS;
 use super::client::require_client;
+use super::params::{hours, monitor_id, optional_monitor_id};
 
 pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
     match action {
@@ -21,8 +22,6 @@ pub async fn dispatch(action: &str, params: Value) -> Result<Value, ToolError> {
 }
 
 /// Dispatch an action using a prebuilt client.
-///
-/// `help` and `schema` are intercepted by [`dispatch`] and never reach here.
 pub async fn dispatch_with_client(
     client: &UptimeKumaClient,
     action: &str,
@@ -39,13 +38,15 @@ pub async fn dispatch_with_client(
             client.health().await?;
             Ok(Value::Null)
         }
-        "monitor.get" => {
-            let _id = require_str(&params, "id")?;
-            to_json(client.unsupported_socket_read(action).await?)
-        }
-        "monitor.list" | "heartbeat.list" | "status.summary" | "notification.list" => {
-            to_json(client.unsupported_socket_read(action).await?)
-        }
+        "monitor.list" => to_json(client.monitor_list().await?),
+        "monitor.get" => to_json(client.monitor_get(monitor_id(&params, "id")?).await?),
+        "heartbeat.list" => to_json(
+            client
+                .heartbeat_list(optional_monitor_id(&params)?, hours(&params)?)
+                .await?,
+        ),
+        "status.summary" => to_json(client.status_summary().await?),
+        "notification.list" => to_json(client.notification_list().await?),
         unknown => Err(unknown_action(unknown)),
     }
 }

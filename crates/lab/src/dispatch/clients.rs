@@ -87,6 +87,8 @@ pub struct ServiceClients {
     pub uptime_kuma: Option<Arc<lab_apis::uptime_kuma::UptimeKumaClient>>,
     #[cfg(feature = "pihole")]
     pub pihole: Option<Arc<lab_apis::pihole::PiholeClient>>,
+    #[cfg(feature = "neo4j")]
+    pub neo4j: Option<Arc<lab_apis::neo4j::Neo4jClient>>,
     // [lab-scaffold: state-fields]
 }
 
@@ -165,6 +167,8 @@ impl ServiceClients {
             uptime_kuma: crate::dispatch::uptime_kuma::client_from_env().map(Arc::new),
             #[cfg(feature = "pihole")]
             pihole: crate::dispatch::pihole::client_from_env().map(Arc::new),
+            #[cfg(feature = "neo4j")]
+            neo4j: crate::dispatch::neo4j::client_from_env().map(Arc::new),
             // [lab-scaffold: state-from-env]
         }
     }

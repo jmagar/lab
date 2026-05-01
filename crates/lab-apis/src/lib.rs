@@ -162,6 +162,8 @@ pub mod immich;
 pub mod loggifly;
 #[cfg(feature = "navidrome")]
 pub mod navidrome;
+#[cfg(feature = "neo4j")]
+pub mod neo4j;
 #[cfg(feature = "pihole")]
 pub mod pihole;
 #[cfg(feature = "scrutiny")]

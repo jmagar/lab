@@ -499,6 +499,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "glances", "glances", glances);
         mount_if_enabled!(v1, state, "uptime_kuma", "uptime_kuma", uptime_kuma);
         mount_if_enabled!(v1, state, "pihole", "pihole", pihole);
+        mount_if_enabled!(v1, state, "neo4j", "neo4j", neo4j);
         // [lab-scaffold: api-routes]
     }
 
