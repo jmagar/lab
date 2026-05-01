@@ -1114,6 +1114,47 @@ fn scan_instances_from(
 
 // ─── .env writer (used by `lab extract --apply`) ─────────────────────────────
 
+/// Merge `creds` into the `.env` file at `path` via the canonical
+/// [`env_merge::merge`] primitive. Preferred over [`write_env`] /
+/// [`write_env_pairs`] for new code: handles backup, atomic write,
+/// mtime-skew detection, retention pruning, and 0600 perms in one call.
+///
+/// Returns the underlying merge outcome (skipped conflicts, backup path,
+/// prune stats).
+///
+/// # Errors
+/// Returns the typed [`env_merge::MergeError`] on any merge failure.
+pub fn write_service_creds(
+    path: &Path,
+    creds: &[ServiceCreds],
+    force: bool,
+) -> Result<env_merge::MergeOutcome, env_merge::MergeError> {
+    let mut entries: Vec<env_merge::EnvEntry> = Vec::new();
+    for cred in creds {
+        let svc_upper = cred.service.to_uppercase();
+        if let Some(url) = &cred.url {
+            entries.push(env_merge::EnvEntry::new(
+                format!("{svc_upper}_URL"),
+                url.clone(),
+            ));
+        }
+        if let Some(secret) = &cred.secret {
+            entries.push(env_merge::EnvEntry::new(
+                cred.env_field.clone(),
+                secret.clone(),
+            ));
+        }
+    }
+    env_merge::merge(
+        path,
+        env_merge::MergeRequest {
+            entries,
+            force,
+            expected_mtime: None,
+        },
+    )
+}
+
 /// Copy `path` to `path.bak.<unix-seconds>`. No-op if `path` does not exist.
 ///
 /// Returns the backup path (useful for messaging the user).
