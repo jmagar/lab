@@ -14,6 +14,8 @@
 //! like `unraid` reads `UNRAID_URL` as the default instance and
 //! `UNRAID_NODE2_URL` as an additional instance labeled `node2`.
 
+pub mod env_merge;
+
 use std::{
     collections::BTreeMap,
     collections::HashMap,
