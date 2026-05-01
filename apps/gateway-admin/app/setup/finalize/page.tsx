@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation'
 import { CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { NavButtons } from '@/components/setup/WizardShell'
+import { NavButtons, useWizard } from '@/components/setup/WizardShell'
 import { setupApi, type CommitOutcome } from '@/lib/api/setup-client'
 import { doctorApi, type DoctorReport } from '@/lib/api/doctor-client'
 
 export default function FinalizePage(): React.ReactElement {
   const router = useRouter()
+  const wizard = useWizard()
   const [audit, setAudit] = useState<DoctorReport | undefined>()
   const [auditError, setAuditError] = useState<string | undefined>()
   const [auditing, setAuditing] = useState(false)
@@ -40,8 +41,10 @@ export default function FinalizePage(): React.ReactElement {
     try {
       const outcome = await setupApi.finalize()
       setCommitOutcome(outcome)
-      // On success, route to /settings — wizard is done.
+      // On success, wipe wizard selection (so a new wizard run starts fresh)
+      // and route to /settings — wizard is done.
       if (outcome.ok !== false) {
+        wizard.clearWizardState()
         setTimeout(() => router.replace('/settings/'), 1200)
       }
     } catch (err) {

@@ -1,11 +1,14 @@
 'use client'
 
 // Wizard shell — progress bar, Back/Next chrome, lightweight state
-// store for the 8-step setup flow. State is intentionally non-persistent
-// across sessions: setup.draft.set is the durable record; this context
-// just keeps things visible across step navigation within one tab.
+// store for the 8-step setup flow. selectedServices is mirrored to
+// sessionStorage so a refresh on /setup/configuration doesn't dead-end
+// the user (the layout's last_completed_step resume only restores the
+// route, not the in-step inputs). The dispatch (setup.draft.set) is
+// still the durable record for actual values; this is just selection
+// continuity within one browser tab.
 
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 
@@ -34,9 +37,26 @@ export const WIZARD_STEPS: WizardStep[] = [
 interface WizardState {
   selectedServices: string[]
   setSelectedServices: (services: string[]) => void
+  /** Wipe persisted selection. Call after a successful finalize/commit. */
+  clearWizardState: () => void
 }
 
 const WizardContext = createContext<WizardState | undefined>(undefined)
+
+const SELECTED_SERVICES_KEY = 'lab.wizard.selectedServices'
+
+function readPersistedSelection(): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.sessionStorage.getItem(SELECTED_SERVICES_KEY)
+    if (!raw) return []
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((v): v is string => typeof v === 'string')
+  } catch {
+    return []
+  }
+}
 
 export function useWizard(): WizardState {
   const ctx = useContext(WizardContext)
@@ -45,8 +65,43 @@ export function useWizard(): WizardState {
 }
 
 export function WizardProvider({ children }: { children: React.ReactNode }): React.ReactElement {
-  const [selectedServices, setSelectedServices] = useState<string[]>([])
-  const value: WizardState = { selectedServices, setSelectedServices }
+  // Initialize from sessionStorage synchronously when on the client. The
+  // 'use client' directive guarantees this code runs in the browser, but
+  // Next.js still does a build-time render where window is undefined —
+  // readPersistedSelection() returns [] in that case to avoid a hydration
+  // mismatch. The empty array matches the build-time render output.
+  const [selectedServices, setSelectedServicesState] = useState<string[]>([])
+
+  // Hydrate from sessionStorage post-mount. This is the moment after which
+  // useState's [] is replaced by the persisted value.
+  useEffect(() => {
+    const persisted = readPersistedSelection()
+    if (persisted.length > 0) setSelectedServicesState(persisted)
+  }, [])
+
+  const setSelectedServices = (services: string[]): void => {
+    setSelectedServicesState(services)
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.setItem(SELECTED_SERVICES_KEY, JSON.stringify(services))
+      } catch {
+        // Quota exceeded or storage disabled — selection just won't survive refresh.
+      }
+    }
+  }
+
+  const clearWizardState = (): void => {
+    setSelectedServicesState([])
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.removeItem(SELECTED_SERVICES_KEY)
+      } catch {
+        // Ignore.
+      }
+    }
+  }
+
+  const value: WizardState = { selectedServices, setSelectedServices, clearWizardState }
   return <WizardContext.Provider value={value}>{children}</WizardContext.Provider>
 }
 
