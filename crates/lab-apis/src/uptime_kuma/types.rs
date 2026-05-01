@@ -1,7 +1,10 @@
-//! Scaffolded types for uptime_kuma.
+//! Uptime Kuma response types.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-/// Placeholder payload used by the scaffolded service.
+/// Generic JSON wrapper returned by contract/read actions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Placeholder;
+pub struct UptimeKumaResponse {
+    pub value: Value,
+}

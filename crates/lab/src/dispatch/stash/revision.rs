@@ -100,10 +100,10 @@ pub(crate) fn compute_digest(files: &[(PathBuf, PathBuf)]) -> Result<String, Too
     let mut hasher = Sha256::new();
     for (rel, abs) in files {
         let path_bytes = rel.as_os_str().as_encoded_bytes();
-        hasher.update(&(path_bytes.len() as u64).to_le_bytes());
+        hasher.update((path_bytes.len() as u64).to_le_bytes());
         hasher.update(path_bytes);
         let file_bytes = read_file_bytes(abs)?;
-        hasher.update(&(file_bytes.len() as u64).to_le_bytes());
+        hasher.update((file_bytes.len() as u64).to_le_bytes());
         hasher.update(&file_bytes);
     }
     let result = hasher.finalize();

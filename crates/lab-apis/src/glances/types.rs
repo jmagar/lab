@@ -1,7 +1,9 @@
-//! Scaffolded types for glances.
+//! Glances DTOs.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
-/// Placeholder payload used by the scaffolded service.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Placeholder;
+pub struct GlancesResponse {
+    pub value: Value,
+}

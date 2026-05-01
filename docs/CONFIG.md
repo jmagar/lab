@@ -254,6 +254,10 @@ RADARR_URL=http://localhost:7878
 RADARR_API_KEY=abc123
 PLEX_URL=http://localhost:32400
 PLEX_TOKEN=xyz789
+JELLYFIN_URL=http://localhost:8096
+JELLYFIN_API_KEY=replace-me
+OPENACP_URL=http://127.0.0.1:21420
+OPENACP_TOKEN=replace-me
 ```
 
 Rules:
@@ -280,6 +284,27 @@ Named instance:
 UNRAID_SHART_URL=https://other.local/graphql
 UNRAID_SHART_API_KEY=...
 ```
+
+Jellyfin follows the same pattern:
+
+```env
+JELLYFIN_URL=http://localhost:8096
+JELLYFIN_API_KEY=...
+JELLYFIN_NODE2_URL=http://node2.local:8096
+JELLYFIN_NODE2_API_KEY=...
+```
+
+OpenACP uses bearer tokens instead of API keys:
+
+```env
+OPENACP_URL=http://127.0.0.1:21420
+OPENACP_TOKEN=...
+OPENACP_NODE2_URL=http://node2.local:21420
+OPENACP_NODE2_TOKEN=...
+```
+
+Lab does not discover or read upstream OpenACP `api-secret` files
+automatically. Provide the token explicitly in `~/.lab/.env`.
 
 Rules:
 

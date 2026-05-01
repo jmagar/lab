@@ -1124,6 +1124,7 @@ fn scan_instances_from(
 ///
 /// # Errors
 /// Returns the typed [`env_merge::MergeError`] on any merge failure.
+#[allow(dead_code)]
 pub fn write_service_creds(
     path: &Path,
     creds: &[ServiceCreds],

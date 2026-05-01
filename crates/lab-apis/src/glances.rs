@@ -1,4 +1,4 @@
-//! Scaffolded lab-apis service module for glances.
+//! Glances REST API client.
 
 pub mod client;
 pub mod error;
@@ -13,28 +13,27 @@ use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
-/// Compile-time metadata for the scaffolded service.
 pub const META: PluginMeta = PluginMeta {
     name: "glances",
     display_name: "Glances",
-    description: "Scaffolded service placeholder",
-    category: Category::Bootstrap,
-    docs_url: "https://example.invalid",
+    description: "Host metrics via Glances REST API v4",
+    category: Category::Network,
+    docs_url: "https://glances.readthedocs.io/en/latest/api/restful.html",
     required_env: &[EnvVar {
         name: "GLANCES_URL",
-        description: "Base URL for the Glances service",
-        example: "http://localhost:8080",
+        description: "Base URL for Glances",
+        example: "http://localhost:61208",
         secret: false,
         ui: Some(&URL_FIELD),
     }],
     optional_env: &[EnvVar {
-        name: "GLANCES_API_KEY",
-        description: "Optional API key for the Glances service",
-        example: "abc123...",
+        name: "GLANCES_TOKEN",
+        description: "Optional JWT bearer token for Glances",
+        example: "jwt...",
         secret: true,
         ui: Some(&SECRET_OPTIONAL_FIELD),
     }],
-    default_port: None,
+    default_port: Some(61208),
     supports_multi_instance: false,
 };
 
@@ -44,10 +43,19 @@ impl ServiceClient for GlancesClient {
     }
 
     fn service_type(&self) -> &'static str {
-        "bootstrap"
+        "network"
     }
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
-        Ok(ServiceStatus::degraded("scaffolded service placeholder"))
+        self.health()
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        Ok(ServiceStatus {
+            reachable: true,
+            auth_ok: true,
+            version: None,
+            latency_ms: 0,
+            message: None,
+        })
     }
 }

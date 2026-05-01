@@ -78,6 +78,9 @@ pub mod gotify;
 #[cfg(feature = "openai")]
 pub mod openai;
 
+#[cfg(feature = "openacp")]
+pub mod openacp;
+
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;
 
@@ -99,6 +102,9 @@ pub mod dozzle;
 #[cfg(feature = "immich")]
 pub mod immich;
 
+#[cfg(feature = "jellyfin")]
+pub mod jellyfin;
+
 #[cfg(feature = "navidrome")]
 pub mod navidrome;
 
@@ -119,3 +125,6 @@ pub mod glances;
 
 #[cfg(feature = "uptime_kuma")]
 pub mod uptime_kuma;
+
+#[cfg(feature = "pihole")]
+pub mod pihole;

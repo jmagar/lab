@@ -51,6 +51,8 @@ pub struct ServiceClients {
     pub overseerr: Option<Arc<lab_apis::overseerr::OverseerrClient>>,
     #[cfg(feature = "openai")]
     pub openai: Option<Arc<lab_apis::openai::OpenAiClient>>,
+    #[cfg(feature = "openacp")]
+    pub openacp: Option<Arc<lab_apis::openacp::OpenAcpClient>>,
     #[cfg(feature = "notebooklm")]
     pub notebooklm: Option<Arc<lab_apis::notebooklm::NotebookLmClient>>,
     #[cfg(feature = "memos")]
@@ -67,6 +69,8 @@ pub struct ServiceClients {
     pub dozzle: Option<Arc<lab_apis::dozzle::DozzleClient>>,
     #[cfg(feature = "immich")]
     pub immich: Option<Arc<lab_apis::immich::ImmichClient>>,
+    #[cfg(feature = "jellyfin")]
+    pub jellyfin: Option<Arc<lab_apis::jellyfin::JellyfinClient>>,
     #[cfg(feature = "navidrome")]
     pub navidrome: Option<Arc<lab_apis::navidrome::NavidromeClient>>,
     #[cfg(feature = "scrutiny")]
@@ -81,6 +85,8 @@ pub struct ServiceClients {
     pub glances: Option<Arc<lab_apis::glances::GlancesClient>>,
     #[cfg(feature = "uptime_kuma")]
     pub uptime_kuma: Option<Arc<lab_apis::uptime_kuma::UptimeKumaClient>>,
+    #[cfg(feature = "pihole")]
+    pub pihole: Option<Arc<lab_apis::pihole::PiholeClient>>,
     // [lab-scaffold: state-fields]
 }
 
@@ -123,6 +129,8 @@ impl ServiceClients {
             overseerr: crate::dispatch::overseerr::client_from_env().map(Arc::new),
             #[cfg(feature = "openai")]
             openai: crate::dispatch::openai::client_from_env().map(Arc::new),
+            #[cfg(feature = "openacp")]
+            openacp: crate::dispatch::openacp::client_from_env().map(Arc::new),
             #[cfg(feature = "notebooklm")]
             notebooklm: crate::dispatch::notebooklm::client_from_env().map(Arc::new),
             #[cfg(feature = "memos")]
@@ -139,6 +147,8 @@ impl ServiceClients {
             dozzle: crate::dispatch::dozzle::client_from_env().map(Arc::new),
             #[cfg(feature = "immich")]
             immich: crate::dispatch::immich::client_from_env().map(Arc::new),
+            #[cfg(feature = "jellyfin")]
+            jellyfin: crate::dispatch::jellyfin::client_from_env().map(Arc::new),
             #[cfg(feature = "navidrome")]
             navidrome: crate::dispatch::navidrome::client_from_env().map(Arc::new),
             #[cfg(feature = "scrutiny")]
@@ -153,6 +163,8 @@ impl ServiceClients {
             glances: crate::dispatch::glances::client_from_env().map(Arc::new),
             #[cfg(feature = "uptime_kuma")]
             uptime_kuma: crate::dispatch::uptime_kuma::client_from_env().map(Arc::new),
+            #[cfg(feature = "pihole")]
+            pihole: crate::dispatch::pihole::client_from_env().map(Arc::new),
             // [lab-scaffold: state-from-env]
         }
     }

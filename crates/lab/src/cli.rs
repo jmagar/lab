@@ -24,6 +24,8 @@ pub mod serve;
 pub mod setup;
 pub mod stash;
 
+#[cfg(feature = "adguard")]
+pub mod adguard;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 #[cfg(feature = "arcane")]
@@ -36,10 +38,14 @@ pub mod deploy;
 pub mod dozzle;
 #[cfg(feature = "freshrss")]
 pub mod freshrss;
+#[cfg(feature = "glances")]
+pub mod glances;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 #[cfg(feature = "immich")]
 pub mod immich;
+#[cfg(feature = "jellyfin")]
+pub mod jellyfin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
 #[cfg(feature = "loggifly")]
@@ -50,12 +56,16 @@ pub mod memos;
 pub mod navidrome;
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;
+#[cfg(feature = "openacp")]
+pub mod openacp;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "overseerr")]
 pub mod overseerr;
 #[cfg(feature = "paperless")]
 pub mod paperless;
+#[cfg(feature = "pihole")]
+pub mod pihole;
 #[cfg(feature = "plex")]
 pub mod plex;
 #[cfg(feature = "prowlarr")]
@@ -82,10 +92,6 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
-#[cfg(feature = "adguard")]
-pub mod adguard;
-#[cfg(feature = "glances")]
-pub mod glances;
 #[cfg(feature = "uptime_kuma")]
 pub mod uptime_kuma;
 // [lab-scaffold: cli-modules]
@@ -221,6 +227,9 @@ pub enum Command {
     /// `OpenAI` API client.
     #[cfg(feature = "openai")]
     Openai(openai::OpenaiArgs),
+    /// Upstream OpenACP daemon.
+    #[cfg(feature = "openacp")]
+    Openacp(openacp::OpenAcpArgs),
     /// Google NotebookLM client.
     #[cfg(feature = "notebooklm")]
     Notebooklm(notebooklm::NotebooklmArgs),
@@ -240,6 +249,9 @@ pub enum Command {
     Dozzle(dozzle::DozzleArgs),
     #[cfg(feature = "immich")]
     Immich(immich::ImmichArgs),
+    /// Jellyfin media server.
+    #[cfg(feature = "jellyfin")]
+    Jellyfin(jellyfin::JellyfinArgs),
     #[cfg(feature = "navidrome")]
     Navidrome(navidrome::NavidromeArgs),
     #[cfg(feature = "scrutiny")]
@@ -254,6 +266,8 @@ pub enum Command {
     Glances(glances::GlancesArgs),
     #[cfg(feature = "uptime_kuma")]
     UptimeKuma(uptime_kuma::UptimeKumaArgs),
+    #[cfg(feature = "pihole")]
+    Pihole(pihole::PiholeArgs),
     // [lab-scaffold: cli-variants]
 }
 
@@ -318,6 +332,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Gotify(args) => gotify::run(args, format).await,
         #[cfg(feature = "openai")]
         Command::Openai(args) => openai::run(args, format).await,
+        #[cfg(feature = "openacp")]
+        Command::Openacp(args) => openacp::run(args, format).await,
         #[cfg(feature = "notebooklm")]
         Command::Notebooklm(args) => notebooklm::run(args, format).await,
         #[cfg(feature = "qdrant")]
@@ -332,6 +348,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Dozzle(args) => dozzle::run(args, format).await,
         #[cfg(feature = "immich")]
         Command::Immich(args) => immich::run(args, format).await,
+        #[cfg(feature = "jellyfin")]
+        Command::Jellyfin(args) => jellyfin::run(args, format).await,
         #[cfg(feature = "navidrome")]
         Command::Navidrome(args) => navidrome::run(args, format).await,
         #[cfg(feature = "scrutiny")]
@@ -346,6 +364,8 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Glances(args) => glances::run(args, format).await,
         #[cfg(feature = "uptime_kuma")]
         Command::UptimeKuma(args) => uptime_kuma::run(args, format).await,
+        #[cfg(feature = "pihole")]
+        Command::Pihole(args) => pihole::run(args, format).await,
         // [lab-scaffold: cli-dispatch]
     }
 }

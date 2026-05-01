@@ -1,11 +1,12 @@
-//! Scaffolded error type for glances.
+//! Glances error type.
 
 use crate::core::error::ApiError;
 
-/// Scaffolded service error.
 #[derive(Debug, thiserror::Error)]
 pub enum GlancesError {
-    /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
+
+    #[error("invalid parameter: {0}")]
+    InvalidParam(String),
 }

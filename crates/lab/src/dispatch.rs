@@ -1,4 +1,6 @@
 pub mod acp;
+#[cfg(feature = "adguard")]
+pub mod adguard;
 #[cfg(feature = "apprise")]
 pub mod apprise;
 #[cfg(feature = "arcane")]
@@ -17,17 +19,15 @@ pub mod extract;
 pub mod freshrss;
 pub mod fs;
 pub mod gateway;
+#[cfg(feature = "glances")]
+pub mod glances;
 #[cfg(feature = "gotify")]
 pub mod gotify;
 pub mod helpers;
-#[cfg(feature = "uptime_kuma")]
-pub mod uptime_kuma;
-#[cfg(feature = "glances")]
-pub mod glances;
-#[cfg(feature = "adguard")]
-pub mod adguard;
 #[cfg(feature = "immich")]
 pub mod immich;
+#[cfg(feature = "jellyfin")]
+pub mod jellyfin;
 pub mod lab_admin;
 #[cfg(feature = "linkding")]
 pub mod linkding;
@@ -42,6 +42,8 @@ pub mod navidrome;
 pub mod node;
 #[cfg(feature = "notebooklm")]
 pub mod notebooklm;
+#[cfg(feature = "openacp")]
+pub mod openacp;
 #[cfg(feature = "openai")]
 pub mod openai;
 #[cfg(feature = "overseerr")]
@@ -49,6 +51,8 @@ pub mod overseerr;
 #[cfg(feature = "paperless")]
 pub mod paperless;
 pub mod path_safety;
+#[cfg(feature = "pihole")]
+pub mod pihole;
 #[cfg(feature = "plex")]
 pub mod plex;
 #[cfg(feature = "prowlarr")]
@@ -79,3 +83,5 @@ pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
 pub mod upstream;
+#[cfg(feature = "uptime_kuma")]
+pub mod uptime_kuma;

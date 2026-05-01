@@ -1,4 +1,4 @@
-//! Scaffolded lab-apis service module for uptime_kuma.
+//! Uptime Kuma service module.
 
 pub mod client;
 pub mod error;
@@ -9,45 +9,63 @@ pub use error::UptimeKumaError;
 
 use crate::core::error::ApiError;
 use crate::core::plugin::{Category, EnvVar, PluginMeta};
-use crate::core::plugin_ui::{SECRET_OPTIONAL_FIELD, URL_FIELD};
+use crate::core::plugin_ui::{SECRET_FIELD, TEXT_FIELD, URL_FIELD};
 use crate::core::status::ServiceStatus;
 use crate::core::traits::ServiceClient;
 
-/// Compile-time metadata for the scaffolded service.
 pub const META: PluginMeta = PluginMeta {
-    name: "uptime_kuma",
-    display_name: "UptimeKuma",
-    description: "Scaffolded service placeholder",
-    category: Category::Bootstrap,
-    docs_url: "https://example.invalid",
-    required_env: &[EnvVar {
-        name: "UPTIME_KUMA_URL",
-        description: "Base URL for the UptimeKuma service",
-        example: "http://localhost:8080",
-        secret: false,
-        ui: Some(&URL_FIELD),
-    }],
-    optional_env: &[EnvVar {
-        name: "UPTIME_KUMA_API_KEY",
-        description: "Optional API key for the UptimeKuma service",
-        example: "abc123...",
-        secret: true,
-        ui: Some(&SECRET_OPTIONAL_FIELD),
-    }],
-    default_port: None,
+    name: "uptime-kuma",
+    display_name: "Uptime Kuma",
+    description: "Self-hosted uptime monitor with a Socket.IO-backed API",
+    category: Category::Network,
+    docs_url: "https://github.com/louislam/uptime-kuma/wiki/API-Documentation",
+    required_env: &[
+        EnvVar {
+            name: "UPTIME_KUMA_URL",
+            description: "Base URL for Uptime Kuma",
+            example: "http://localhost:3001",
+            secret: false,
+            ui: Some(&URL_FIELD),
+        },
+        EnvVar {
+            name: "UPTIME_KUMA_USERNAME",
+            description: "Username for the Uptime Kuma web account",
+            example: "admin",
+            secret: false,
+            ui: Some(&TEXT_FIELD),
+        },
+        EnvVar {
+            name: "UPTIME_KUMA_PASSWORD",
+            description: "Password for the Uptime Kuma web account",
+            example: "change-me",
+            secret: true,
+            ui: Some(&SECRET_FIELD),
+        },
+    ],
+    optional_env: &[],
+    default_port: Some(3001),
     supports_multi_instance: false,
 };
 
 impl ServiceClient for UptimeKumaClient {
     fn name(&self) -> &'static str {
-        "uptime_kuma"
+        "uptime-kuma"
     }
 
     fn service_type(&self) -> &'static str {
-        "bootstrap"
+        "network"
     }
 
     async fn health(&self) -> Result<ServiceStatus, ApiError> {
-        Ok(ServiceStatus::degraded("scaffolded service placeholder"))
+        self.health()
+            .await
+            .map_err(|e| ApiError::Internal(e.to_string()))?;
+        Ok(ServiceStatus {
+            reachable: true,
+            auth_ok: true,
+            version: None,
+            latency_ms: 0,
+            message: None,
+        })
     }
 }

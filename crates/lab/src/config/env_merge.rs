@@ -68,6 +68,7 @@ pub struct MergeRequest {
 
 /// Outcome of a successful [`merge`].
 #[derive(Debug, Clone, Default)]
+#[allow(dead_code)]
 pub struct MergeOutcome {
     /// Number of entries that resulted in a key change (new key or override).
     pub written: usize,
@@ -81,6 +82,7 @@ pub struct MergeOutcome {
 }
 
 #[derive(Debug, Clone, Copy, Default)]
+#[allow(dead_code)]
 pub struct PruneStats {
     pub kept: usize,
     pub removed: usize,
@@ -89,6 +91,7 @@ pub struct PruneStats {
 /// Stable error kinds for merge failures. Surface this through `kind()` when
 /// building [`crate::dispatch::error::ToolError`] envelopes.
 #[derive(Debug, thiserror::Error)]
+#[allow(dead_code)]
 pub enum MergeError {
     #[error("create temp file in {parent}: {source}")]
     TempCreate {
@@ -138,6 +141,7 @@ impl std::fmt::Display for WriteConflictReason {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum WriteFailReason {
     StorageFull,
     PermissionDenied,
@@ -218,22 +222,30 @@ pub fn merge(path: &Path, req: MergeRequest) -> Result<MergeOutcome, MergeError>
         }
     }
 
-    // Classify each entry. Last-wins on duplicate keys within a single
-    // request: re-classification overwrites the prior decision for that key.
+    // Collapse duplicate request keys before comparing against existing state.
+    // Last value wins, while the output order follows the first occurrence.
+    let mut request_entries: Vec<EnvEntry> = Vec::new();
+    for entry in &req.entries {
+        if let Some(slot) = request_entries
+            .iter_mut()
+            .find(|existing| existing.key == entry.key)
+        {
+            slot.value = entry.value.clone();
+        } else {
+            request_entries.push(entry.clone());
+        }
+    }
+
+    // Classify each final entry.
     let mut skipped: Vec<String> = Vec::new();
     let mut overrides: HashMap<String, String> = HashMap::new();
     let mut new_keys: Vec<(String, String)> = Vec::new();
     let mut written_count: usize = 0;
 
-    for entry in &req.entries {
+    for entry in &request_entries {
         match existing_map.get(&entry.key) {
             None => {
-                // Either truly new, or replacing an earlier in-request new key.
-                if let Some(slot) = new_keys.iter_mut().find(|(k, _)| k == &entry.key) {
-                    slot.1 = entry.value.clone();
-                } else {
-                    new_keys.push((entry.key.clone(), entry.value.clone()));
-                }
+                new_keys.push((entry.key.clone(), entry.value.clone()));
                 written_count += 1;
             }
             Some(existing_val) if existing_val == &entry.value => {
@@ -342,7 +354,7 @@ fn write_atomically(path: &Path, lines: &[String], parent: &Path) -> Result<(), 
     // fsync the parent directory so the rename is durable across power loss.
     // tempfile::persist guarantees atomicity on the rename, but Linux durability
     // requires an additional fsync on the parent to flush the directory entry.
-    if let Ok(dir) = std::fs::File::open(parent) {
+    if let Ok(dir) = fs::File::open(parent) {
         dir.sync_all().ok();
     }
     set_secure_perms(path);
@@ -427,6 +439,7 @@ fn prune_backups(parent: &Path, target: &Path) -> std::io::Result<PruneStats> {
 }
 
 /// Restore a backup over `target`. Used by setup.draft.commit on rollback.
+#[allow(dead_code)]
 pub fn restore_backup(target: &Path, backup: &Path) -> Result<(), MergeError> {
     fs::copy(backup, target).map_err(|e| MergeError::CommitRollbackFailed {
         backup_path: backup.to_path_buf(),

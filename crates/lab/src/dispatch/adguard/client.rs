@@ -1,4 +1,5 @@
 use lab_apis::adguard::AdguardClient;
+use lab_apis::core::Auth;
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::env_non_empty;
@@ -9,23 +10,21 @@ use crate::dispatch::helpers::env_non_empty;
 /// Called by `AppState` at startup — keep pure (no side effects, no logging).
 pub fn client_from_env() -> Option<AdguardClient> {
     let url = env_non_empty("ADGUARD_URL")?;
-    let auth = if let Some(key) = env_non_empty("ADGUARD_API_KEY") {
-        lab_apis::core::Auth::ApiKey { header: "X-Api-Key".into(), key }
-    } else if let Some(token) = env_non_empty("ADGUARD_TOKEN") {
-        lab_apis::core::Auth::Bearer { token }
+    if let Some(cookie) = env_non_empty("ADGUARD_SESSION_COOKIE") {
+        AdguardClient::new(&url, Auth::Session { cookie }).ok()
+    } else if let (Some(username), Some(password)) = (
+        env_non_empty("ADGUARD_USERNAME"),
+        env_non_empty("ADGUARD_PASSWORD"),
+    ) {
+        AdguardClient::with_login(&url, username, password).ok()
     } else {
-        lab_apis::core::Auth::None
-    };
-    AdguardClient::new(&url, auth).ok()
+        AdguardClient::new(&url, Auth::None).ok()
+    }
 }
 
 /// Return a client or a structured error distinguishing missing config from init failure.
 pub fn require_client() -> Result<AdguardClient, ToolError> {
-    let url = env_non_empty("ADGUARD_URL").ok_or_else(not_configured_error)?;
-    AdguardClient::new(&url, Auth::None).map_err(|e| ToolError::Sdk {
-        sdk_kind: "internal_error".into(),
-        message: format!("ADGUARD client init failed: {e}"),
-    })
+    client_from_env().ok_or_else(not_configured_error)
 }
 
 /// Structured error returned when the required env vars are absent.

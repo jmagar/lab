@@ -1,10 +1,10 @@
-use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
-use crate::api::{state::AppState, ActionRequest};
-use crate::dispatch::error::ToolError;
+use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::adguard::ACTIONS;
+use crate::dispatch::error::ToolError;
 
 /// Build the route group for the scaffolded service.
 pub fn routes(_state: AppState) -> Router<AppState> {

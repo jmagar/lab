@@ -244,6 +244,7 @@ impl PendingPermissions {
         }
     }
 
+    #[allow(dead_code)]
     fn pending_count(&self) -> usize {
         self.entries
             .lock()
@@ -1820,10 +1821,7 @@ mod tests {
         // Structured args round-trip verbatim — no whitespace-splitting.
         assert_eq!(launch.command, "/opt/with spaces/codex");
         assert_eq!(launch.args, entry.args);
-        assert_eq!(
-            launch.cwd.as_deref(),
-            Some(std::path::Path::new("/work dir"))
-        );
+        assert_eq!(launch.cwd.as_deref(), Some(Path::new("/work dir")));
         assert_eq!(launch.env, env);
     }
 

@@ -682,6 +682,7 @@ impl AcpSessionRegistry {
     }
 
     /// Remove a session from the live map and free its slot.
+    #[allow(dead_code)]
     pub async fn remove_session(&self, session_id: &str) {
         if self.sessions.write().await.remove(session_id).is_some() {
             tracing::info!(

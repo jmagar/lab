@@ -129,11 +129,17 @@ all = [
     "bytestash",
     "paperless",
     "gotify",
+    "jellyfin",
+    "adguard",
+    "glances",
+    "pihole",
+    "uptime_kuma",
     "immich",
     "loggifly",
     "navidrome",
     "scrutiny",
     "freshrss",
+    "openacp",
     "apprise",
     "openai",
     "notebooklm",
@@ -164,6 +170,7 @@ fs = [
 glances = ["lab-apis/glances"]
 gotify = ["lab-apis/gotify"]
 immich = ["lab-apis/immich"]
+jellyfin = ["lab-apis/jellyfin"]
 lab-admin = []
 linkding = ["lab-apis/linkding"]
 loggifly = ["lab-apis/loggifly"]
@@ -171,9 +178,11 @@ mcpregistry = ["lab-apis/mcpregistry"]
 memos = ["lab-apis/memos"]
 navidrome = ["lab-apis/navidrome"]
 notebooklm = ["lab-apis/notebooklm"]
+openacp = ["lab-apis/openacp"]
 openai = ["lab-apis/openai"]
 overseerr = ["lab-apis/overseerr"]
 paperless = ["lab-apis/paperless"]
+pihole = ["lab-apis/pihole"]
 plex = ["lab-apis/plex"]
 prowlarr = ["lab-apis/prowlarr"]
 qbittorrent = ["lab-apis/qbittorrent"]

@@ -343,7 +343,7 @@ impl UpstreamOauthManager {
         let mut manager = self
             .configured_authorization_manager(subject)
             .await
-            .map_err(|e| {
+            .inspect_err(|e| {
                 tracing::warn!(
                     upstream = %self.upstream.name,
                     provider = %self.oauth_provider_label(),
@@ -354,7 +354,6 @@ impl UpstreamOauthManager {
                     fallback = "reauthorization_required",
                     "upstream oauth: failed to build auth client manager"
                 );
-                e
             })?;
         let initialized = manager.initialize_from_store().await.map_err(|e| {
             tracing::warn!(

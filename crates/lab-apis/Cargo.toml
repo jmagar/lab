@@ -56,11 +56,17 @@ all = [
     "unraid",
     "unifi",
     "gotify",
+    "jellyfin",
+    "adguard",
+    "glances",
+    "pihole",
+    "uptime_kuma",
     "immich",
     "loggifly",
     "navidrome",
     "scrutiny",
     "freshrss",
+    "openacp",
     "openai",
     "notebooklm",
     "qdrant",
@@ -80,15 +86,18 @@ freshrss = []
 glances = []
 gotify = []
 immich = []
+jellyfin = []
 linkding = []
 loggifly = []
 mcpregistry = []
 memos = []
 navidrome = []
 notebooklm = []
+openacp = []
 openai = []
 overseerr = []
 paperless = []
+pihole = []
 plex = []
 prowlarr = ["servarr"]
 qbittorrent = []
@@ -112,6 +121,14 @@ required-features = ["plex"]
 [[test]]
 name     = "gotify_client"
 required-features = ["gotify"]
+
+[[test]]
+name     = "openacp_client"
+required-features = ["openacp"]
+
+[[test]]
+name     = "jellyfin_client"
+required-features = ["jellyfin"]
 
 [lints]
 workspace = true

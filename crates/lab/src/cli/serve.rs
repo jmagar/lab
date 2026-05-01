@@ -851,6 +851,7 @@ async fn run_http(
         let lock_path = lock_dir.join("master.lock");
         let mut lock_file = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&lock_path)
             .with_context(|| format!("open master lock file {}", lock_path.display()))?;
@@ -871,7 +872,7 @@ async fn run_http(
         }
         let pid = std::process::id();
         use std::io::Write as _;
-        let _write = write!(lock_file, "{pid}\n");
+        let _write = writeln!(lock_file, "{pid}");
         tracing::info!(pid, lock_path = %lock_path.display(), "acquired master lock");
         lock_file // held alive until run_http returns — lock released on drop
     };

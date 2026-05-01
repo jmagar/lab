@@ -430,6 +430,7 @@ pub fn build_default_registry() -> ToolRegistry {
 
     register_service!(reg, "overseerr", overseerr);
     register_service!(reg, "gotify", gotify);
+    register_service!(reg, "openacp", openacp);
     register_service!(reg, "openai", openai);
     register_service!(reg, "notebooklm", notebooklm);
     register_service!(reg, "qdrant", qdrant);
@@ -491,6 +492,8 @@ pub fn build_default_registry() -> ToolRegistry {
 
     register_service!(reg, "immich", immich);
 
+    register_service!(reg, "jellyfin", jellyfin);
+
     register_service!(reg, "navidrome", navidrome);
 
     register_service!(reg, "scrutiny", scrutiny);
@@ -504,6 +507,8 @@ pub fn build_default_registry() -> ToolRegistry {
     register_service!(reg, "glances", glances);
 
     register_service!(reg, "uptime_kuma", uptime_kuma);
+
+    register_service!(reg, "pihole", pihole);
 
     reg
 }
@@ -519,6 +524,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "prowlarr" => Some(&lab_apis::prowlarr::META),
         #[cfg(feature = "plex")]
         "plex" => Some(&lab_apis::plex::META),
+        #[cfg(feature = "jellyfin")]
+        "jellyfin" => Some(&lab_apis::jellyfin::META),
         #[cfg(feature = "tautulli")]
         "tautulli" => Some(&lab_apis::tautulli::META),
         #[cfg(feature = "sabnzbd")]
@@ -545,6 +552,8 @@ pub fn service_meta(name: &str) -> Option<&'static PluginMeta> {
         "overseerr" => Some(&lab_apis::overseerr::META),
         #[cfg(feature = "gotify")]
         "gotify" => Some(&lab_apis::gotify::META),
+        #[cfg(feature = "openacp")]
+        "openacp" => Some(&lab_apis::openacp::META),
         #[cfg(feature = "openai")]
         "openai" => Some(&lab_apis::openai::META),
         #[cfg(feature = "notebooklm")]
@@ -651,6 +660,10 @@ mod tests {
         assert!(names.contains(&"overseerr"), "overseerr missing");
         #[cfg(feature = "gotify")]
         assert!(names.contains(&"gotify"), "gotify missing");
+        #[cfg(feature = "jellyfin")]
+        assert!(names.contains(&"jellyfin"), "jellyfin missing");
+        #[cfg(feature = "openacp")]
+        assert!(names.contains(&"openacp"), "openacp missing");
         #[cfg(feature = "openai")]
         assert!(names.contains(&"openai"), "openai missing");
         #[cfg(feature = "notebooklm")]
@@ -736,6 +749,8 @@ mod tests {
             s.insert(lab_apis::overseerr::META.name);
             #[cfg(feature = "gotify")]
             s.insert(lab_apis::gotify::META.name);
+            #[cfg(feature = "openacp")]
+            s.insert(lab_apis::openacp::META.name);
             #[cfg(feature = "openai")]
             s.insert(lab_apis::openai::META.name);
             #[cfg(feature = "notebooklm")]
@@ -746,6 +761,26 @@ mod tests {
             s.insert(lab_apis::tei::META.name);
             #[cfg(feature = "apprise")]
             s.insert(lab_apis::apprise::META.name);
+            #[cfg(feature = "dozzle")]
+            s.insert(lab_apis::dozzle::META.name);
+            #[cfg(feature = "immich")]
+            s.insert(lab_apis::immich::META.name);
+            #[cfg(feature = "jellyfin")]
+            s.insert(lab_apis::jellyfin::META.name);
+            #[cfg(feature = "navidrome")]
+            s.insert(lab_apis::navidrome::META.name);
+            #[cfg(feature = "scrutiny")]
+            s.insert(lab_apis::scrutiny::META.name);
+            #[cfg(feature = "freshrss")]
+            s.insert(lab_apis::freshrss::META.name);
+            #[cfg(feature = "loggifly")]
+            s.insert(lab_apis::loggifly::META.name);
+            #[cfg(feature = "adguard")]
+            s.insert(lab_apis::adguard::META.name);
+            #[cfg(feature = "glances")]
+            s.insert(lab_apis::glances::META.name);
+            #[cfg(feature = "uptime_kuma")]
+            s.insert(lab_apis::uptime_kuma::META.name);
             #[cfg(feature = "fs")]
             s.insert("fs");
             s

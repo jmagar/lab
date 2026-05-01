@@ -11,7 +11,7 @@ use crate::output::OutputFormat;
 // TODO: Replace this generic action+params interface with typed subcommands that
 // mirror the dispatch catalog. See crates/lab/src/cli/radarr.rs for an example.
 
-/// `lab uptime_kuma` arguments.
+/// `lab uptime-kuma` arguments.
 #[derive(Debug, Args)]
 pub struct UptimeKumaArgs {
     /// Action to run, e.g. `help` or `schema`.
@@ -26,11 +26,11 @@ pub struct UptimeKumaArgs {
     pub yes: bool,
 }
 
-/// Run the `lab uptime_kuma` subcommand.
+/// Run the `lab uptime-kuma` subcommand.
 pub async fn run(args: UptimeKumaArgs, format: OutputFormat) -> Result<ExitCode> {
     let params = parse_kv_params(args.params)?;
     run_confirmable_action_command(
-        "uptime_kuma",
+        "uptime-kuma",
         ACTIONS,
         args.action,
         params,

@@ -230,19 +230,18 @@ async fn handle_websocket(
     });
 
     // Track last received Pong timestamp (unix seconds) for heartbeat eviction.
-    let last_pong = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(unix_now_secs()));
+    let last_pong = Arc::new(AtomicU64::new(unix_now_secs()));
 
     // Heartbeat task: send a Ping every HEARTBEAT_INTERVAL seconds.
     let tx_heartbeat = tx.clone();
-    let last_pong_hb = std::sync::Arc::clone(&last_pong);
+    let last_pong_hb = Arc::clone(&last_pong);
     let heartbeat_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
         interval.tick().await; // skip immediate tick
         loop {
             interval.tick().await;
             // Evict if we haven't received a Pong within HEARTBEAT_TIMEOUT.
-            let age_s = unix_now_secs()
-                .saturating_sub(last_pong_hb.load(std::sync::atomic::Ordering::Relaxed));
+            let age_s = unix_now_secs().saturating_sub(last_pong_hb.load(Ordering::Relaxed));
             if age_s > HEARTBEAT_TIMEOUT.as_secs() {
                 tracing::warn!(
                     surface = "api",
@@ -324,7 +323,7 @@ async fn handle_websocket(
             let _pong = tx.send(Message::Pong(payload)).await;
         }
         Message::Pong(_) => {
-            last_pong.store(unix_now_secs(), std::sync::atomic::Ordering::Relaxed);
+            last_pong.store(unix_now_secs(), Ordering::Relaxed);
         }
         Message::Close(_) | Message::Binary(_) => {}
     }
@@ -497,7 +496,7 @@ async fn handle_websocket(
                 }
             }
             Message::Pong(_) => {
-                last_pong.store(unix_now_secs(), std::sync::atomic::Ordering::Relaxed);
+                last_pong.store(unix_now_secs(), Ordering::Relaxed);
                 tracing::trace!(
                     surface = "api", service = "nodes", action = "ws.pong",
                     node_id = ?session_node_id, "pong received",

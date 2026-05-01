@@ -1,12 +1,11 @@
-use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
+use axum::{Json, Router, extract::State, http::HeaderMap, routing::post};
 use serde_json::Value;
 
 use crate::api::services::helpers::handle_action;
-use crate::api::{state::AppState, ActionRequest};
+use crate::api::{ActionRequest, state::AppState};
 use crate::dispatch::error::ToolError;
 use crate::dispatch::uptime_kuma::ACTIONS;
 
-/// Build the route group for the scaffolded service.
 pub fn routes(_state: AppState) -> Router<AppState> {
     Router::new().route("/", post(handle))
 }
@@ -19,7 +18,7 @@ async fn handle(
     let request_id = headers.get("x-request-id").and_then(|v| v.to_str().ok());
     let client = state.clients.uptime_kuma.clone();
     handle_action(
-        "uptime_kuma",
+        "uptime-kuma",
         "api",
         request_id,
         req,

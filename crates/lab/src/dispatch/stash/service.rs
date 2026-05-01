@@ -647,7 +647,7 @@ pub fn target_remove(store: &StashStore, p: TargetRemoveParams) -> Result<Value,
 ///
 /// This does not resolve symlinks — it is a component-only transformation.
 /// Use `std::fs::canonicalize` when the path is known to exist.
-fn normalize_path(path: &std::path::Path) -> std::path::PathBuf {
+fn normalize_path(path: &Path) -> std::path::PathBuf {
     use std::path::Component;
     let mut components: Vec<Component<'_>> = Vec::new();
     for component in path.components() {

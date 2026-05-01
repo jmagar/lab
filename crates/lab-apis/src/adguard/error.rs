@@ -1,11 +1,12 @@
-//! Scaffolded error type for adguard.
+//! AdGuard Home error type.
 
 use crate::core::error::ApiError;
 
-/// Scaffolded service error.
 #[derive(Debug, thiserror::Error)]
 pub enum AdguardError {
-    /// Upstream HTTP/transport error.
     #[error(transparent)]
     Api(#[from] ApiError),
+
+    #[error("invalid parameter: {0}")]
+    InvalidParam(String),
 }

@@ -76,6 +76,7 @@ The following services are always compiled in and require no feature flag or ups
 - Prowlarr
 - Overseerr
 - Plex
+- Jellyfin (`docs/upstream-api/jellyfin.openapi.json`)
 - Tailscale
 - Paperless-ngx
 - Memos
@@ -87,6 +88,8 @@ The following services are always compiled in and require no feature flag or ups
 - TEI
 - MCP Registry (`docs/upstream-api/mcp-registry.yaml`)
 - Immich (`docs/upstream-api/immich.md`; upstream OpenAPI-backed docs at https://api.immich.app/)
+- AdGuard Home (`docs/upstream-api/adguard.md`; upstream OpenAPI contract)
+- Pi-hole (`docs/upstream-api/pihole.md`; v6 REST API with session auth)
 
 ### Services Without OpenAPI Specs
 
@@ -102,11 +105,14 @@ The following services are always compiled in and require no feature flag or ups
 - Navidrome (`docs/upstream-api/navidrome.md`; Subsonic/OpenSubsonic-compatible API)
 - Scrutiny (`docs/upstream-api/scrutiny.md`; cautious read-only endpoint contract)
 - LoggiFly (`docs/upstream-api/loggifly.md`; implementation-deferred contract status only)
+- Glances (`docs/upstream-api/glances.md`; REST API v4)
+- Uptime Kuma (`docs/upstream-api/uptime-kuma.md`; Socket.IO-backed monitor API, live reads deferred)
 
 ### Deferred
 
 - Radicale
 - LoggiFly runtime config/health integration beyond `contract.status`
+- Uptime Kuma live Socket.IO monitor reads beyond `contract.status` and `server.health`
 
 These are implemented from vendor docs, reference docs, or hand-written API contracts.
 
@@ -158,11 +164,19 @@ The config layer recognizes:
 This is especially relevant for:
 
 - Unraid
+- Jellyfin
+- OpenACP
 - Plex
 - qBittorrent
 - any user who runs multiple copies of the same service
 
 The service library layer stays unaware of instance naming. Instance lookup is a binary-level config concern.
+
+OpenACP is registered as `openacp` and represents the upstream OpenACP daemon,
+not Lab's internal `acp` service. Its actions intentionally stay
+non-destructive in Lab's action catalog, so Lab CLI/MCP/API confirmation gates
+do not apply to prompt/session, config, topic, tunnel, notify, or restart
+actions.
 
 ## Adding a New Service
 

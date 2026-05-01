@@ -9,20 +9,28 @@ use crate::dispatch::helpers::env_non_empty;
 /// Called by `AppState` at startup — keep pure (no side effects, no logging).
 pub fn client_from_env() -> Option<UptimeKumaClient> {
     let url = env_non_empty("UPTIME_KUMA_URL")?;
-    let auth = if let Some(key) = env_non_empty("UPTIME_KUMA_API_KEY") {
-        lab_apis::core::Auth::ApiKey { header: "X-Api-Key".into(), key }
-    } else if let Some(token) = env_non_empty("UPTIME_KUMA_TOKEN") {
-        lab_apis::core::Auth::Bearer { token }
-    } else {
-        lab_apis::core::Auth::None
-    };
-    UptimeKumaClient::new(&url, auth).ok()
+    match (
+        env_non_empty("UPTIME_KUMA_USERNAME"),
+        env_non_empty("UPTIME_KUMA_PASSWORD"),
+    ) {
+        (Some(username), Some(password)) => {
+            UptimeKumaClient::with_login(&url, username, password).ok()
+        }
+        _ => UptimeKumaClient::new(&url, lab_apis::core::Auth::None).ok(),
+    }
 }
 
 /// Return a client or a structured error distinguishing missing config from init failure.
 pub fn require_client() -> Result<UptimeKumaClient, ToolError> {
     let url = env_non_empty("UPTIME_KUMA_URL").ok_or_else(not_configured_error)?;
-    UptimeKumaClient::new(&url, Auth::None).map_err(|e| ToolError::Sdk {
+    match (
+        env_non_empty("UPTIME_KUMA_USERNAME"),
+        env_non_empty("UPTIME_KUMA_PASSWORD"),
+    ) {
+        (Some(username), Some(password)) => UptimeKumaClient::with_login(&url, username, password),
+        _ => UptimeKumaClient::new(&url, lab_apis::core::Auth::None),
+    }
+    .map_err(|e| ToolError::Sdk {
         sdk_kind: "internal_error".into(),
         message: format!("UPTIME_KUMA client init failed: {e}"),
     })

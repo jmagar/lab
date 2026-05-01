@@ -29,7 +29,8 @@ pub fn collect(node_id: &str) -> NodeStatus {
     let cpu_percent = if cpus.is_empty() {
         None
     } else {
-        let avg = cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32;
+        let cpu_count = u16::try_from(cpus.len()).unwrap_or(u16::MAX);
+        let avg = cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / f32::from(cpu_count);
         Some(avg)
     };
     let cores: Option<u64> = cpus.len().try_into().ok().filter(|&n: &u64| n > 0);
@@ -153,8 +154,8 @@ fn read_cpu_temp(node_id: &str) -> Option<f32> {
                         continue;
                     }
                     if let Ok(raw) = fs::read_to_string(path.join("temp")) {
-                        if let Ok(millidegrees) = raw.trim().parse::<i64>() {
-                            let celsius = millidegrees as f32 / 1000.0;
+                        if let Ok(millidegrees) = raw.trim().parse::<f32>() {
+                            let celsius = millidegrees / 1000.0;
                             if celsius > 0.0 && celsius < 200.0 {
                                 return Some(celsius);
                             }

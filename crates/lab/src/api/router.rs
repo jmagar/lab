@@ -482,6 +482,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "unifi", "unifi", unifi);
         mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
         mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
+        mount_if_enabled!(v1, state, "openacp", "openacp", openacp);
         mount_if_enabled!(v1, state, "openai", "openai", openai);
         mount_if_enabled!(v1, state, "notebooklm", "notebooklm", notebooklm);
         mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
@@ -489,6 +490,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
         mount_if_enabled!(v1, state, "dozzle", "dozzle", dozzle);
         mount_if_enabled!(v1, state, "immich", "immich", immich);
+        mount_if_enabled!(v1, state, "jellyfin", "jellyfin", jellyfin);
         mount_if_enabled!(v1, state, "navidrome", "navidrome", navidrome);
         mount_if_enabled!(v1, state, "scrutiny", "scrutiny", scrutiny);
         mount_if_enabled!(v1, state, "freshrss", "freshrss", freshrss);
@@ -496,6 +498,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "adguard", "adguard", adguard);
         mount_if_enabled!(v1, state, "glances", "glances", glances);
         mount_if_enabled!(v1, state, "uptime_kuma", "uptime_kuma", uptime_kuma);
+        mount_if_enabled!(v1, state, "pihole", "pihole", pihole);
         // [lab-scaffold: api-routes]
     }
 

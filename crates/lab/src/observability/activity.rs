@@ -24,6 +24,7 @@ pub struct ActorKey(Arc<str>);
 
 impl ActorKey {
     #[must_use]
+    #[allow(dead_code)]
     pub fn as_str(&self) -> &str {
         &self.0
     }

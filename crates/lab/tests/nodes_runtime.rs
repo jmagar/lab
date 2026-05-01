@@ -4,6 +4,29 @@ use lab::node::queue::NodeOutboundQueue;
 use lab::node::runtime::NodeRuntime;
 use lab::node::store::NodeStore;
 
+fn test_node_status(node_id: &str) -> NodeStatus {
+    NodeStatus {
+        node_id: node_id.into(),
+        connected: true,
+        cpu_percent: Some(3.5),
+        memory_used_bytes: Some(1024),
+        storage_used_bytes: Some(2048),
+        os: Some("linux".into()),
+        ips: vec!["100.64.0.1".into()],
+        health: None,
+        version: None,
+        uptime_seconds: None,
+        cores: None,
+        cpu_clock_mhz: None,
+        cpu_temp_c: None,
+        total_memory_bytes: None,
+        total_storage_bytes: None,
+        doctor_issues: vec![],
+        active_claude_sessions: None,
+        active_codex_sessions: None,
+    }
+}
+
 #[tokio::test]
 async fn node_store_marks_hello_devices_connected_and_tracks_status() {
     let store = NodeStore::default();
@@ -18,17 +41,7 @@ async fn node_store_marks_hello_devices_connected_and_tracks_status() {
     let snapshot = store.node("tootie").await.unwrap();
     assert!(snapshot.connected);
 
-    store
-        .record_status(NodeStatus {
-            node_id: "tootie".into(),
-            connected: true,
-            cpu_percent: Some(3.5),
-            memory_used_bytes: Some(1024),
-            storage_used_bytes: Some(2048),
-            os: Some("linux".into()),
-            ips: vec!["100.64.0.1".into()],
-        })
-        .await;
+    store.record_status(test_node_status("tootie")).await;
 
     let snapshot = store.node("tootie").await.unwrap();
     assert!(snapshot.connected);

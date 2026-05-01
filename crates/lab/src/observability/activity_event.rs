@@ -5,6 +5,8 @@
 //! `RawLogEvent`, so this module converts typed values into the existing wire
 //! shape without changing the log store schema.
 
+#![allow(dead_code)]
+
 use serde::Serialize;
 
 use crate::dispatch::logs::types::{LogLevel, LogSystem, RawLogEvent, Subsystem, Surface};

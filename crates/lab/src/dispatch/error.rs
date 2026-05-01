@@ -305,6 +305,41 @@ impl_tool_error_from!(
 );
 
 impl_tool_error_from!(
+    "jellyfin",
+    lab_apis::jellyfin::error::JellyfinError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "adguard",
+    lab_apis::adguard::error::AdguardError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "glances",
+    lab_apis::glances::error::GlancesError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "pihole",
+    lab_apis::pihole::error::PiholeError,
+    Api(api) => api.kind(),
+    InvalidParam(_) => "invalid_param"
+);
+
+impl_tool_error_from!(
+    "uptime_kuma",
+    lab_apis::uptime_kuma::error::UptimeKumaError,
+    Api(api) => api.kind(),
+    Unsupported(_) => "server_error"
+);
+
+impl_tool_error_from!(
     "navidrome",
     lab_apis::navidrome::error::NavidromeError,
     Api(api) => api.kind(),
@@ -360,6 +395,8 @@ impl_tool_error_from!(
     lab_apis::openai::OpenAiError,
     Api(api) => api.kind()
 );
+
+impl_tool_error_from!("openacp", lab_apis::openacp::OpenAcpError, Api(api) => api.kind());
 
 impl_tool_error_from!(
     "notebooklm",

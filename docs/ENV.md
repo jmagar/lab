@@ -79,6 +79,74 @@ SCRUTINY_URL=http://localhost:8080
 SCRUTINY_TOKEN=replace-me
 ```
 
+AdGuard Home:
+
+```env
+ADGUARD_URL=http://localhost:3000
+# Either provide an existing session cookie:
+ADGUARD_SESSION_COOKIE=agh_session=replace-me
+# Or let Lab log in with web credentials:
+ADGUARD_USERNAME=admin
+ADGUARD_PASSWORD=replace-me
+```
+
+Pi-hole:
+
+```env
+PIHOLE_URL=http://localhost
+PIHOLE_PASSWORD=replace-me
+# Optional when Pi-hole 2FA is enabled:
+PIHOLE_TOTP=123456
+```
+
+Glances:
+
+```env
+GLANCES_URL=http://localhost:61208
+# Optional for protected deployments:
+GLANCES_TOKEN=replace-me
+```
+
+Uptime Kuma:
+
+```env
+UPTIME_KUMA_URL=http://localhost:3001
+UPTIME_KUMA_USERNAME=admin
+UPTIME_KUMA_PASSWORD=replace-me
+```
+
+Jellyfin:
+
+```env
+JELLYFIN_URL=http://localhost:8096
+JELLYFIN_API_KEY=replace-me
+```
+
+OpenACP:
+
+```env
+OPENACP_URL=http://127.0.0.1:21420
+OPENACP_TOKEN=replace-me
+```
+
+Lab does not auto-read OpenACP `<instance-root>/api-secret` files. Use an
+explicit bearer token or scoped JWT. The upstream `openacp` service is separate
+from Lab's internal `acp` service.
+
+Named Jellyfin instances use the same suffix pattern as other multi-instance services:
+
+```env
+JELLYFIN_NODE2_URL=http://node2.local:8096
+JELLYFIN_NODE2_API_KEY=replace-me
+```
+
+Named OpenACP instances use `TOKEN` rather than `API_KEY`:
+
+```env
+OPENACP_NODE2_URL=http://node2.local:21420
+OPENACP_NODE2_TOKEN=replace-me
+```
+
 LoggiFly is intentionally implementation-deferred in v1 and exposes only
 `contract.status`. Optional documentation/config planning hints:
 

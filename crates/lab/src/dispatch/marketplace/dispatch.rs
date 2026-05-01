@@ -648,7 +648,7 @@ fn detect_lang(p: &Path) -> ArtifactLang {
 async fn sources_add(
     repo: Option<String>,
     url: Option<String>,
-    auto_update: Option<bool>,
+    _auto_update: Option<bool>,
 ) -> Result<Value, ToolError> {
     let target = match (repo, url) {
         (Some(r), None) => r,
@@ -674,6 +674,10 @@ async fn sources_add(
     })
 }
 
+#[expect(
+    dead_code,
+    reason = "reserved for future marketplace source persistence"
+)]
 fn persist_marketplace_auto_update(target: &str, auto_update: bool) -> Result<(), ToolError> {
     let path = client::plugins_root()?.join("known_marketplaces.json");
     if !path.exists() {

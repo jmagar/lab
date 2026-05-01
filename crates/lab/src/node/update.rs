@@ -325,6 +325,10 @@ async fn run_remote_target<I: HostIo + 'static>(
     };
     let skipped_transfer = preflight_result.skip_transfer;
 
+    #[expect(
+        clippy::branches_sharing_code,
+        reason = "stage logging is intentionally colocated with the transfer branch"
+    )]
     if !preflight_result.skip_transfer {
         log_remote_update_stage_enter(&alias, &resolved_node_id, "transfer");
         let transfer_started = Instant::now();
