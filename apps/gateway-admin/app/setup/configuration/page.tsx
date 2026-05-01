@@ -126,6 +126,12 @@ export default function ConfigurationPage(): React.ReactElement {
             // ServiceForms simultaneously means 22 useForm + zodResolver
             // builds up front. Only render the active tab's form to keep
             // mount cost O(1) regardless of selected-service count.
+            //
+            // KNOWN TRADE: switching tabs unmounts the previous ServiceForm
+            // and its in-progress RHF state is lost. Users must click Save
+            // before switching. A proper fix lifts form values to a parent
+            // cache (or an unmount-flush callback on ServiceForm) — tracked
+            // as a follow-up.
             if (!current) return null
             return (
               <TabsContent key={s.schema.name} value={s.schema.name} className="pt-4">
