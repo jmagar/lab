@@ -35,6 +35,9 @@ pub mod acp;
 /// Doctor — bootstrap health audit: env vars, system probes, service reachability.
 pub mod doctor;
 
+/// Setup — first-run + draft-commit configuration flow (Bootstrap orchestrator).
+pub mod setup;
+
 /// Stash — component versioning and deployment (skills, agents, configs, binaries).
 pub mod stash;
 
@@ -109,6 +112,10 @@ pub mod gotify;
 /// OpenAI API client (chat, embeddings, models, images, audio).
 #[cfg(feature = "openai")]
 pub mod openai;
+
+/// Google NotebookLM client.
+#[cfg(feature = "notebooklm")]
+pub mod notebooklm;
 
 /// Qdrant vector database client.
 #[cfg(feature = "qdrant")]
