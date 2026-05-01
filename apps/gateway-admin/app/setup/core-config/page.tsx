@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 
@@ -17,7 +17,26 @@ export default function CoreConfigPage(): React.ReactElement {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
 
+  // Synchronous lock — React state updates are async, so disabled={saving}
+  // does not block synchronous double-clicks. The ref flips on click before
+  // the next render commits.
+  const savingRef = useRef(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  // Abort any in-flight save when the user navigates away mid-save.
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
+
   async function save(): Promise<boolean> {
+    if (savingRef.current) return false
+    savingRef.current = true
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setSaving(true)
     setError(undefined)
     try {
@@ -25,14 +44,16 @@ export default function CoreConfigPage(): React.ReactElement {
         .filter(([, v]) => v !== '')
         .map(([key, value]) => ({ key, value }))
       if (entries.length > 0) {
-        await setupApi.draftSet(entries)
+        await setupApi.draftSet(entries, undefined, controller.signal)
       }
     } catch (err) {
+      if (controller.signal.aborted) return false
       setError(err instanceof Error ? err.message : 'save failed')
-      setSaving(false)
       return false
+    } finally {
+      savingRef.current = false
+      if (!controller.signal.aborted) setSaving(false)
     }
-    setSaving(false)
     return true
   }
 
