@@ -41,6 +41,50 @@ test('buildSchema validates url scheme via the url rule', () => {
   assert.equal(schema.safeParse({ FOO_URL: 'https://example.com' }).success, true)
 })
 
+test('buildSchema rejects javascript:/data:/file: URIs (XSS surface)', () => {
+  const schema = buildSchema([
+    field({ name: 'FOO_URL', required: true, ui: { ...DEFAULT_UI, kind: 'url' } }),
+  ])
+  assert.equal(schema.safeParse({ FOO_URL: 'javascript:alert(1)' }).success, false)
+  assert.equal(schema.safeParse({ FOO_URL: 'data:text/html,foo' }).success, false)
+  assert.equal(schema.safeParse({ FOO_URL: 'file:///etc/passwd' }).success, false)
+  assert.equal(schema.safeParse({ FOO_URL: 'http://lan.local' }).success, true)
+})
+
+test('buildSchema accepts blank bool for non-required fields', () => {
+  const schema = buildSchema([
+    field({ name: 'FOO_FLAG', ui: { ...DEFAULT_UI, kind: 'bool' } }),
+  ])
+  // Unset bool defaults to '' from the form; must validate so the resolver
+  // doesn't fail on mount before the user toggles.
+  assert.equal(schema.safeParse({ FOO_FLAG: '' }).success, true)
+  assert.equal(schema.safeParse({ FOO_FLAG: 'true' }).success, true)
+})
+
+test('buildSchema requires a value for required bool fields', () => {
+  const schema = buildSchema([
+    field({ name: 'FOO_FLAG', required: true, ui: { ...DEFAULT_UI, kind: 'bool' } }),
+  ])
+  assert.equal(schema.safeParse({ FOO_FLAG: '' }).success, false)
+  assert.equal(schema.safeParse({ FOO_FLAG: 'false' }).success, true)
+})
+
+test('buildSchema applies validation accumulator to url/number/file_path', () => {
+  const schemaWithMin = buildSchema([
+    field({
+      name: 'FOO_URL',
+      ui: {
+        ...DEFAULT_UI,
+        kind: 'url',
+        validation: { ...DEFAULT_UI.validation, min_length: 20 },
+      },
+    }),
+  ])
+  // 19-char URL fails min_length even though scheme is valid.
+  assert.equal(schemaWithMin.safeParse({ FOO_URL: 'http://lan.local/x' }).success, false)
+  assert.equal(schemaWithMin.safeParse({ FOO_URL: 'https://lan.local/abc' }).success, true)
+})
+
 test('buildSchema accepts blank for secret with stored value', () => {
   const schema = buildSchema([
     field({
@@ -61,6 +105,23 @@ test('buildSchema rejects path traversal on file_path', () => {
   ])
   assert.equal(schema.safeParse({ DATA_DIR: '../etc' }).success, false)
   assert.equal(schema.safeParse({ DATA_DIR: 'data/lab' }).success, true)
+})
+
+test('buildSchema rejects absolute paths on file_path', () => {
+  const schema = buildSchema([
+    field({ name: 'DATA_DIR', ui: { ...DEFAULT_UI, kind: 'file_path' } }),
+  ])
+  assert.equal(schema.safeParse({ DATA_DIR: '/etc/passwd' }).success, false)
+  assert.equal(schema.safeParse({ DATA_DIR: 'C:\\Windows' }).success, false)
+})
+
+test('buildSchema rejects URL-encoded traversal on file_path', () => {
+  const schema = buildSchema([
+    field({ name: 'DATA_DIR', ui: { ...DEFAULT_UI, kind: 'file_path' } }),
+  ])
+  assert.equal(schema.safeParse({ DATA_DIR: '..%2fetc' }).success, false)
+  assert.equal(schema.safeParse({ DATA_DIR: 'foo%2e%2e' }).success, false)
+  assert.equal(schema.safeParse({ DATA_DIR: 'foo\0.txt' }).success, false)
 })
 
 test('buildSchema enforces enum allowlist', () => {

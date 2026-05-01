@@ -11,8 +11,6 @@ import { z, type ZodTypeAny } from 'zod'
 
 import type { ServiceEnvVar, UiFieldSchema } from '@/lib/api/setup-client'
 
-export type FieldSchema = UiFieldSchema
-
 export interface FieldView {
   name: string
   description: string
@@ -82,6 +80,30 @@ export function schemaVersion(fields: readonly FieldView[]): string {
     .join(';')
 }
 
+// http: or https: only — `z.string().url()` accepts javascript:, data:, file:
+// which are XSS sinks if the URL is ever rendered as an `<a href>`.
+const HTTPS_SCHEME_RE = /^https?:\/\//i
+
+// Reject URL-encoded path separators / parent refs as well as raw `..`.
+function isSafeRelativePath(val: string): boolean {
+  if (val === '') return true
+  // Absolute paths (POSIX `/foo`, Windows `C:\foo`) are not allowed in the
+  // form. The Rust env_merge backend is the authoritative validator; this is
+  // defense in depth for the operator typing into the wizard.
+  if (val.startsWith('/') || val.startsWith('\\') || /^[A-Za-z]:/.test(val)) {
+    return false
+  }
+  const lowered = val.toLowerCase()
+  // URL-encoded traversal sequences (%2e%2e, %2f, %5c).
+  if (lowered.includes('%2e') || lowered.includes('%2f') || lowered.includes('%5c')) {
+    return false
+  }
+  // Null byte injection.
+  if (val.includes('\0')) return false
+  // Plain `..` segment.
+  return !val.split(/[\\/]/).includes('..')
+}
+
 function fieldRule(field: FieldView): ZodTypeAny {
   const v = field.ui.validation
   const isRequired = field.required || v.required
@@ -102,19 +124,32 @@ function fieldRule(field: FieldView): ZodTypeAny {
 
   switch (field.ui.kind) {
     case 'url': {
-      let url = z.string().url('Must be a valid URL')
+      // Apply the same scheme allowlist on every path. `z.string().url()`
+      // accepts javascript:/data:/file:, so use an explicit regex instead.
+      const base = str.refine(
+        (val) => val === '' || HTTPS_SCHEME_RE.test(val),
+        'Must be an http or https URL',
+      )
       if (isRequired && !secretBlankOk) {
-        url = url.min(1, 'Required')
+        return base.refine((val) => val.length > 0, 'Required')
       }
-      return secretBlankOk ? z.string().refine(
-        (val) => val === '' || /^https?:\/\//.test(val),
-        'Must be a valid URL',
-      ) : url
+      return base
     }
-    case 'bool':
-      return z.union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
+    case 'bool': {
+      // Optional bool fields default to '' (no entry yet) — accept blank
+      // so the resolver doesn't fail on mount before the user toggles.
+      const variants = [
+        z.literal('true'),
+        z.literal('false'),
+        z.literal('1'),
+        z.literal('0'),
+      ] as const
+      return isRequired
+        ? z.union([...variants])
+        : z.union([...variants, z.literal('')])
+    }
     case 'number':
-      return z.string().refine(
+      return str.refine(
         (val) => val === '' || !Number.isNaN(Number(val)),
         'Must be a number',
       )
@@ -125,8 +160,8 @@ function fieldRule(field: FieldView): ZodTypeAny {
     }
     case 'file_path':
       return str.refine(
-        (val) => !val.split(/[\\/]/).includes('..'),
-        'Path traversal (..) is not allowed',
+        isSafeRelativePath,
+        'Must be a relative path without traversal sequences',
       )
     case 'secret':
     case 'text':
