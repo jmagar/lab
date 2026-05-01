@@ -10,6 +10,12 @@ ignore = [
     "RUSTSEC-2026-0098",
     # webpki: wildcard name constraint bypass (no API impact for our usage)
     "RUSTSEC-2026-0099",
+    # backoff: unmaintained transitive dependency from rust_socketio 0.6.0
+    "RUSTSEC-2025-0012",
+    # instant: unmaintained transitive dependency from rust_socketio -> backoff
+    "RUSTSEC-2024-0384",
+    # rustls-pemfile: unmaintained transitive dependency from neo4rs 0.9.0-rc.9
+    "RUSTSEC-2025-0134",
 ]
 
 [licenses]
