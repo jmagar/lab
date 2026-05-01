@@ -11,6 +11,14 @@ export function extractActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/extract`
 }
 
+export function setupActionUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/setup`
+}
+
+export function doctorActionUrl(baseUrl?: string): string {
+  return `${normalizeGatewayApiBase(baseUrl)}/doctor`
+}
+
 export function marketplaceActionUrl(baseUrl?: string): string {
   return `${normalizeGatewayApiBase(baseUrl)}/marketplace`
 }

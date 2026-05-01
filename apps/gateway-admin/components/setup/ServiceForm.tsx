@@ -1,0 +1,385 @@
+'use client'
+
+// ServiceForm — schema-rendered configuration form for one Bootstrap
+// service. Shared between the lab-bg3e.4 wizard and the lab-bg3e.5
+// settings rail. Navigation-agnostic: the parent shell decides what
+// happens after `onSave` resolves.
+//
+// Key design points (see lab-bg3e.4 locked decisions):
+// - Resolver is memoized on a stable `schemaVersion` key so RHF's
+//   internal cache stays warm across renders.
+// - Async probe state lives OUTSIDE RHF so `formState.isValidating`
+//   doesn't lock the form during a slow round-trip.
+// - Secret fields render as `type="password"` with an Eye toggle and a
+//   "Leave blank to keep current value" placeholder when the draft
+//   already holds a value.
+// - Advanced fields hide behind a single collapsible disclosure.
+
+import { useMemo, useRef, useState } from 'react'
+import { useForm, type SubmitHandler } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Loader2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { cn } from '@/lib/utils'
+
+import {
+  buildSchema,
+  schemaVersion,
+  stripBlankSecrets,
+  type FieldView,
+} from '@/lib/setup/schemaBuilder'
+
+export type ProbeStatus = 'idle' | 'pending' | 'ok' | 'fail'
+
+export interface ProbeOutcome {
+  status: 'ok' | 'fail'
+  message?: string
+}
+
+export interface ServiceFormProps {
+  /** Service slug, e.g. "radarr" — used for the test button label. */
+  service: string
+  /** Field projections from setup-client's ServiceSchema. */
+  fields: readonly FieldView[]
+  /** Initial values. Blank for unset; secret-stored fields receive
+      empty string + the schemaBuilder marks them with `hasStoredSecret`. */
+  defaultValues: Record<string, string>
+  /** Called when the user clicks Save. Stripping blank secrets is
+      already applied. The parent decides whether this maps to
+      setup.draft.set, setup.draft.commit, or both. */
+  onSave: (values: Record<string, string>) => Promise<void> | void
+  /** Optional async probe (doctor.service.probe) called on blur once
+      every required field is populated. */
+  onProbe?: (values: Record<string, string>) => Promise<ProbeOutcome>
+  /** Submit button label. Defaults to "Save". */
+  submitLabel?: string
+  /** Disable the form (e.g. while a parent commit is in flight). */
+  disabled?: boolean
+}
+
+interface SecretToggleState {
+  [key: string]: boolean
+}
+
+export function ServiceForm({
+  service,
+  fields,
+  defaultValues,
+  onSave,
+  onProbe,
+  submitLabel = 'Save',
+  disabled = false,
+}: ServiceFormProps): React.ReactElement {
+  // Stable cache key for the resolver. RHF rebuilds its internal field
+  // map when the resolver identity changes, so memoization here is
+  // load-bearing for performance — not a nice-to-have.
+  const version = useMemo(() => schemaVersion(fields), [fields])
+  const resolver = useMemo(() => {
+    void version
+    return zodResolver(buildSchema(fields))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [version])
+
+  const form = useForm<Record<string, string>>({
+    resolver,
+    defaultValues,
+    mode: 'onBlur',
+  })
+
+  const [secretShown, setSecretShown] = useState<SecretToggleState>({})
+  const [showAdvanced, setShowAdvanced] = useState(false)
+  const [probe, setProbe] = useState<{ status: ProbeStatus; message?: string }>({
+    status: 'idle',
+  })
+  const probeAbortRef = useRef<AbortController | null>(null)
+
+  const visibleFields = fields.filter((f) => !f.ui.advanced)
+  const advancedFields = fields.filter((f) => f.ui.advanced)
+  const hasAdvanced = advancedFields.length > 0
+
+  const submit: SubmitHandler<Record<string, string>> = async (values) => {
+    const stripped = stripBlankSecrets(values, fields)
+    await onSave(stripped)
+  }
+
+  async function runProbe(): Promise<void> {
+    if (!onProbe) return
+    const values = form.getValues()
+    const ready = fields
+      .filter((f) => f.required)
+      .every((f) => {
+        const v = values[f.name]
+        return f.hasStoredSecret || (typeof v === 'string' && v.length > 0)
+      })
+    if (!ready) {
+      setProbe({ status: 'idle' })
+      return
+    }
+    probeAbortRef.current?.abort()
+    const controller = new AbortController()
+    probeAbortRef.current = controller
+    setProbe({ status: 'pending' })
+    try {
+      const outcome = await onProbe(stripBlankSecrets(values, fields))
+      if (controller.signal.aborted) return
+      setProbe({ status: outcome.status, message: outcome.message })
+    } catch (err) {
+      if (controller.signal.aborted) return
+      setProbe({
+        status: 'fail',
+        message: err instanceof Error ? err.message : 'probe failed',
+      })
+    }
+  }
+
+  return (
+    <form onSubmit={form.handleSubmit(submit)} className="flex flex-col gap-4">
+      {visibleFields.map((field) => (
+        <FieldRow
+          key={field.name}
+          field={field}
+          form={form}
+          secretShown={secretShown[field.name] ?? false}
+          onToggleSecret={() =>
+            setSecretShown((prev) => ({ ...prev, [field.name]: !prev[field.name] }))
+          }
+          onBlurProbe={runProbe}
+          disabled={disabled}
+        />
+      ))}
+
+      {hasAdvanced ? (
+        <div className="border-t pt-4">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {showAdvanced ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            Advanced
+          </button>
+          {showAdvanced ? (
+            <div className="mt-3 flex flex-col gap-4">
+              {advancedFields.map((field) => (
+                <FieldRow
+                  key={field.name}
+                  field={field}
+                  form={form}
+                  secretShown={secretShown[field.name] ?? false}
+                  onToggleSecret={() =>
+                    setSecretShown((prev) => ({
+                      ...prev,
+                      [field.name]: !prev[field.name],
+                    }))
+                  }
+                  onBlurProbe={runProbe}
+                  disabled={disabled}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2 pt-2">
+        <Button type="submit" disabled={disabled || form.formState.isSubmitting}>
+          {form.formState.isSubmitting ? (
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          ) : null}
+          {submitLabel}
+        </Button>
+
+        {onProbe ? (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled || probe.status === 'pending'}
+            onClick={runProbe}
+          >
+            {probe.status === 'pending' ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : null}
+            Test connection
+          </Button>
+        ) : null}
+
+        <ProbeStatusBadge status={probe.status} message={probe.message} />
+      </div>
+    </form>
+  )
+}
+
+interface FieldRowProps {
+  field: FieldView
+  form: ReturnType<typeof useForm<Record<string, string>>>
+  secretShown: boolean
+  onToggleSecret: () => void
+  onBlurProbe: () => void
+  disabled: boolean
+}
+
+function FieldRow({
+  field,
+  form,
+  secretShown,
+  onToggleSecret,
+  onBlurProbe,
+  disabled,
+}: FieldRowProps): React.ReactElement {
+  const error = form.formState.errors[field.name]
+  const errorMessage = typeof error?.message === 'string' ? error.message : undefined
+  const placeholder = field.hasStoredSecret
+    ? 'Leave blank to keep current value'
+    : field.example
+  const id = `field-${field.name}`
+
+  if (field.ui.kind === 'bool') {
+    return (
+      <div className="flex items-center justify-between rounded-md border p-3">
+        <div>
+          <Label htmlFor={id} className="font-medium">
+            {field.name}
+          </Label>
+          {field.description ? (
+            <p className="text-sm text-muted-foreground">{field.description}</p>
+          ) : null}
+        </div>
+        <Switch
+          id={id}
+          checked={form.watch(field.name) === 'true'}
+          onCheckedChange={(checked) =>
+            form.setValue(field.name, checked ? 'true' : 'false', { shouldDirty: true })
+          }
+          disabled={disabled}
+        />
+      </div>
+    )
+  }
+
+  if (field.ui.kind === 'enum') {
+    return (
+      <div className="flex flex-col gap-1">
+        <FieldLabel field={field} htmlFor={id} />
+        <select
+          id={id}
+          {...form.register(field.name, { onBlur: onBlurProbe })}
+          disabled={disabled}
+          className={cn(
+            'border rounded-md p-2 text-sm bg-background',
+            errorMessage ? 'border-destructive' : 'border-input',
+          )}
+        >
+          {(field.ui.enum_values ?? []).map((value) => (
+            <option key={value} value={value}>
+              {value}
+            </option>
+          ))}
+        </select>
+        {errorMessage ? (
+          <p className="text-xs text-destructive">{errorMessage}</p>
+        ) : null}
+      </div>
+    )
+  }
+
+  const isSecret = field.secret || field.ui.kind === 'secret'
+  const inputType = isSecret && !secretShown
+    ? 'password'
+    : field.ui.kind === 'number'
+      ? 'number'
+      : 'text'
+
+  return (
+    <div className="flex flex-col gap-1">
+      <FieldLabel field={field} htmlFor={id} />
+      <div className="relative">
+        <Input
+          id={id}
+          type={inputType}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-invalid={errorMessage ? true : undefined}
+          {...form.register(field.name, { onBlur: onBlurProbe })}
+          className={cn(isSecret ? 'pr-10' : undefined,
+            errorMessage ? 'border-destructive' : undefined,
+          )}
+        />
+        {isSecret ? (
+          <button
+            type="button"
+            aria-label={secretShown ? 'Hide secret' : 'Show secret'}
+            onClick={onToggleSecret}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+          >
+            {secretShown ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        ) : null}
+      </div>
+      {errorMessage ? (
+        <p className="text-xs text-destructive">{errorMessage}</p>
+      ) : null}
+    </div>
+  )
+}
+
+function FieldLabel({
+  field,
+  htmlFor,
+}: {
+  field: FieldView
+  htmlFor: string
+}): React.ReactElement {
+  return (
+    <Label htmlFor={htmlFor} className="flex items-center gap-1 font-mono text-xs">
+      <span>{field.name}</span>
+      {field.required ? <span className="text-destructive">*</span> : null}
+      {field.ui.help_url ? (
+        <a
+          href={field.ui.help_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-foreground"
+          aria-label={`Help for ${field.name}`}
+        >
+          <ExternalLink className="h-3 w-3" />
+        </a>
+      ) : null}
+      {field.description ? (
+        <span className="ml-2 font-sans text-muted-foreground normal-case">
+          — {field.description}
+        </span>
+      ) : null}
+    </Label>
+  )
+}
+
+function ProbeStatusBadge({
+  status,
+  message,
+}: {
+  status: ProbeStatus
+  message?: string
+}): React.ReactElement | null {
+  if (status === 'idle') return null
+  if (status === 'pending') {
+    return (
+      <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+        <Loader2 className="h-3 w-3 animate-spin" /> probing
+      </span>
+    )
+  }
+  if (status === 'ok') {
+    return <span className="text-xs text-emerald-600">✓ reachable</span>
+  }
+  return (
+    <span className="text-xs text-destructive">
+      ✗ {message ?? 'unreachable'}
+    </span>
+  )
+}
+
+export default ServiceForm
