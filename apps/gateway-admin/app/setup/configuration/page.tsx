@@ -130,7 +130,6 @@ export default function ConfigurationPage(): React.ReactElement {
             return (
               <TabsContent key={s.schema.name} value={s.schema.name} className="pt-4">
                 <ServiceForm
-                  service={s.schema.name}
                   fields={s.fields}
                   defaultValues={s.defaultValues}
                   onSave={saveService}

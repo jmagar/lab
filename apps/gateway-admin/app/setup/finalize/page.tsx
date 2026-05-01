@@ -83,7 +83,10 @@ export default function FinalizePage(): React.ReactElement {
         {audit ? (
           <ul className="divide-y">
             {audit.findings.map((finding, idx) => (
-              <li key={idx} className="flex items-start gap-3 p-3 text-sm">
+              <li
+                key={`${finding.service ?? finding.category ?? 'system'}-${idx}`}
+                className="flex items-start gap-3 p-3 text-sm"
+              >
                 {finding.severity === 'error' ? (
                   <AlertTriangle className="h-4 w-4 mt-0.5 text-destructive" />
                 ) : finding.severity === 'warn' ? (

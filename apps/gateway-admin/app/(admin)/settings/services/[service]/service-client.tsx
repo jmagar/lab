@@ -126,7 +126,6 @@ export default function ServicePage({
         {state ? (
           <>
             <ServiceForm
-              service={state.schema.name}
               fields={state.fields}
               defaultValues={state.defaults}
               onSave={save}

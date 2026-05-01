@@ -106,11 +106,8 @@ export function WizardProvider({ children }: { children: React.ReactNode }): Rea
 }
 
 export function currentStepIndex(pathname: string): number {
-  for (let i = 0; i < WIZARD_STEPS.length; i++) {
-    const step = WIZARD_STEPS[i]!
-    if (pathname.includes(`/setup/${step.slug}`)) return i
-  }
-  return 0
+  const idx = WIZARD_STEPS.findIndex((step) => pathname.includes(`/setup/${step.slug}`))
+  return idx === -1 ? 0 : idx
 }
 
 export function ProgressBar({ pathname }: { pathname: string }): React.ReactElement {

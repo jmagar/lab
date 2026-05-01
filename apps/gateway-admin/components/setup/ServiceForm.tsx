@@ -41,8 +41,6 @@ export interface ProbeOutcome {
 }
 
 export interface ServiceFormProps {
-  /** Service slug, e.g. "radarr" — used for the test button label. */
-  service: string
   /** Field projections from setup-client's ServiceSchema. */
   fields: readonly FieldView[]
   /** Initial values. Blank for unset; secret-stored fields receive
@@ -63,12 +61,7 @@ export interface ServiceFormProps {
   disabled?: boolean
 }
 
-interface SecretToggleState {
-  [key: string]: boolean
-}
-
 export function ServiceForm({
-  service,
   fields,
   defaultValues,
   onSave,
@@ -80,11 +73,8 @@ export function ServiceForm({
   // map when the resolver identity changes, so memoization here is
   // load-bearing for performance — not a nice-to-have.
   const version = useMemo(() => schemaVersion(fields), [fields])
-  const resolver = useMemo(() => {
-    void version
-    return zodResolver(buildSchema(fields))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [version])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- version is the shape-stable cache key for fields
+  const resolver = useMemo(() => zodResolver(buildSchema(fields)), [version])
 
   const form = useForm<Record<string, string>>({
     resolver,
@@ -92,7 +82,7 @@ export function ServiceForm({
     mode: 'onBlur',
   })
 
-  const [secretShown, setSecretShown] = useState<SecretToggleState>({})
+  const [secretShown, setSecretShown] = useState<Record<string, boolean>>({})
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [probe, setProbe] = useState<{ status: ProbeStatus; message?: string }>({
     status: 'idle',

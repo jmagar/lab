@@ -21,7 +21,7 @@ export class DoctorApiError extends Error implements ServiceActionError {
 
 async function doctorAction<T>(
   action: string,
-  params: object = {},
+  params: Record<string, unknown> = {},
   signal?: AbortSignal,
 ): Promise<T> {
   return performServiceAction<T, DoctorApiError>({
