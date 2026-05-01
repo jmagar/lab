@@ -15,7 +15,7 @@
 //   already holds a value.
 // - Advanced fields hide behind a single collapsible disclosure.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, type SubmitHandler } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { ChevronDown, ChevronUp, Eye, EyeOff, ExternalLink, Loader2 } from 'lucide-react'
@@ -27,6 +27,7 @@ import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 
 import {
+  HTTPS_SCHEME_RE,
   buildSchema,
   schemaVersion,
   stripBlankSecrets,
@@ -104,11 +105,11 @@ export function ServiceForm({
   }), [fields])
   const hasAdvanced = advancedFields.length > 0
 
-  // Stable handlers so FieldRow can be memoized in the future without
-  // re-renders driven by callback identity churn.
-  const toggleSecret = useCallback((name: string) => {
+  // FieldRow is not React.memo-wrapped today, so callback identity stability
+  // would not avoid any re-renders. Plain function: simpler, equivalent.
+  const toggleSecret = (name: string): void => {
     setSecretShown((prev) => ({ ...prev, [name]: !prev[name] }))
-  }, [])
+  }
 
   const submit: SubmitHandler<Record<string, string>> = async (values) => {
     const stripped = stripBlankSecrets(values, fields)
@@ -355,7 +356,7 @@ function FieldLabel({
       {/* Defense in depth: even though help_url comes from the schema (not
           user input), validate the scheme so a tampered schema response
           can't slip a javascript:/data: URI past noopener noreferrer. */}
-      {field.ui.help_url && /^https?:\/\//i.test(field.ui.help_url) ? (
+      {field.ui.help_url && HTTPS_SCHEME_RE.test(field.ui.help_url) ? (
         <a
           href={field.ui.help_url}
           target="_blank"

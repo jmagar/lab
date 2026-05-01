@@ -41,14 +41,23 @@ test('buildSchema validates url scheme via the url rule', () => {
   assert.equal(schema.safeParse({ FOO_URL: 'https://example.com' }).success, true)
 })
 
-test('buildSchema rejects javascript:/data:/file: URIs (XSS surface)', () => {
+test('buildSchema rejects non-http(s) URI schemes (XSS surface)', () => {
   const schema = buildSchema([
     field({ name: 'FOO_URL', required: true, ui: { ...DEFAULT_UI, kind: 'url' } }),
   ])
-  assert.equal(schema.safeParse({ FOO_URL: 'javascript:alert(1)' }).success, false)
-  assert.equal(schema.safeParse({ FOO_URL: 'data:text/html,foo' }).success, false)
-  assert.equal(schema.safeParse({ FOO_URL: 'file:///etc/passwd' }).success, false)
+  for (const bad of [
+    'javascript:alert(1)',
+    'JAVASCRIPT:alert(1)',
+    'data:text/html,foo',
+    'file:///etc/passwd',
+    'vbscript:msgbox',
+    'blob:https://example.com/abc',
+    ' http://leading-space.com',
+  ]) {
+    assert.equal(schema.safeParse({ FOO_URL: bad }).success, false, `expected ${bad} to be rejected`)
+  }
   assert.equal(schema.safeParse({ FOO_URL: 'http://lan.local' }).success, true)
+  assert.equal(schema.safeParse({ FOO_URL: 'HTTPS://EXAMPLE.com' }).success, true)
 })
 
 test('buildSchema accepts blank bool for non-required fields', () => {
@@ -121,6 +130,8 @@ test('buildSchema rejects URL-encoded traversal on file_path', () => {
   ])
   assert.equal(schema.safeParse({ DATA_DIR: '..%2fetc' }).success, false)
   assert.equal(schema.safeParse({ DATA_DIR: 'foo%2e%2e' }).success, false)
+  assert.equal(schema.safeParse({ DATA_DIR: 'foo%00.txt' }).success, false)
+  assert.equal(schema.safeParse({ DATA_DIR: 'foo%5cbar' }).success, false)
   assert.equal(schema.safeParse({ DATA_DIR: 'foo\0.txt' }).success, false)
 })
 

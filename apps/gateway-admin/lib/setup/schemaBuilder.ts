@@ -82,7 +82,7 @@ export function schemaVersion(fields: readonly FieldView[]): string {
 
 // http: or https: only — `z.string().url()` accepts javascript:, data:, file:
 // which are XSS sinks if the URL is ever rendered as an `<a href>`.
-const HTTPS_SCHEME_RE = /^https?:\/\//i
+export const HTTPS_SCHEME_RE = /^https?:\/\//i
 
 // Reject URL-encoded path separators / parent refs as well as raw `..`.
 function isSafeRelativePath(val: string): boolean {
@@ -94,11 +94,16 @@ function isSafeRelativePath(val: string): boolean {
     return false
   }
   const lowered = val.toLowerCase()
-  // URL-encoded traversal sequences (%2e%2e, %2f, %5c).
-  if (lowered.includes('%2e') || lowered.includes('%2f') || lowered.includes('%5c')) {
+  // URL-encoded traversal / null sequences (%2e%2e, %2f, %5c, %00).
+  if (
+    lowered.includes('%2e') ||
+    lowered.includes('%2f') ||
+    lowered.includes('%5c') ||
+    lowered.includes('%00')
+  ) {
     return false
   }
-  // Null byte injection.
+  // Null byte injection (raw).
   if (val.includes('\0')) return false
   // Plain `..` segment.
   return !val.split(/[\\/]/).includes('..')
