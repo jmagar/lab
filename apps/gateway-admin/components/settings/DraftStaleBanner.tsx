@@ -9,8 +9,10 @@ import { AlertTriangle } from 'lucide-react'
 
 import { setupApi } from '@/lib/api/setup-client'
 
+type Status = 'unknown' | 'fresh' | 'stale' | 'unavailable'
+
 export function DraftStaleBanner(): React.ReactElement | null {
-  const [stale, setStale] = useState(false)
+  const [status, setStatus] = useState<Status>('unknown')
 
   useEffect(() => {
     let cancelled = false
@@ -24,10 +26,17 @@ export function DraftStaleBanner(): React.ReactElement | null {
       try {
         const snapshot = await setupApi.state(controller.signal)
         if (cancelled || controller.signal.aborted) return
-        setStale(snapshot.draft_stale)
-      } catch {
-        // Network errors should not block Settings — keep the banner
-        // hidden and try again on the next focus event.
+        setStatus(snapshot.draft_stale ? 'stale' : 'fresh')
+      } catch (err) {
+        if (cancelled || controller.signal.aborted) return
+        // AbortError is expected churn (a newer check superseded this one)
+        // and is silent. Anything else means the gateway is unreachable
+        // or returning errors — surface that as 'unavailable' so users
+        // know draft-stale detection is offline rather than silently
+        // assuming everything is fine.
+        if (err instanceof Error && err.name === 'AbortError') return
+        console.warn('DraftStaleBanner: setup.state failed', err)
+        setStatus('unavailable')
       }
     }
 
@@ -48,7 +57,22 @@ export function DraftStaleBanner(): React.ReactElement | null {
     }
   }, [])
 
-  if (!stale) return null
+  if (status === 'unknown' || status === 'fresh') return null
+  if (status === 'unavailable') {
+    return (
+      <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-3 text-sm text-muted-foreground">
+        <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+        <div>
+          <p className="font-medium text-foreground">Draft state check unavailable.</p>
+          <p>
+            Could not reach the lab gateway. Concurrent-edit detection is
+            offline — saving here may overwrite changes from another session
+            without warning.
+          </p>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
       <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
