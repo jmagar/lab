@@ -342,6 +342,12 @@ fn write_atomically(path: &Path, lines: &[String], parent: &Path) -> Result<(), 
             }
         }
     })?;
+    // fsync the parent directory so the rename is durable across power loss.
+    // tempfile::persist guarantees atomicity on the rename, but Linux durability
+    // requires an additional fsync on the parent to flush the directory entry.
+    if let Ok(dir) = std::fs::File::open(parent) {
+        dir.sync_all().ok();
+    }
     set_secure_perms(path);
     Ok(())
 }
