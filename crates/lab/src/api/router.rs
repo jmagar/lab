@@ -388,12 +388,28 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
                 "/docs",
                 get(|| async { Html(include_str!("openapi_docs.html")) }),
             )
-            .nest("/extract", services::extract::routes(state.clone()))
-            .nest("/marketplace", services::marketplace::routes(state.clone()))
-            .nest("/doctor", services::doctor::routes(state.clone()))
-            // /setup is gated by host_validation_layer — non-loopback Host
-            // headers are rejected before reaching the dispatcher (DNS
-            // rebinding mitigation for the v1 unauthenticated wizard).
+            // All v1 unauthenticated route groups (extract, marketplace,
+            // doctor, setup) are gated by host_validation_layer — non-loopback
+            // Host headers are rejected before reaching the dispatcher (DNS
+            // rebinding mitigation for the v1 wizard, lab-bg3e.3.3).
+            .nest(
+                "/extract",
+                services::extract::routes(state.clone()).layer(
+                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
+                ),
+            )
+            .nest(
+                "/marketplace",
+                services::marketplace::routes(state.clone()).layer(
+                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
+                ),
+            )
+            .nest(
+                "/doctor",
+                services::doctor::routes(state.clone()).layer(
+                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
+                ),
+            )
             .nest(
                 "/setup",
                 services::setup::routes(state.clone()).layer(

@@ -5,9 +5,11 @@
 //! `127.0.0.1`, `[::1]`) — optionally with a port suffix — is rejected
 //! with 421 Misdirected Request before it reaches the dispatch layer.
 //!
-//! Apply this layer to the `/v1/setup/*` and `/v1/dispatch/*` route groups.
-//! It is intentionally conservative: a missing `Host` header is rejected
-//! too (no browser-driven request omits it).
+//! Applied to every v1 unauthenticated route group:
+//! `/v1/setup`, `/v1/extract`, `/v1/marketplace`, `/v1/doctor`. It is
+//! intentionally conservative: a missing `Host` header is rejected too (no
+//! browser-driven request omits it). When OAuth lands (v2), authenticated
+//! routes inherit the same rule.
 //!
 //! Bypass for tests: set the `LAB_HOST_VALIDATION_DISABLED=1` env var.
 
