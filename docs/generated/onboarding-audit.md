@@ -6,304 +6,92 @@ Audit findings are reported here, but audit failures do not fail docs freshness 
 
 ## Failures
 
-- `extract` `crates/lab/src/dispatch/extract/catalog.rs`: missing crates/lab/src/dispatch/extract/catalog.rs
-- `extract` `crates/lab/src/dispatch/extract/client.rs`: missing crates/lab/src/dispatch/extract/client.rs
-- `extract` `crates/lab/src/dispatch/extract/dispatch.rs`: missing crates/lab/src/dispatch/extract/dispatch.rs
-- `extract` `crates/lab/src/dispatch/extract/params.rs`: missing crates/lab/src/dispatch/extract/params.rs
-- `extract` `feature.lab-apis`: missing token `extract = [`
-- `extract` `feature.lab`: missing token `extract = ["lab-apis/extract"]`
-- `extract` `lib.rs`: missing token `#[cfg(feature = "extract")]
-pub mod extract;`
-- `extract` `registry.rs`: missing token `register_service!(reg, "extract"`
-- `extract` `api.services.rs`: missing token `#[cfg(feature = "extract")]
-pub mod extract;`
-- `extract` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "extract", "extract"`
-- `extract` `dispatch.clients.rs`: missing token `pub extract: Option<`
-- `extract` `tui.metadata.rs`: missing token `spawn_health!("extract", client)`
-- `extract` `dispatch.entrypoint`: missing token `client_from_env`
-- `extract` `dispatch.client`: missing token `client_from_env()`
-- `extract` `docs.coverage`: missing ./docs/coverage/extract.md
-- `gateway` `crates/lab-apis/src/gateway.rs`: missing crates/lab-apis/src/gateway.rs
-- `gateway` `crates/lab-apis/src/gateway/client.rs`: missing crates/lab-apis/src/gateway/client.rs
-- `gateway` `crates/lab-apis/src/gateway/types.rs`: missing crates/lab-apis/src/gateway/types.rs
-- `gateway` `crates/lab-apis/src/gateway/error.rs`: missing crates/lab-apis/src/gateway/error.rs
-- `gateway` `feature.lab-apis`: missing token `gateway = [`
-- `gateway` `feature.lab`: missing token `gateway = ["lab-apis/gateway"]`
-- `gateway` `lib.rs`: missing token `#[cfg(feature = "gateway")]
-pub mod gateway;`
-- `gateway` `registry.rs`: missing token `register_service!(reg, "gateway"`
-- `gateway` `api.services.rs`: missing token `#[cfg(feature = "gateway")]
-pub mod gateway;`
-- `gateway` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "gateway", "gateway"`
-- `gateway` `dispatch.clients.rs`: missing token `pub gateway: Option<`
-- `gateway` `tui.metadata.rs`: missing token `spawn_health!("gateway", client)`
-- `gateway` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/gateway.rs: No such file or directory (os error 2)
-- `gateway` `dispatch.entrypoint`: missing token `client_from_env`
-- `gateway` `dispatch.client`: missing token `client_from_env()`
-- `gateway` `docs.coverage`: missing ./docs/coverage/gateway.md
-- `doctor` `feature.lab-apis`: missing token `doctor = [`
-- `doctor` `feature.lab`: missing token `doctor = ["lab-apis/doctor"]`
-- `doctor` `lib.rs`: missing token `#[cfg(feature = "doctor")]
-pub mod doctor;`
-- `doctor` `registry.rs`: missing token `register_service!(reg, "doctor"`
-- `doctor` `api.services.rs`: missing token `#[cfg(feature = "doctor")]
-pub mod doctor;`
-- `doctor` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "doctor", "doctor"`
-- `doctor` `dispatch.clients.rs`: missing token `pub doctor: Option<`
-- `doctor` `tui.metadata.rs`: missing token `spawn_health!("doctor", client)`
-- `doctor` `dispatch.entrypoint`: missing token `client_from_env`
-- `doctor` `dispatch.client`: missing token `client_from_env()`
-- `doctor` `docs.coverage`: missing ./docs/coverage/doctor.md
-- `setup` `feature.lab-apis`: missing token `setup = [`
-- `setup` `feature.lab`: missing token `setup = ["lab-apis/setup"]`
-- `setup` `lib.rs`: missing token `#[cfg(feature = "setup")]
-pub mod setup;`
-- `setup` `registry.rs`: missing token `register_service!(reg, "setup"`
-- `setup` `api.services.rs`: missing token `#[cfg(feature = "setup")]
-pub mod setup;`
-- `setup` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "setup", "setup"`
-- `setup` `dispatch.clients.rs`: missing token `pub setup: Option<`
-- `setup` `tui.metadata.rs`: missing token `spawn_health!("setup", client)`
-- `setup` `dispatch.entrypoint`: missing token `client_from_env`
-- `setup` `dispatch.client`: missing token `client_from_env()`
-- `setup` `docs.coverage`: missing ./docs/coverage/setup.md
-- `logs` `crates/lab-apis/src/logs.rs`: missing crates/lab-apis/src/logs.rs
-- `logs` `crates/lab-apis/src/logs/client.rs`: missing crates/lab-apis/src/logs/client.rs
-- `logs` `crates/lab-apis/src/logs/types.rs`: missing crates/lab-apis/src/logs/types.rs
-- `logs` `crates/lab-apis/src/logs/error.rs`: missing crates/lab-apis/src/logs/error.rs
-- `logs` `feature.lab-apis`: missing token `logs = [`
-- `logs` `feature.lab`: missing token `logs = ["lab-apis/logs"]`
-- `logs` `lib.rs`: missing token `#[cfg(feature = "logs")]
-pub mod logs;`
-- `logs` `registry.rs`: missing token `register_service!(reg, "logs"`
-- `logs` `api.services.rs`: missing token `#[cfg(feature = "logs")]
-pub mod logs;`
-- `logs` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "logs", "logs"`
-- `logs` `dispatch.clients.rs`: missing token `pub logs: Option<`
-- `logs` `tui.metadata.rs`: missing token `spawn_health!("logs", client)`
-- `logs` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/logs.rs: No such file or directory (os error 2)
-- `logs` `dispatch.entrypoint`: missing token `client_from_env`
-- `logs` `dispatch.client`: missing token `client_from_env()`
-- `logs` `docs.coverage`: missing ./docs/coverage/logs.md
-- `device` `crates/lab-apis/src/device.rs`: missing crates/lab-apis/src/device.rs
-- `device` `crates/lab-apis/src/device/client.rs`: missing crates/lab-apis/src/device/client.rs
-- `device` `crates/lab-apis/src/device/types.rs`: missing crates/lab-apis/src/device/types.rs
-- `device` `crates/lab-apis/src/device/error.rs`: missing crates/lab-apis/src/device/error.rs
-- `device` `crates/lab/src/dispatch/device.rs`: missing crates/lab/src/dispatch/device.rs
-- `device` `crates/lab/src/dispatch/device/catalog.rs`: missing crates/lab/src/dispatch/device/catalog.rs
-- `device` `crates/lab/src/dispatch/device/client.rs`: missing crates/lab/src/dispatch/device/client.rs
-- `device` `crates/lab/src/dispatch/device/dispatch.rs`: missing crates/lab/src/dispatch/device/dispatch.rs
-- `device` `crates/lab/src/dispatch/device/params.rs`: missing crates/lab/src/dispatch/device/params.rs
-- `device` `crates/lab/src/cli/device.rs`: missing crates/lab/src/cli/device.rs
-- `device` `crates/lab/src/api/services/device.rs`: missing crates/lab/src/api/services/device.rs
-- `device` `feature.lab-apis`: missing token `device = [`
-- `device` `feature.lab`: missing token `device = ["lab-apis/device"]`
-- `device` `lib.rs`: missing token `#[cfg(feature = "device")]
-pub mod device;`
-- `device` `cli.rs`: missing token `pub mod device;`
-- `device` `registry.rs`: missing token `register_service!(reg, "device"`
-- `device` `api.services.rs`: missing token `#[cfg(feature = "device")]
-pub mod device;`
-- `device` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "device", "device"`
-- `device` `dispatch.clients.rs`: missing token `pub device: Option<`
-- `device` `tui.metadata.rs`: missing token `spawn_health!("device", client)`
-- `device` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/device.rs: No such file or directory (os error 2)
-- `device` `dispatch.entrypoint`: missing token `ACTIONS`
-- `device` `dispatch.client`: missing token `client_from_env()`
-- `device` `docs.coverage`: missing ./docs/coverage/device.md
-- `marketplace` `crates/lab-apis/src/marketplace/client.rs`: missing crates/lab-apis/src/marketplace/client.rs
-- `marketplace` `crates/lab-apis/src/marketplace/error.rs`: missing crates/lab-apis/src/marketplace/error.rs
-- `marketplace` `feature.lab-apis`: missing token `marketplace = [`
-- `marketplace` `feature.lab`: missing token `marketplace = ["lab-apis/marketplace"]`
-- `marketplace` `lib.rs`: missing token `#[cfg(feature = "marketplace")]
-pub mod marketplace;`
-- `marketplace` `registry.rs`: missing token `register_service!(reg, "marketplace"`
-- `marketplace` `api.services.rs`: missing token `#[cfg(feature = "marketplace")]
-pub mod marketplace;`
-- `marketplace` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "marketplace", "marketplace"`
-- `marketplace` `dispatch.clients.rs`: missing token `pub marketplace: Option<`
-- `marketplace` `tui.metadata.rs`: missing token `spawn_health!("marketplace", client)`
-- `marketplace` `dispatch.entrypoint`: missing token `client_from_env`
-- `marketplace` `dispatch.client`: missing token `client_from_env()`
-- `marketplace` `docs.coverage`: missing ./docs/coverage/marketplace.md
-- `acp` `crates/lab-apis/src/acp/client.rs`: missing crates/lab-apis/src/acp/client.rs
-- `acp` `crates/lab/src/cli/acp.rs`: missing crates/lab/src/cli/acp.rs
-- `acp` `feature.lab`: missing token `acp = ["lab-apis/acp"]`
-- `acp` `lib.rs`: missing token `#[cfg(feature = "acp")]
-pub mod acp;`
-- `acp` `cli.rs`: missing token `pub mod acp;`
-- `acp` `registry.rs`: missing token `register_service!(reg, "acp"`
-- `acp` `api.services.rs`: missing token `#[cfg(feature = "acp")]
-pub mod acp;`
-- `acp` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "acp", "acp"`
-- `acp` `dispatch.clients.rs`: missing token `pub acp: Option<`
-- `acp` `tui.metadata.rs`: missing token `spawn_health!("acp", client)`
-- `acp` `dispatch.entrypoint`: missing token `ACTIONS`
-- `acp` `dispatch.client`: missing token `client_from_env()`
-- `acp` `docs.coverage`: missing ./docs/coverage/acp.md
-- `stash` `crates/lab-apis/src/stash/client.rs`: missing crates/lab-apis/src/stash/client.rs
-- `stash` `crates/lab-apis/src/stash/error.rs`: missing crates/lab-apis/src/stash/error.rs
-- `stash` `feature.lab`: missing token `stash = ["lab-apis/stash"]`
-- `stash` `lib.rs`: missing token `#[cfg(feature = "stash")]
-pub mod stash;`
-- `stash` `registry.rs`: missing token `register_service!(reg, "stash"`
-- `stash` `api.services.rs`: missing token `#[cfg(feature = "stash")]
-pub mod stash;`
-- `stash` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "stash", "stash"`
-- `stash` `dispatch.clients.rs`: missing token `pub stash: Option<`
-- `stash` `tui.metadata.rs`: missing token `spawn_health!("stash", client)`
-- `stash` `dispatch.entrypoint`: missing token `ACTIONS`
-- `stash` `dispatch.client`: missing token `client_from_env()`
-- `radarr` `registry.rs`: missing token `register_service!(reg, "radarr"`
-- `radarr` `dispatch.entrypoint`: missing token `ACTIONS`
-- `radarr` `dispatch.client`: missing token `not_configured_error()`
-- `prowlarr` `registry.rs`: missing token `register_service!(reg, "prowlarr"`
-- `plex` `registry.rs`: missing token `register_service!(reg, "plex"`
-- `plex` `tui.metadata.rs`: missing token `spawn_health!("plex", client)`
-- `tautulli` `registry.rs`: missing token `register_service!(reg, "tautulli"`
-- `tautulli` `tui.metadata.rs`: missing token `spawn_health!("tautulli", client)`
-- `sabnzbd` `registry.rs`: missing token `register_service!(reg, "sabnzbd"`
-- `sabnzbd` `tui.metadata.rs`: missing token `spawn_health!("sabnzbd", client)`
-- `qbittorrent` `tui.metadata.rs`: missing token `spawn_health!("qbittorrent", client)`
-- `tailscale` `registry.rs`: missing token `register_service!(reg, "tailscale"`
-- `tailscale` `tui.metadata.rs`: missing token `spawn_health!("tailscale", client)`
-- `linkding` `registry.rs`: missing token `register_service!(reg, "linkding"`
-- `linkding` `tui.metadata.rs`: missing token `spawn_health!("linkding", client)`
-- `memos` `tui.metadata.rs`: missing token `spawn_health!("memos", client)`
+- `arcane` `tui.metadata.rs`: missing token `spawn_health!("arcane", client)`
 - `bytestash` `registry.rs`: missing token `register_service!(reg, "bytestash"`
 - `bytestash` `tui.metadata.rs`: missing token `spawn_health!("bytestash", client)`
 - `bytestash` `dispatch.client`: missing token `not_configured_error()`
+- `gotify` `tui.metadata.rs`: missing token `spawn_health!("gotify", client)`
+- `jellyfin` `tui.metadata.rs`: missing token `spawn_health!("jellyfin", client)`
+- `jellyfin` `dispatch.client`: missing token `require_client()`
+- `linkding` `registry.rs`: missing token `register_service!(reg, "linkding"`
+- `linkding` `tui.metadata.rs`: missing token `spawn_health!("linkding", client)`
+- `memos` `tui.metadata.rs`: missing token `spawn_health!("memos", client)`
+- `openacp` `tui.metadata.rs`: missing token `spawn_health!("openacp", client)`
+- `overseerr` `tui.metadata.rs`: missing token `spawn_health!("overseerr", client)`
 - `paperless` `registry.rs`: missing token `register_service!(reg, "paperless"`
 - `paperless` `tui.metadata.rs`: missing token `spawn_health!("paperless", client)`
-- `arcane` `tui.metadata.rs`: missing token `spawn_health!("arcane", client)`
-- `unraid` `registry.rs`: missing token `register_service!(reg, "unraid"`
-- `unraid` `tui.metadata.rs`: missing token `spawn_health!("unraid", client)`
+- `plex` `registry.rs`: missing token `register_service!(reg, "plex"`
+- `plex` `tui.metadata.rs`: missing token `spawn_health!("plex", client)`
+- `prowlarr` `registry.rs`: missing token `register_service!(reg, "prowlarr"`
+- `qbittorrent` `tui.metadata.rs`: missing token `spawn_health!("qbittorrent", client)`
+- `qdrant` `dispatch.client`: missing token `not_configured_error()`
+- `radarr` `registry.rs`: missing token `register_service!(reg, "radarr"`
+- `radarr` `dispatch.entrypoint`: missing token `ACTIONS`
+- `radarr` `dispatch.client`: missing token `not_configured_error()`
+- `sabnzbd` `registry.rs`: missing token `register_service!(reg, "sabnzbd"`
+- `sabnzbd` `tui.metadata.rs`: missing token `spawn_health!("sabnzbd", client)`
+- `tailscale` `registry.rs`: missing token `register_service!(reg, "tailscale"`
+- `tailscale` `tui.metadata.rs`: missing token `spawn_health!("tailscale", client)`
+- `tautulli` `registry.rs`: missing token `register_service!(reg, "tautulli"`
+- `tautulli` `tui.metadata.rs`: missing token `spawn_health!("tautulli", client)`
+- `tei` `dispatch.client`: missing token `not_configured_error()`
 - `unifi` `registry.rs`: missing token `register_service!(reg, "unifi"`
 - `unifi` `tui.metadata.rs`: missing token `spawn_health!("unifi", client)`
 - `unifi` `dispatch.client`: missing token `require_client()`
-- `overseerr` `tui.metadata.rs`: missing token `spawn_health!("overseerr", client)`
-- `gotify` `tui.metadata.rs`: missing token `spawn_health!("gotify", client)`
-- `openacp` `tui.metadata.rs`: missing token `spawn_health!("openacp", client)`
-- `qdrant` `dispatch.client`: missing token `not_configured_error()`
-- `tei` `dispatch.client`: missing token `not_configured_error()`
-- `deploy` `crates/lab-apis/src/deploy/client.rs`: missing crates/lab-apis/src/deploy/client.rs
-- `deploy` `crates/lab/src/api/services/deploy.rs`: missing crates/lab/src/api/services/deploy.rs
-- `deploy` `feature.lab`: missing token `deploy = ["lab-apis/deploy"]`
-- `deploy` `registry.rs`: missing token `register_service!(reg, "deploy"`
-- `deploy` `api.services.rs`: missing token `#[cfg(feature = "deploy")]
-pub mod deploy;`
-- `deploy` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "deploy", "deploy"`
-- `deploy` `dispatch.clients.rs`: missing token `pub deploy: Option<`
-- `deploy` `tui.metadata.rs`: missing token `spawn_health!("deploy", client)`
-- `deploy` `dispatch.entrypoint`: missing token `client_from_env`
-- `deploy` `dispatch.client`: missing token `client_from_env()`
-- `deploy` `docs.coverage`: missing ./docs/coverage/deploy.md
-- `lab_admin` `crates/lab-apis/src/lab_admin.rs`: missing crates/lab-apis/src/lab_admin.rs
-- `lab_admin` `crates/lab-apis/src/lab_admin/client.rs`: missing crates/lab-apis/src/lab_admin/client.rs
-- `lab_admin` `crates/lab-apis/src/lab_admin/types.rs`: missing crates/lab-apis/src/lab_admin/types.rs
-- `lab_admin` `crates/lab-apis/src/lab_admin/error.rs`: missing crates/lab-apis/src/lab_admin/error.rs
-- `lab_admin` `crates/lab/src/cli/lab_admin.rs`: missing crates/lab/src/cli/lab_admin.rs
-- `lab_admin` `crates/lab/src/api/services/lab_admin.rs`: missing crates/lab/src/api/services/lab_admin.rs
-- `lab_admin` `feature.lab-apis`: missing token `lab_admin = [`
-- `lab_admin` `feature.lab`: missing token `lab_admin = ["lab-apis/lab_admin"]`
-- `lab_admin` `lib.rs`: missing token `#[cfg(feature = "lab_admin")]
-pub mod lab_admin;`
-- `lab_admin` `cli.rs`: missing token `pub mod lab_admin;`
-- `lab_admin` `registry.rs`: missing token `register_service!(reg, "lab_admin"`
-- `lab_admin` `api.services.rs`: missing token `#[cfg(feature = "lab_admin")]
-pub mod lab_admin;`
-- `lab_admin` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "lab_admin", "lab_admin"`
-- `lab_admin` `dispatch.clients.rs`: missing token `pub lab_admin: Option<`
-- `lab_admin` `tui.metadata.rs`: missing token `spawn_health!("lab_admin", client)`
-- `lab_admin` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/lab_admin.rs: No such file or directory (os error 2)
-- `lab_admin` `dispatch.entrypoint`: missing token `client_from_env`
-- `lab_admin` `dispatch.client`: missing token `client_from_env()`
-- `lab_admin` `docs.coverage`: missing ./docs/coverage/lab_admin.md
-- `fs` `crates/lab-apis/src/fs.rs`: missing crates/lab-apis/src/fs.rs
-- `fs` `crates/lab-apis/src/fs/client.rs`: missing crates/lab-apis/src/fs/client.rs
-- `fs` `crates/lab-apis/src/fs/types.rs`: missing crates/lab-apis/src/fs/types.rs
-- `fs` `crates/lab-apis/src/fs/error.rs`: missing crates/lab-apis/src/fs/error.rs
-- `fs` `crates/lab/src/cli/fs.rs`: missing crates/lab/src/cli/fs.rs
-- `fs` `feature.lab-apis`: missing token `fs = [`
-- `fs` `feature.lab`: missing token `fs = ["lab-apis/fs"]`
-- `fs` `lib.rs`: missing token `#[cfg(feature = "fs")]
-pub mod fs;`
-- `fs` `cli.rs`: missing token `pub mod fs;`
-- `fs` `registry.rs`: missing token `register_service!(reg, "fs"`
-- `fs` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "fs", "fs"`
-- `fs` `dispatch.clients.rs`: missing token `pub fs: Option<`
-- `fs` `tui.metadata.rs`: missing token `spawn_health!("fs", client)`
-- `fs` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/fs.rs: No such file or directory (os error 2)
-- `fs` `dispatch.entrypoint`: missing token `ACTIONS`
-- `fs` `dispatch.client`: missing token `client_from_env()`
-- `fs` `docs.coverage`: missing ./docs/coverage/fs.md
-- `jellyfin` `tui.metadata.rs`: missing token `spawn_health!("jellyfin", client)`
-- `jellyfin` `dispatch.client`: missing token `require_client()`
-- `uptime-kuma` `service`: invalid service name `uptime-kuma`
-- `uptime-kuma` `feature.lab-apis`: missing token `uptime-kuma = [`
-- `uptime-kuma` `feature.lab`: missing token `uptime-kuma = ["lab-apis/uptime-kuma"]`
-- `uptime-kuma` `lib.rs`: missing token `#[cfg(feature = "uptime-kuma")]
-pub mod uptime-kuma;`
-- `uptime-kuma` `cli.rs`: missing token `pub mod uptime-kuma;`
-- `uptime-kuma` `registry.rs`: missing token `register_service!(reg, "uptime-kuma"`
-- `uptime-kuma` `api.services.rs`: missing token `#[cfg(feature = "uptime-kuma")]
-pub mod uptime-kuma;`
-- `uptime-kuma` `api.router.rs`: missing token `mount_if_enabled!(v1, state, "uptime-kuma", "uptime-kuma"`
-- `uptime-kuma` `dispatch.clients.rs`: missing token `pub uptime-kuma: Option<`
-- `uptime-kuma` `metadata.ui_schema`: failed to read ./crates/lab-apis/src/uptime-kuma.rs: No such file or directory (os error 2)
-- `uptime-kuma` `dispatch.entrypoint`: missing token `ACTIONS`
-- `uptime-kuma` `dispatch.client`: missing token `client_from_env()`
-- `uptime-kuma` `docs.coverage`: missing ./docs/coverage/uptime-kuma.md
+- `unraid` `registry.rs`: missing token `register_service!(reg, "unraid"`
+- `unraid` `tui.metadata.rs`: missing token `spawn_health!("unraid", client)`
 
 ## Matrix
 
 | Service | Pass | Fail | Skip |
 | --- | ---: | ---: | ---: |
-| `extract` | 12 | 15 | 3 |
-| `gateway` | 10 | 16 | 2 |
-| `doctor` | 17 | 11 | 2 |
-| `setup` | 17 | 11 | 2 |
-| `logs` | 10 | 16 | 2 |
-| `device` | 0 | 24 | 4 |
-| `marketplace` | 15 | 13 | 2 |
-| `acp` | 15 | 13 | 2 |
-| `stash` | 17 | 11 | 2 |
-| `radarr` | 27 | 3 | 0 |
-| `sonarr` | 30 | 0 | 0 |
-| `prowlarr` | 29 | 1 | 0 |
-| `plex` | 28 | 2 | 0 |
-| `tautulli` | 28 | 2 | 0 |
-| `sabnzbd` | 28 | 2 | 0 |
-| `qbittorrent` | 29 | 1 | 0 |
-| `tailscale` | 28 | 2 | 0 |
-| `linkding` | 28 | 2 | 0 |
-| `memos` | 29 | 1 | 0 |
-| `bytestash` | 26 | 3 | 1 |
-| `beads` | 30 | 0 | 0 |
-| `paperless` | 28 | 2 | 0 |
-| `arcane` | 28 | 1 | 1 |
-| `unraid` | 28 | 2 | 0 |
-| `unifi` | 27 | 3 | 0 |
-| `overseerr` | 29 | 1 | 0 |
-| `gotify` | 28 | 1 | 1 |
-| `openacp` | 29 | 1 | 0 |
-| `openai` | 29 | 0 | 1 |
-| `notebooklm` | 29 | 0 | 1 |
-| `qdrant` | 29 | 1 | 0 |
-| `tei` | 29 | 1 | 0 |
+| `acp` | 0 | 0 | 1 |
+| `acp_registry` | 0 | 0 | 1 |
+| `adguard` | 30 | 0 | 0 |
 | `apprise` | 30 | 0 | 0 |
-| `deploy` | 16 | 11 | 3 |
-| `lab_admin` | 6 | 19 | 3 |
-| `fs` | 9 | 17 | 2 |
+| `arcane` | 28 | 1 | 1 |
+| `beads` | 30 | 0 | 0 |
+| `bytestash` | 26 | 3 | 1 |
+| `deploy` | 0 | 0 | 1 |
+| `device` | 0 | 0 | 1 |
+| `doctor` | 0 | 0 | 1 |
 | `dozzle` | 30 | 0 | 0 |
+| `extract` | 0 | 0 | 1 |
+| `freshrss` | 30 | 0 | 0 |
+| `fs` | 0 | 0 | 1 |
+| `gateway` | 0 | 0 | 1 |
+| `glances` | 30 | 0 | 0 |
+| `gotify` | 28 | 1 | 1 |
 | `immich` | 30 | 0 | 0 |
 | `jellyfin` | 28 | 2 | 0 |
-| `navidrome` | 30 | 0 | 0 |
-| `scrutiny` | 30 | 0 | 0 |
-| `freshrss` | 30 | 0 | 0 |
+| `lab_admin` | 0 | 0 | 1 |
+| `linkding` | 28 | 2 | 0 |
 | `loggifly` | 30 | 0 | 0 |
-| `adguard` | 30 | 0 | 0 |
-| `glances` | 30 | 0 | 0 |
-| `uptime-kuma` | 1 | 13 | 4 |
-| `pihole` | 30 | 0 | 0 |
+| `logs` | 0 | 0 | 1 |
+| `marketplace` | 0 | 0 | 1 |
+| `mcpregistry` | 0 | 0 | 1 |
+| `memos` | 29 | 1 | 0 |
+| `navidrome` | 30 | 0 | 0 |
 | `neo4j` | 30 | 0 | 0 |
+| `notebooklm` | 29 | 0 | 1 |
+| `openacp` | 29 | 1 | 0 |
+| `openai` | 29 | 0 | 1 |
+| `overseerr` | 29 | 1 | 0 |
+| `paperless` | 28 | 2 | 0 |
+| `pihole` | 30 | 0 | 0 |
+| `plex` | 28 | 2 | 0 |
+| `prowlarr` | 29 | 1 | 0 |
+| `qbittorrent` | 29 | 1 | 0 |
+| `qdrant` | 29 | 1 | 0 |
+| `radarr` | 27 | 3 | 0 |
+| `sabnzbd` | 28 | 2 | 0 |
+| `scrutiny` | 30 | 0 | 0 |
+| `setup` | 0 | 0 | 1 |
+| `sonarr` | 30 | 0 | 0 |
+| `stash` | 0 | 0 | 1 |
+| `tailscale` | 28 | 2 | 0 |
+| `tautulli` | 28 | 2 | 0 |
+| `tei` | 29 | 1 | 0 |
+| `unifi` | 27 | 3 | 0 |
+| `unraid` | 28 | 2 | 0 |
+| `uptime-kuma` | 0 | 0 | 1 |

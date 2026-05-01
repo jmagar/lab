@@ -14,7 +14,7 @@ Verify tracked artifacts are fresh with:
 just docs-check
 ```
 
-`docs-check` compares the declared generated artifact manifest only. It does not run Markdown link checks, live service health, or onboarding audit policy gates.
+`docs-check` compares the declared generated artifact manifest and enforces generated-doc invariants such as feature-matrix consistency and safety linting. It does not run Markdown link checks, live service health, or onboarding audit policy gates.
 
 | Artifact | Source |
 | --- | --- |
@@ -26,3 +26,4 @@ just docs-check
 | `feature-matrix.md/json` | `lab docs generate` |
 | `onboarding-audit.md/json` | `lab docs generate` |
 | `mcp-help.md/json` | `lab docs generate` |
+| `cli-help.md` | `lab docs generate` |

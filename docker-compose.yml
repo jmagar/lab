@@ -1,7 +1,6 @@
 services:
   lab-master:
     image: lab:dev
-    hostname: dookie
     build:
       context: .
       dockerfile: config/Dockerfile.fast
@@ -18,6 +17,9 @@ services:
       # Host config file mounted read-only. Keep runtime config in ~/.lab so
       # Docker and local `lab serve` use the same auth/service settings.
       - ${HOME}/.lab/config.toml:/home/lab/.config/lab/config.toml:ro
+      # Host identity used for controller/node role resolution. Without this,
+      # Docker's container ID hostname would be mistaken for the machine name.
+      - /etc/hostname:/run/host/hostname:ro
 
     environment:
       # Bind to all container interfaces so the port mapping works.

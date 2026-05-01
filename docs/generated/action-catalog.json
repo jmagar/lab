@@ -2,24 +2,6 @@
   {
     "service": "acp",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "acp",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -102,31 +84,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "acp",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "acp",
@@ -545,24 +502,6 @@
   {
     "service": "adguard",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "adguard",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -614,31 +553,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "adguard",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "adguard",
@@ -834,24 +748,6 @@
   {
     "service": "apprise",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "apprise",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -988,31 +884,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "apprise",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "apprise",
@@ -1319,24 +1190,6 @@
   {
     "service": "arcane",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "arcane",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -1610,31 +1463,6 @@
   {
     "service": "arcane",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "arcane",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -1820,24 +1648,6 @@
   {
     "service": "beads",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "beads",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -1933,31 +1743,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "beads",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "beads",
@@ -2133,24 +1918,6 @@
   {
     "service": "bytestash",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "bytestash",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -2165,31 +1932,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "bytestash",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "bytestash",
@@ -2589,31 +2331,13 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "deploy",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "deploy",
@@ -2625,7 +2349,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -2650,7 +2374,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -2681,7 +2405,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -2724,38 +2448,13 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "deploy",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "deploy",
@@ -2774,7 +2473,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -2865,24 +2564,6 @@
   {
     "service": "device",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": false,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "device",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -2897,31 +2578,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "device",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": false,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "device",
@@ -2987,24 +2643,6 @@
   {
     "service": "doctor",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "doctor",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -3019,31 +2657,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "doctor",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "doctor",
@@ -3155,24 +2768,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "dozzle",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "dozzle",
@@ -3317,31 +2912,6 @@
   {
     "service": "dozzle",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "dozzle",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -3465,24 +3035,6 @@
   {
     "service": "extract",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "extract",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -3556,31 +3108,6 @@
   {
     "service": "extract",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "extract",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -3606,24 +3133,6 @@
   {
     "service": "freshrss",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "freshrss",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -3638,31 +3147,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "freshrss",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "freshrss",
@@ -3796,6 +3280,37 @@
     },
     "requires_http_subject": false,
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
+    "inventory_scope": "global_inventory_not_active_runtime_exposure",
+    "builtin": false
+  },
+  {
+    "service": "fs",
+    "action": "fs.preview",
+    "description": "Stream a capped byte window from a workspace file (HTTP-only, admin-session gated)",
+    "destructive": false,
+    "params": [
+      {
+        "name": "path",
+        "ty": "string",
+        "required": true,
+        "description": "Workspace-relative path of the file to preview"
+      },
+      {
+        "name": "max_bytes",
+        "ty": "integer",
+        "required": false,
+        "description": "Upper bound on bytes returned; server cap of 2 MiB always wins"
+      }
+    ],
+    "returns": "binary (streamed); mime from safe-MIME whitelist or application/octet-stream",
+    "surface_availability": {
+      "cli": false,
+      "mcp": false,
+      "api": true,
+      "web_ui": true
+    },
+    "requires_http_subject": true,
+    "auth_posture": "HTTP-only admin/browser session path; intentionally unavailable on MCP",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
   },
@@ -4773,24 +4288,6 @@
   {
     "service": "gateway",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "gateway",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -4805,31 +4302,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "gateway",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "gateway",
@@ -4909,24 +4381,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "glances",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "glances",
@@ -5042,31 +4496,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "glances",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "glances",
@@ -5398,24 +4827,6 @@
   {
     "service": "gotify",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "gotify",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -5663,31 +5074,6 @@
   {
     "service": "gotify",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "gotify",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -5891,24 +5277,6 @@
   {
     "service": "immich",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "immich",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -5923,31 +5291,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "immich",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "immich",
@@ -6045,24 +5388,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "jellyfin",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "jellyfin",
@@ -6225,31 +5550,6 @@
   {
     "service": "jellyfin",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "jellyfin",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -6383,24 +5683,6 @@
   {
     "service": "lab_admin",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "lab_admin",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -6408,7 +5690,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -6433,38 +5715,13 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "lab_admin",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "lab_admin",
@@ -6483,7 +5740,7 @@
     "surface_availability": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "requires_http_subject": false,
@@ -7012,24 +6269,6 @@
   {
     "service": "linkding",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "linkding",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -7044,31 +6283,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "linkding",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "linkding",
@@ -7244,24 +6458,6 @@
   {
     "service": "loggifly",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "loggifly",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -7276,31 +6472,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "loggifly",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "loggifly",
@@ -7326,24 +6497,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "logs",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "logs",
@@ -7460,31 +6613,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "logs",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "logs",
@@ -8022,24 +7150,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "marketplace",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "marketplace",
@@ -8765,31 +7875,6 @@
   {
     "service": "marketplace",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "marketplace",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -8928,24 +8013,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "memos",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "memos",
@@ -9235,31 +8302,6 @@
   {
     "service": "memos",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "memos",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -9524,24 +8566,6 @@
   {
     "service": "navidrome",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "navidrome",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -9574,31 +8598,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "navidrome",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "navidrome",
@@ -9788,24 +8787,6 @@
   {
     "service": "neo4j",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "neo4j",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -9820,31 +8801,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "neo4j",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "neo4j",
@@ -9995,24 +8951,6 @@
   {
     "service": "notebooklm",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "notebooklm",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -10120,31 +9058,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "notebooklm",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "notebooklm",
@@ -10351,24 +9264,6 @@
   {
     "service": "openacp",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "openacp",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -10408,31 +9303,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "openacp",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "openacp",
@@ -11065,24 +9935,6 @@
   {
     "service": "openai",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "openai",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -11115,31 +9967,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "openai",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "openai",
@@ -11219,24 +10046,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "overseerr",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "overseerr",
@@ -11806,31 +10615,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "overseerr",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "overseerr",
@@ -12632,24 +11416,6 @@
   {
     "service": "paperless",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "paperless",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -12707,31 +11473,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "paperless",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "paperless",
@@ -13166,24 +11907,6 @@
   {
     "service": "pihole",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "pihole",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -13229,31 +11952,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "pihole",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "pihole",
@@ -13376,24 +12074,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "plex",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "plex",
@@ -13887,31 +12567,6 @@
   {
     "service": "plex",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "plex",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -14160,24 +12815,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "prowlarr",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "prowlarr",
@@ -14563,31 +13200,6 @@
   {
     "service": "prowlarr",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "prowlarr",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -14819,24 +13431,6 @@
   {
     "service": "qbittorrent",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "qbittorrent",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -14876,31 +13470,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "qbittorrent",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "qbittorrent",
@@ -15698,24 +14267,6 @@
   {
     "service": "qdrant",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "qdrant",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -15983,31 +14534,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "qdrant",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "qdrant",
@@ -16365,24 +14891,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "radarr",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "radarr",
@@ -17006,31 +15514,6 @@
   {
     "service": "radarr",
     "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "radarr",
-    "action": "schema",
     "description": "Return the parameter schema for a named action",
     "destructive": false,
     "params": [
@@ -17355,24 +15838,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "sabnzbd",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "sabnzbd",
@@ -17859,24 +16324,6 @@
   {
     "service": "scrutiny",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "scrutiny",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -17891,31 +16338,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "scrutiny",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "scrutiny",
@@ -18062,24 +16484,6 @@
   {
     "service": "setup",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "setup",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -18094,31 +16498,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "setup",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": true
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "setup",
@@ -18391,24 +16770,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "sonarr",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "sonarr",
@@ -18698,31 +17059,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "sonarr",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "sonarr",
@@ -19405,24 +17741,6 @@
   {
     "service": "stash",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "stash",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -19560,31 +17878,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "stash",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "stash",
@@ -20058,24 +18351,6 @@
   {
     "service": "tailscale",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "tailscale",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -20183,31 +18458,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "tailscale",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "tailscale",
@@ -20337,24 +18587,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "tautulli",
-    "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "tautulli",
@@ -20714,31 +18946,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "tautulli",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "tautulli",
@@ -21237,24 +19444,6 @@
   {
     "service": "tei",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "tei",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -21269,31 +19458,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "tei",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "tei",
@@ -22562,24 +20726,6 @@
   {
     "service": "unifi",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "unifi",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -23807,24 +21953,6 @@
   {
     "service": "unraid",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "unraid",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -24393,24 +22521,6 @@
   {
     "service": "uptime-kuma",
     "action": "help",
-    "description": "Show service actions",
-    "destructive": false,
-    "params": [],
-    "returns": "HelpPayload",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
-  },
-  {
-    "service": "uptime-kuma",
-    "action": "help",
     "description": "Show this action catalog",
     "destructive": false,
     "params": [],
@@ -24667,31 +22777,6 @@
     "auth_posture": "uses the selected transport auth and gateway visibility policy",
     "inventory_scope": "global_inventory_not_active_runtime_exposure",
     "builtin": false
-  },
-  {
-    "service": "uptime-kuma",
-    "action": "schema",
-    "description": "Show the schema for a specific action",
-    "destructive": false,
-    "params": [
-      {
-        "name": "action",
-        "ty": "string",
-        "required": true,
-        "description": "Action name to describe"
-      }
-    ],
-    "returns": "ActionSpec",
-    "surface_availability": {
-      "cli": true,
-      "mcp": true,
-      "api": true,
-      "web_ui": false
-    },
-    "requires_http_subject": false,
-    "auth_posture": "uses the selected transport auth and gateway visibility policy",
-    "inventory_scope": "global_inventory_not_active_runtime_exposure",
-    "builtin": true
   },
   {
     "service": "uptime-kuma",

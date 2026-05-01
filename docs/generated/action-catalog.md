@@ -6,12 +6,10 @@ This is a global inventory, not the active runtime exposure or authorization pol
 
 | Service | Action | Built-in | Destructive | Params | Returns | Surfaces |
 | --- | --- | --- | --- | --- | --- | --- |
-| `acp` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `acp` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `acp` | `provider.get` | false | false | `provider*: string` | `Value` | cli, mcp, api |
 | `acp` | `provider.list` | false | false |  | `Value` | cli, mcp, api |
 | `acp` | `provider.select` | false | false | `provider*: string` | `Value` | cli, mcp, api |
-| `acp` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `acp` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `acp` | `session.cancel` | false | true | `session_id*: string`<br>`principal: string` | `Value` | cli, mcp, api |
 | `acp` | `session.close` | false | true | `session_id*: string`<br>`principal: string` | `Value` | cli, mcp, api |
@@ -25,10 +23,8 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `acp` | `session.subscribe_ticket` | false | false | `session_id*: string`<br>`principal: string` | `Value` | cli, mcp, api |
 | `adguard` | `filtering.check-host` | false | false | `host*: string` | `AdguardResponse` | cli, mcp, api |
 | `adguard` | `filtering.status` | false | false |  | `AdguardResponse` | cli, mcp, api |
-| `adguard` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `adguard` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `adguard` | `querylog.search` | false | false | `limit*: integer`<br>`search: string`<br>`older_than: string` | `QueryLogResponse` | cli, mcp, api |
-| `adguard` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `adguard` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `adguard` | `server.status` | false | false |  | `AdguardResponse` | cli, mcp, api |
 | `adguard` | `server.version` | false | false |  | `AdguardResponse` | cli, mcp, api |
@@ -36,12 +32,10 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `apprise` | `config.add` | false | false | `key*: string`<br>`config*: string`<br>`format: string` | `void` | cli, mcp, api |
 | `apprise` | `config.delete` | false | true | `key*: string` | `void` | cli, mcp, api |
 | `apprise` | `config.get` | false | false | `key*: string` | `{config: string}` | cli, mcp, api |
-| `apprise` | `config.urls` | false | false | `key*: string` | `Vec<{url: string, tags: Vec<string>}>` | cli, mcp, api |
-| `apprise` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
+| `apprise` | `config.urls` | false | false | `key*: string` | `Vec&lt;{url: string, tags: Vec&lt;string&gt;}&gt;` | cli, mcp, api |
 | `apprise` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `apprise` | `notify.key.send` | false | false | `key*: string`<br>`body: string`<br>`title: string`<br>`type: string`<br>`format: string`<br>`tag: string`<br>`payload: json` | `void` | cli, mcp, api |
 | `apprise` | `notify.send` | false | false | `body: string`<br>`urls: json`<br>`title: string`<br>`type: string`<br>`format: string`<br>`tag: string`<br>`payload: json` | `void` | cli, mcp, api |
-| `apprise` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `apprise` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `apprise` | `server.details` | false | false |  | `json` | cli, mcp, api |
 | `apprise` | `server.health` | false | false |  | `HealthStatus` | cli, mcp, api |
@@ -54,7 +48,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `arcane` | `environment.get` | false | false | `id*: string` | `Environment` | cli, mcp, api |
 | `arcane` | `environment.list` | false | false |  | `Environment[]` | cli, mcp, api |
 | `arcane` | `health` | false | false |  | `HealthResponse` | cli, mcp, api |
-| `arcane` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `arcane` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `arcane` | `image.list` | false | false | `env_id*: string` | `Image[]` | cli, mcp, api |
 | `arcane` | `image.prune` | false | true | `env_id*: string` | `ImagePruneResult` | cli, mcp, api |
@@ -65,7 +58,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `arcane` | `project.list` | false | false | `env_id*: string` | `Project[]` | cli, mcp, api |
 | `arcane` | `project.redeploy` | false | false | `env_id*: string`<br>`project_id*: string` | `ProjectActionResult` | cli, mcp, api |
 | `arcane` | `project.up` | false | false | `env_id*: string`<br>`project_id*: string` | `ProjectActionResult` | cli, mcp, api |
-| `arcane` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `arcane` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `arcane` | `volume.delete` | false | true | `env_id*: string`<br>`volume_name*: string` | `void` | cli, mcp, api |
 | `arcane` | `volume.list` | false | false | `env_id*: string` | `Volume[]` | cli, mcp, api |
@@ -74,12 +66,10 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `beads` | `contract.status` | false | false |  | `ContractStatus` | cli, mcp, api |
 | `beads` | `graph.show` | false | false | `id*: string` | `BdJson` | cli, mcp, api |
 | `beads` | `health.status` | false | false |  | `BeadsHealth` | cli, mcp, api |
-| `beads` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `beads` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `beads` | `issue.list` | false | false | `status: string`<br>`limit: integer` | `BdJson` | cli, mcp, api |
 | `beads` | `issue.ready` | false | false | `limit: integer` | `BdJson` | cli, mcp, api |
 | `beads` | `issue.show` | false | false | `id*: string` | `BdJson` | cli, mcp, api |
-| `beads` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `beads` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `beads` | `status.summary` | false | false |  | `BdJson` | cli, mcp, api |
 | `beads` | `version.get` | false | false |  | `BdJson` | cli, mcp, api |
@@ -87,9 +77,7 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `bytestash` | `auth.login` | false | false | `username*: string`<br>`password*: string`<br>`payload: json` | `Value` | cli, mcp, api |
 | `bytestash` | `auth.register` | false | true | `username*: string`<br>`password*: string`<br>`payload: json` | `Value` | cli, mcp, api |
 | `bytestash` | `categories.list` | false | false |  | `Value` | cli, mcp, api |
-| `bytestash` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `bytestash` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `bytestash` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `bytestash` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `bytestash` | `snippets.create` | false | true | `title*: string`<br>`description: string`<br>`language: string`<br>`fragments: json`<br>`categories: json`<br>`payload: json` | `Value` | cli, mcp, api |
 | `bytestash` | `snippets.delete` | false | true | `id*: string` | `void` | cli, mcp, api |
@@ -103,55 +91,44 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `bytestash` | `users.delete` | false | true | `id*: string` | `void` | cli, mcp, api |
 | `bytestash` | `users.list` | false | false |  | `Value` | cli, mcp, api |
 | `bytestash` | `users.toggle-active` | false | true | `id*: string` | `Value` | cli, mcp, api |
-| `deploy` | `config.list` | false | false |  | `ConfigListing` | cli, mcp, api |
-| `deploy` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
-| `deploy` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `deploy` | `plan` | false | false | `targets*: string[]` | `DeployPlan` | cli, mcp, api |
-| `deploy` | `rollback` | false | true | `targets*: string[]`<br>`confirm*: boolean` | `DeployRunSummary` | cli, mcp, api |
-| `deploy` | `run` | false | true | `targets*: string[]`<br>`confirm*: boolean`<br>`max_parallel: integer`<br>`fail_fast: boolean` | `DeployRunSummary` | cli, mcp, api |
-| `deploy` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
-| `deploy` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
+| `deploy` | `config.list` | false | false |  | `ConfigListing` | cli, mcp |
+| `deploy` | `help` | false | false |  | `Catalog` | cli, mcp |
+| `deploy` | `plan` | false | false | `targets*: string[]` | `DeployPlan` | cli, mcp |
+| `deploy` | `rollback` | false | true | `targets*: string[]`<br>`confirm*: boolean` | `DeployRunSummary` | cli, mcp |
+| `deploy` | `run` | false | true | `targets*: string[]`<br>`confirm*: boolean`<br>`max_parallel: integer`<br>`fail_fast: boolean` | `DeployRunSummary` | cli, mcp |
+| `deploy` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp |
 | `device` | `enrollments.approve` | false | true | `node_id*: string`<br>`note: string` | `Value` | mcp, api, web |
 | `device` | `enrollments.deny` | false | true | `node_id*: string`<br>`reason: string` | `Value` | mcp, api, web |
 | `device` | `enrollments.list` | false | false |  | `Value` | mcp, api, web |
-| `device` | `help` | true | false |  | `HelpPayload` | mcp, api, web |
 | `device` | `help` | false | false |  | `Catalog` | mcp, api, web |
-| `device` | `schema` | true | false | `action*: string` | `ActionSpec` | mcp, api, web |
 | `device` | `schema` | false | false | `action*: string` | `Schema` | mcp, api, web |
-| `doctor` | `audit.full` | false | false |  | `stream<Finding>` | cli, mcp, api |
+| `doctor` | `audit.full` | false | false |  | `stream&lt;Finding&gt;` | cli, mcp, api |
 | `doctor` | `auth.check` | false | false |  | `DoctorReport` | cli, mcp, api |
-| `doctor` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `doctor` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `doctor` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `doctor` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `doctor` | `service.probe` | false | false | `service*: string`<br>`instance: string` | `Finding` | cli, mcp, api |
 | `doctor` | `system.checks` | false | false |  | `DoctorReport` | cli, mcp, api |
 | `dozzle` | `containers.list` | false | false | `max_events: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `ContainersListResponse` | cli, mcp, api |
-| `dozzle` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `dozzle` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `dozzle` | `logs.fetch` | false | false | `host*: string`<br>`container_id*: string`<br>`stdout: bool`<br>`stderr: bool`<br>`max_lines: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `LogFetchResponse` | cli, mcp, api |
 | `dozzle` | `logs.fetch-plain` | false | false | `host*: string`<br>`container_id*: string`<br>`stdout: bool`<br>`stderr: bool`<br>`max_lines: integer`<br>`max_bytes: integer`<br>`timeout_ms: integer` | `PlainLogFetchResponse` | cli, mcp, api |
-| `dozzle` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `dozzle` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `dozzle` | `server.health` | false | false |  | `HealthResponse` | cli, mcp, api |
 | `dozzle` | `server.version` | false | false |  | `VersionResponse` | cli, mcp, api |
 | `extract` | `apply` | false | true | `uri*: string`<br>`services: string[]`<br>`env_path: string` | `WritePlan` | cli, mcp, api |
 | `extract` | `diff` | false | false | `uri*: string` | `WritePlan` | cli, mcp, api |
-| `extract` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `extract` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `extract` | `list_hosts` | false | false |  | `string[]` | cli, mcp, api |
 | `extract` | `scan` | false | false | `uri: string`<br>`hosts: string[]`<br>`redact_secrets: bool` | `DiscoveredService[]` | cli, mcp, api |
-| `extract` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `extract` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
-| `freshrss` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `freshrss` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `freshrss` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `freshrss` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `freshrss` | `stream.items` | false | false | `n*: integer`<br>`continuation: string` | `FreshRssResponse` | cli, mcp, api |
 | `freshrss` | `subscription.list` | false | false |  | `FreshRssResponse` | cli, mcp, api |
 | `freshrss` | `tag.list` | false | false |  | `FreshRssResponse` | cli, mcp, api |
 | `freshrss` | `unread.counts` | false | false |  | `FreshRssResponse` | cli, mcp, api |
 | `fs` | `fs.list` | false | false | `path: string` | `{entries: [{name, path, kind, size, modified, accessible}], truncated: bool}` | mcp, api, web |
+| `fs` | `fs.preview` | false | false | `path*: string`<br>`max_bytes: integer` | `binary (streamed); mime from safe-MIME whitelist or application/octet-stream` | api, web |
 | `fs` | `help` | true | false |  | `HelpPayload` | mcp, api, web |
 | `fs` | `schema` | true | false | `action*: string` | `ActionSpec` | mcp, api, web |
 | `gateway` | `gateway.add` | false | true | `spec*: json`<br>`bearer_token_value: string`<br>`allow_stdio: boolean` | `GatewayView` | cli, mcp, api, web |
@@ -188,21 +165,17 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `gateway` | `gateway.virtual_server.remove` | false | true | `id*: string` | `ServerView` | cli, mcp, api, web |
 | `gateway` | `gateway.virtual_server.set_mcp_policy` | false | true | `id*: string`<br>`allowed_actions*: string[]` | `VirtualServerMcpPolicyView` | cli, mcp, api, web |
 | `gateway` | `gateway.virtual_server.set_surface` | false | true | `id*: string`<br>`surface*: string`<br>`enabled*: boolean` | `ServerView` | cli, mcp, api, web |
-| `gateway` | `help` | true | false |  | `HelpPayload` | cli, mcp, api, web |
 | `gateway` | `help` | false | false |  | `Catalog` | cli, mcp, api, web |
-| `gateway` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api, web |
 | `gateway` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api, web |
 | `glances` | `cpu.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
 | `glances` | `diskio.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
 | `glances` | `fs.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
-| `glances` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `glances` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `glances` | `load.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
 | `glances` | `memory.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
 | `glances` | `network.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
 | `glances` | `process.top` | false | false | `limit*: integer` | `GlancesResponse` | cli, mcp, api |
 | `glances` | `quicklook.summary` | false | false |  | `GlancesResponse` | cli, mcp, api |
-| `glances` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `glances` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `glances` | `server.health` | false | false |  | `null` | cli, mcp, api |
 | `glances` | `system.info` | false | false |  | `GlancesResponse` | cli, mcp, api |
@@ -216,7 +189,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `gotify` | `client.delete` | false | true | `id*: integer` | `void` | cli, mcp, api |
 | `gotify` | `client.list` | false | false |  | `Client[]` | cli, mcp, api |
 | `gotify` | `client.update` | false | false | `id*: integer`<br>`name*: string` | `Client` | cli, mcp, api |
-| `gotify` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `gotify` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `gotify` | `message.delete` | false | true | `id*: integer` | `void` | cli, mcp, api |
 | `gotify` | `message.list` | false | false | `limit: integer` | `PagedMessages` | cli, mcp, api |
@@ -227,7 +199,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `gotify` | `plugin.disable` | false | false | `id*: integer` | `void` | cli, mcp, api |
 | `gotify` | `plugin.enable` | false | false | `id*: integer` | `void` | cli, mcp, api |
 | `gotify` | `plugin.list` | false | false |  | `Plugin[]` | cli, mcp, api |
-| `gotify` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `gotify` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `gotify` | `server.health` | false | false |  | `Health` | cli, mcp, api |
 | `gotify` | `server.version` | false | false |  | `ServerVersion` | cli, mcp, api |
@@ -236,37 +207,31 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `gotify` | `user.list` | false | false |  | `User[]` | cli, mcp, api |
 | `immich` | `asset.get` | false | false | `id*: string` | `AssetMetadata` | cli, mcp, api |
 | `immich` | `asset.search` | false | false | `query: string`<br>`limit*: integer`<br>`page: integer` | `AssetSearchResponse` | cli, mcp, api |
-| `immich` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `immich` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `immich` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `immich` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `immich` | `server.health` | false | false |  | `null` | cli, mcp, api |
 | `immich` | `server.info` | false | false |  | `ServerInfo` | cli, mcp, api |
 | `immich` | `server.version` | false | false |  | `ServerInfo` | cli, mcp, api |
 | `immich` | `user.me` | false | false |  | `UserMe` | cli, mcp, api |
-| `jellyfin` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `jellyfin` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `jellyfin` | `items.counts` | false | false |  | `ItemCounts` | cli, mcp, api |
 | `jellyfin` | `items.get` | false | false | `item_id*: string` | `Item` | cli, mcp, api |
 | `jellyfin` | `items.search` | false | false | `user_id: string`<br>`search_term: string`<br>`parent_id: string`<br>`include_item_types: string[]`<br>`recursive: boolean`<br>`start_index: integer`<br>`limit: integer` | `ItemsResult` | cli, mcp, api |
-| `jellyfin` | `libraries.list` | false | false |  | `Vec<VirtualFolder>` | cli, mcp, api |
-| `jellyfin` | `plugins.list` | false | false |  | `Vec<PluginInfo>` | cli, mcp, api |
-| `jellyfin` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
+| `jellyfin` | `libraries.list` | false | false |  | `Vec&lt;VirtualFolder&gt;` | cli, mcp, api |
+| `jellyfin` | `plugins.list` | false | false |  | `Vec&lt;PluginInfo&gt;` | cli, mcp, api |
 | `jellyfin` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
-| `jellyfin` | `sessions.list` | false | false |  | `Vec<SessionInfo>` | cli, mcp, api |
+| `jellyfin` | `sessions.list` | false | false |  | `Vec&lt;SessionInfo&gt;` | cli, mcp, api |
 | `jellyfin` | `system.info` | false | false |  | `SystemInfo` | cli, mcp, api |
 | `jellyfin` | `system.ping` | false | false |  | `String` | cli, mcp, api |
 | `jellyfin` | `system.public_info` | false | false |  | `PublicSystemInfo` | cli, mcp, api |
-| `jellyfin` | `users.list` | false | false |  | `Vec<User>` | cli, mcp, api |
+| `jellyfin` | `users.list` | false | false |  | `Vec&lt;User&gt;` | cli, mcp, api |
 | `jellyfin` | `users.me` | false | false |  | `User` | cli, mcp, api |
-| `lab_admin` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
-| `lab_admin` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `lab_admin` | `onboarding.audit` | false | false | `services*: string[]` | `AuditReport` | cli, mcp, api |
-| `lab_admin` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
-| `lab_admin` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
+| `lab_admin` | `help` | false | false |  | `Catalog` | cli, mcp |
+| `lab_admin` | `onboarding.audit` | false | false | `services*: string[]` | `AuditReport` | cli, mcp |
+| `lab_admin` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp |
 | `linkding` | `bookmark.archive` | false | false | `id*: integer` | `Value` | cli, mcp, api |
 | `linkding` | `bookmark.archived.list` | false | false | `q: string`<br>`limit: integer`<br>`offset: integer` | `Value` | cli, mcp, api |
-| `linkding` | `bookmark.assets` | false | false | `id*: integer` | `Vec<BookmarkAsset>` | cli, mcp, api |
+| `linkding` | `bookmark.assets` | false | false | `id*: integer` | `Vec&lt;BookmarkAsset&gt;` | cli, mcp, api |
 | `linkding` | `bookmark.assets-upload` | false | false | `id*: integer`<br>`file_name*: string`<br>`file_base64*: string` | `BookmarkAsset` | cli, mcp, api |
 | `linkding` | `bookmark.check` | false | false | `url*: string` | `Value` | cli, mcp, api |
 | `linkding` | `bookmark.create` | false | false | `url*: string`<br>`title: string`<br>`description: string`<br>`notes: string`<br>`is_archived: bool`<br>`unread: bool`<br>`shared: bool`<br>`tag_names: json`<br>`payload: json` | `Value` | cli, mcp, api |
@@ -279,9 +244,7 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `linkding` | `bundle.delete` | false | true | `id*: integer` | `void` | cli, mcp, api |
 | `linkding` | `bundle.list` | false | false |  | `Value` | cli, mcp, api |
 | `linkding` | `bundle.update` | false | false | `id*: integer`<br>`payload*: json` | `Bundle` | cli, mcp, api |
-| `linkding` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `linkding` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `linkding` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `linkding` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `linkding` | `tag.create` | false | false | `name*: string`<br>`payload: json` | `Value` | cli, mcp, api |
 | `linkding` | `tag.get` | false | false | `id*: integer` | `Value` | cli, mcp, api |
@@ -290,17 +253,13 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `loggifly` | `config.summary` | false | false |  | `ConfigSummary` | cli, mcp, api |
 | `loggifly` | `contract.status` | false | false |  | `ContractStatus` | cli, mcp, api |
 | `loggifly` | `health.status` | false | false |  | `HealthStatus` | cli, mcp, api |
-| `loggifly` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `loggifly` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `loggifly` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `loggifly` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
-| `logs` | `help` | true | false |  | `HelpPayload` | cli, mcp, api, web |
 | `logs` | `help` | false | false |  | `Catalog` | cli, mcp, api, web |
 | `logs` | `logs.search` | false | false | `query: json` | `Value` | cli, mcp, api, web |
 | `logs` | `logs.stats` | false | false |  | `Value` | cli, mcp, api, web |
 | `logs` | `logs.stream` | false | false |  | `Value` | cli, mcp, api, web |
 | `logs` | `logs.tail` | false | false | `after_ts: integer`<br>`since_event_id: string`<br>`limit: integer` | `Value` | cli, mcp, api, web |
-| `logs` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api, web |
 | `logs` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api, web |
 | `marketplace` | `agent.get` | false | false | `id*: string` | `Agent` | cli, mcp, api, web |
 | `marketplace` | `agent.install` | false | true | `id*: string`<br>`node_ids*: array`<br>`platform: string`<br>`confirm*: boolean` | `InstallResults` | cli, mcp, api, web |
@@ -317,7 +276,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `marketplace` | `artifact.update.apply` | false | true | `plugin_id*: string`<br>`strategy: string`<br>`confirm*: boolean` | `ApplyResult` | cli, mcp, api, web |
 | `marketplace` | `artifact.update.check` | false | false | `plugin_id: string` | `UpdateCheckResult[]` | cli, mcp, api, web |
 | `marketplace` | `artifact.update.preview` | false | false | `plugin_id*: string` | `UpdatePreviewResult` | cli, mcp, api, web |
-| `marketplace` | `help` | true | false |  | `HelpPayload` | cli, mcp, api, web |
 | `marketplace` | `help` | false | false |  | `Catalog` | cli, mcp, api, web |
 | `marketplace` | `mcp.config` | false | false |  | `RegistryConfig` | cli, mcp, api, web |
 | `marketplace` | `mcp.get` | false | false | `name*: string` | `ServerResponse` | cli, mcp, api, web |
@@ -340,13 +298,11 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `marketplace` | `plugin.uninstall` | false | true | `id*: string` | `UninstallResult` | cli, mcp, api, web |
 | `marketplace` | `plugin.workspace` | false | false | `id*: string` | `PluginWorkspace` | cli, mcp, api, web |
 | `marketplace` | `plugins.list` | false | false | `marketplace: string`<br>`kind: string`<br>`installed: bool`<br>`query: string` | `Plugin[]` | cli, mcp, api, web |
-| `marketplace` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api, web |
 | `marketplace` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api, web |
 | `marketplace` | `sources.add` | false | true | `repo: string`<br>`url: string`<br>`autoUpdate: boolean` | `AddResult` | cli, mcp, api, web |
 | `marketplace` | `sources.list` | false | false |  | `Marketplace[]` | cli, mcp, api, web |
 | `memos` | `attachment.delete` | false | true | `name*: string` | `void` | cli, mcp, api |
 | `memos` | `attachment.upload` | false | false | `filename*: string`<br>`data_base64*: string`<br>`mime_type*: string` | `Value` | cli, mcp, api |
-| `memos` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `memos` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `memos` | `memo.comment-create` | false | false | `name*: string`<br>`content*: string` | `Value` | cli, mcp, api |
 | `memos` | `memo.comment-list` | false | false | `name*: string` | `Value` | cli, mcp, api |
@@ -357,7 +313,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `memos` | `memos.get` | false | false | `name*: string` | `Value` | cli, mcp, api |
 | `memos` | `memos.list` | false | false | `creator: string`<br>`tag: string`<br>`page_size: integer`<br>`page_token: string` | `Value` | cli, mcp, api |
 | `memos` | `memos.update` | false | false | `name*: string`<br>`content: string`<br>`visibility: string` | `Value` | cli, mcp, api |
-| `memos` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `memos` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `memos` | `tags.list` | false | false |  | `Value` | cli, mcp, api |
 | `memos` | `user.list` | false | false |  | `Value` | cli, mcp, api |
@@ -369,10 +324,8 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `navidrome` | `album.get` | false | false | `id*: string` | `QueryResponse` | cli, mcp, api |
 | `navidrome` | `album.list` | false | false | `type: string`<br>`size*: integer`<br>`offset: integer` | `QueryResponse` | cli, mcp, api |
 | `navidrome` | `artist.list` | false | false |  | `QueryResponse` | cli, mcp, api |
-| `navidrome` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `navidrome` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `navidrome` | `playlist.list` | false | false |  | `QueryResponse` | cli, mcp, api |
-| `navidrome` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `navidrome` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `navidrome` | `search.query` | false | false | `query*: string`<br>`size*: integer`<br>`offset: integer` | `QueryResponse` | cli, mcp, api |
 | `navidrome` | `server.ping` | false | false |  | `QueryResponse` | cli, mcp, api |
@@ -380,9 +333,7 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `neo4j` | `cypher.write` | false | true | `statement*: string`<br>`parameters: object` | `WriteResponse` | cli, mcp, api |
 | `neo4j` | `db.info` | false | false | `database: string` | `CypherResponse` | cli, mcp, api |
 | `neo4j` | `db.list` | false | false |  | `CypherResponse` | cli, mcp, api |
-| `neo4j` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `neo4j` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `neo4j` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `neo4j` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `neo4j` | `schema.constraints` | false | false |  | `CypherResponse` | cli, mcp, api |
 | `neo4j` | `schema.indexes` | false | false |  | `CypherResponse` | cli, mcp, api |
@@ -390,13 +341,11 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `neo4j` | `schema.relationships` | false | false |  | `CypherResponse` | cli, mcp, api |
 | `neo4j` | `server.status` | false | false |  | `CypherResponse` | cli, mcp, api |
 | `neo4j` | `txn.run` | false | true | `statements*: array`<br>`mode*: string` | `object` | cli, mcp, api |
-| `notebooklm` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `notebooklm` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `notebooklm` | `notebook.create` | false | false | `title*: string` | `Notebook` | cli, mcp, api |
 | `notebooklm` | `notebook.delete` | false | true | `notebook_id*: string` | `DeleteResult` | cli, mcp, api |
 | `notebooklm` | `notebook.get` | false | false | `notebook_id*: string` | `Notebook` | cli, mcp, api |
 | `notebooklm` | `notebook.list` | false | false |  | `Notebook[]` | cli, mcp, api |
-| `notebooklm` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `notebooklm` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `notebooklm` | `server.health` | false | false |  | `Health` | cli, mcp, api |
 | `notebooklm` | `source.add_url` | false | false | `notebook_id*: string`<br>`url*: string` | `Source` | cli, mcp, api |
@@ -406,10 +355,8 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `openacp` | `config.editable` | false | false |  | `Value` | cli, mcp, api |
 | `openacp` | `config.get` | false | false |  | `Value` | cli, mcp, api |
 | `openacp` | `config.patch` | false | false | `path*: string`<br>`value*: json` | `Value` | cli, mcp, api |
-| `openacp` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `openacp` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `openacp` | `notify.send` | false | false | `message*: string` | `Value` | cli, mcp, api |
-| `openacp` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `openacp` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `openacp` | `sessions.adopt` | false | false | `agent*: string`<br>`agent_session_id*: string`<br>`cwd: string`<br>`channel: string` | `Value` | cli, mcp, api |
 | `openacp` | `sessions.archive` | false | false | `session_id*: string` | `Value` | cli, mcp, api |
@@ -423,7 +370,7 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `openacp` | `system.health` | false | false |  | `Value` | cli, mcp, api |
 | `openacp` | `system.restart` | false | false |  | `Value` | cli, mcp, api |
 | `openacp` | `system.version` | false | false |  | `Value` | cli, mcp, api |
-| `openacp` | `topics.cleanup` | false | false | `statuses: array<string>` | `Value` | cli, mcp, api |
+| `openacp` | `topics.cleanup` | false | false | `statuses: array&lt;string&gt;` | `Value` | cli, mcp, api |
 | `openacp` | `topics.delete` | false | false | `session_id*: string`<br>`force: bool` | `void` | cli, mcp, api |
 | `openacp` | `topics.list` | false | false | `status: string` | `Value` | cli, mcp, api |
 | `openacp` | `tunnel.create` | false | false | `port*: integer`<br>`label: string`<br>`session_id: string` | `Value` | cli, mcp, api |
@@ -433,15 +380,12 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `openacp` | `tunnel.status` | false | false |  | `Value` | cli, mcp, api |
 | `openai` | `chat.complete` | false | false | `model*: string`<br>`messages*: json`<br>`temperature: number`<br>`max_tokens: integer` | `ChatCompletionResponse` | cli, mcp, api |
 | `openai` | `embed.create` | false | false | `model*: string`<br>`input: string`<br>`inputs: json`<br>`dimensions: integer` | `EmbeddingsResponse` | cli, mcp, api |
-| `openai` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `openai` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `openai` | `model.list` | false | false |  | `Model[]` | cli, mcp, api |
-| `openai` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `openai` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `openai` | `server.health` | false | false |  | `void` | cli, mcp, api |
 | `overseerr` | `discover.trending` | false | false |  | `DiscoverResponse` | cli, mcp, api |
 | `overseerr` | `health` | false | false |  | `HealthStatus` | cli, mcp, api |
-| `overseerr` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `overseerr` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `overseerr` | `issue.comment` | false | false | `id*: integer`<br>`message*: string` | `IssueComment` | cli, mcp, api |
 | `overseerr` | `issue.create` | false | false | `issue_type*: integer`<br>`message*: string`<br>`media_id*: integer`<br>`problem_season: integer`<br>`problem_episode: integer` | `Issue` | cli, mcp, api |
@@ -461,7 +405,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `overseerr` | `request.get` | false | false | `id*: integer` | `MediaRequest` | cli, mcp, api |
 | `overseerr` | `request.list` | false | false | `take: integer`<br>`skip: integer`<br>`filter: string`<br>`sort: string`<br>`requested_by: integer` | `RequestList` | cli, mcp, api |
 | `overseerr` | `request.retry` | false | false | `id*: integer` | `MediaRequest` | cli, mcp, api |
-| `overseerr` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `overseerr` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `overseerr` | `status` | false | false |  | `OverseerrStatus` | cli, mcp, api |
 | `overseerr` | `tv.get` | false | false | `tmdb_id*: integer` | `TvDetail` | cli, mcp, api |
@@ -489,11 +432,9 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `paperless` | `documents.list` | false | false | `query: string`<br>`page: integer`<br>`page_size: integer`<br>`ordering: string`<br>`correspondent: integer`<br>`document_type: integer`<br>`tags__id__all: string` | `Value` | cli, mcp, api |
 | `paperless` | `documents.metadata` | false | false | `id*: integer` | `Value` | cli, mcp, api |
 | `paperless` | `documents.update` | false | true | `id*: integer`<br>`title: string`<br>`correspondent: integer`<br>`document_type: integer`<br>`tags: json`<br>`payload: json` | `Value` | cli, mcp, api |
-| `paperless` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `paperless` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `paperless` | `saved-view.create` | false | false | `payload*: json` | `Value` | cli, mcp, api |
 | `paperless` | `saved-view.list` | false | false |  | `Value` | cli, mcp, api |
-| `paperless` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `paperless` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `paperless` | `statistics` | false | false |  | `Value` | cli, mcp, api |
 | `paperless` | `storage-path.create` | false | false | `payload*: json` | `Value` | cli, mcp, api |
@@ -511,17 +452,14 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `pihole` | `blocking.status` | false | false |  | `PiholeResponse` | cli, mcp, api |
 | `pihole` | `domain.add` | false | true | `domain*: string`<br>`domain_type*: integer`<br>`comment: string` | `PiholeResponse` | cli, mcp, api |
 | `pihole` | `domain.list` | false | false |  | `PiholeResponse` | cli, mcp, api |
-| `pihole` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `pihole` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `pihole` | `querylog.search` | false | false | `offset: integer`<br>`limit*: integer` | `QueryLogResponse` | cli, mcp, api |
-| `pihole` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `pihole` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `pihole` | `server.settings` | false | false |  | `PiholeResponse` | cli, mcp, api |
 | `pihole` | `server.summary` | false | false |  | `PiholeResponse` | cli, mcp, api |
 | `plex` | `butler.list` | false | false |  | `Value` | cli, mcp, api |
 | `plex` | `butler.run` | false | false | `task_name*: string` | `void` | cli, mcp, api |
 | `plex` | `health` | false | false |  | `Value` | cli, mcp, api |
-| `plex` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `plex` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `plex` | `hubs.continue-watching` | false | false |  | `Value` | cli, mcp, api |
 | `plex` | `item.scrobble` | false | false | `rating_key*: string` | `void` | cli, mcp, api |
@@ -541,7 +479,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `plex` | `playlist.delete` | false | true | `playlist_id*: string` | `void` | cli, mcp, api |
 | `plex` | `playlist.get` | false | false | `playlist_id*: string` | `Value` | cli, mcp, api |
 | `plex` | `playlist.list` | false | false |  | `Value` | cli, mcp, api |
-| `plex` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `plex` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `plex` | `server.capabilities` | false | false |  | `Value` | cli, mcp, api |
 | `plex` | `server.info` | false | false |  | `Value` | cli, mcp, api |
@@ -553,7 +490,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `prowlarr` | `application.delete` | false | true | `id*: integer` | `void` | cli, mcp, api |
 | `prowlarr` | `application.get` | false | false | `id*: integer` | `Value` | cli, mcp, api |
 | `prowlarr` | `application.list` | false | false |  | `Value` | cli, mcp, api |
-| `prowlarr` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `prowlarr` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `prowlarr` | `history.indexer` | false | false | `id*: integer` | `Value` | cli, mcp, api |
 | `prowlarr` | `history.list` | false | false | `page: integer`<br>`page_size: integer`<br>`sort_key: string`<br>`sort_dir: string`<br>`indexer_id: integer` | `Value` | cli, mcp, api |
@@ -569,7 +505,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `prowlarr` | `indexer.status` | false | false |  | `Value` | cli, mcp, api |
 | `prowlarr` | `indexer.test` | false | false | `id*: integer` | `Value` | cli, mcp, api |
 | `prowlarr` | `indexer.testall` | false | false |  | `Value` | cli, mcp, api |
-| `prowlarr` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `prowlarr` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `prowlarr` | `system.backup` | false | false |  | `Value` | cli, mcp, api |
 | `prowlarr` | `system.health` | false | false |  | `Value` | cli, mcp, api |
@@ -581,10 +516,8 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `qbittorrent` | `category.create` | false | false | `category*: string`<br>`savepath: string` | `{}` | cli, mcp, api |
 | `qbittorrent` | `category.edit` | false | false | `category*: string`<br>`savepath*: string` | `{}` | cli, mcp, api |
 | `qbittorrent` | `category.list` | false | false |  | `Category[]` | cli, mcp, api |
-| `qbittorrent` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `qbittorrent` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `qbittorrent` | `log.list` | false | false | `last_known_id: integer` | `LogEntry[]` | cli, mcp, api |
-| `qbittorrent` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `qbittorrent` | `schema` | false | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `qbittorrent` | `sync.maindata` | false | false | `rid: integer` | `SyncMaindata` | cli, mcp, api |
 | `qbittorrent` | `torrent.add` | false | false | `urls*: string`<br>`savepath: string`<br>`category: string`<br>`tags: string` | `{}` | cli, mcp, api |
@@ -613,7 +546,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `qdrant` | `collection.delete` | false | true | `name*: string` | `void` | cli, mcp, api |
 | `qdrant` | `collections.get` | false | false | `name*: string` | `Value` | cli, mcp, api |
 | `qdrant` | `collections.list` | false | false |  | `CollectionDescription[]` | cli, mcp, api |
-| `qdrant` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `qdrant` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `qdrant` | `index.create` | false | false | `collection*: string`<br>`field_name*: string`<br>`field_schema*: object` | `Value` | cli, mcp, api |
 | `qdrant` | `point.count` | false | false | `collection*: string`<br>`filter: object` | `Value` | cli, mcp, api |
@@ -622,7 +554,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `qdrant` | `point.scroll` | false | false | `collection*: string`<br>`scroll: object` | `Value` | cli, mcp, api |
 | `qdrant` | `point.search` | false | false | `collection*: string`<br>`vector*: array`<br>`limit*: integer`<br>`filter: object`<br>`with_payload: bool`<br>`score_threshold: number` | `Value` | cli, mcp, api |
 | `qdrant` | `point.upsert` | false | false | `collection*: string`<br>`points*: array` | `Value` | cli, mcp, api |
-| `qdrant` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `qdrant` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `qdrant` | `server.health` | false | false |  | `void` | cli, mcp, api |
 | `qdrant` | `snapshot.create` | false | false | `collection*: string` | `SnapshotInfo` | cli, mcp, api |
@@ -639,7 +570,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `radarr` | `download-client.list` | false | false |  | `DownloadClient[]` | cli, mcp, api |
 | `radarr` | `download-client.test` | false | false | `id*: i64` | `void` | cli, mcp, api |
 | `radarr` | `filesystem.list` | false | false | `path*: string` | `FilesystemListing` | cli, mcp, api |
-| `radarr` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `radarr` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `radarr` | `history.failed-retry` | false | false | `id*: i64` | `void` | cli, mcp, api |
 | `radarr` | `history.list` | false | false | `page: u32`<br>`page_size: u32` | `HistoryPage` | cli, mcp, api |
@@ -666,7 +596,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `radarr` | `release.search` | false | false | `movie_id*: i64` | `Release[]` | cli, mcp, api |
 | `radarr` | `remote-path-mapping.list` | false | false |  | `RemotePathMapping[]` | cli, mcp, api |
 | `radarr` | `root-folder.list` | false | false |  | `RootFolder[]` | cli, mcp, api |
-| `radarr` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `radarr` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `radarr` | `system.backup` | false | false |  | `BackupFile[]` | cli, mcp, api |
 | `radarr` | `system.disk-space` | false | false |  | `DiskSpace[]` | cli, mcp, api |
@@ -683,7 +612,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `radarr` | `wanted.missing` | false | false | `page: u32`<br>`page_size: u32` | `WantedPage` | cli, mcp, api |
 | `sabnzbd` | `category.list` | false | false |  | `object` | cli, mcp, api |
 | `sabnzbd` | `config.get` | false | false |  | `object` | cli, mcp, api |
-| `sabnzbd` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `sabnzbd` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `sabnzbd` | `history.delete` | false | true | `nzo_id*: string` | `bool` | cli, mcp, api |
 | `sabnzbd` | `history.list` | false | false | `limit: integer` | `HistoryResponse` | cli, mcp, api |
@@ -707,18 +635,14 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `sabnzbd` | `server.warnings` | false | false |  | `string[]` | cli, mcp, api |
 | `scrutiny` | `dashboard.summary` | false | false |  | `ScrutinyResponse` | cli, mcp, api |
 | `scrutiny` | `device.list` | false | false |  | `ScrutinyResponse` | cli, mcp, api |
-| `scrutiny` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `scrutiny` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `scrutiny` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `scrutiny` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `scrutiny` | `server.health` | false | false |  | `null` | cli, mcp, api |
 | `setup` | `draft.commit` | false | true | `force: bool` | `CommitOutcome` | cli, mcp, api, web |
 | `setup` | `draft.get` | false | false |  | `DraftEntry[]` | cli, mcp, api, web |
 | `setup` | `draft.set` | false | false | `entries*: DraftEntry[]`<br>`force: bool` | `DraftSetOutcome` | cli, mcp, api, web |
 | `setup` | `finalize` | false | true | `force: bool` | `CommitOutcome` | cli, mcp, api, web |
-| `setup` | `help` | true | false |  | `HelpPayload` | cli, mcp, api, web |
 | `setup` | `help` | false | false |  | `Catalog` | cli, mcp, api, web |
-| `setup` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api, web |
 | `setup` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api, web |
 | `setup` | `schema.get` | false | false | `services: string[]` | `ServiceSchemaMap` | cli, mcp, api, web |
 | `setup` | `state` | false | false |  | `SetupSnapshot` | cli, mcp, api, web |
@@ -730,7 +654,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `sonarr` | `episode.monitor` | false | false | `episode_ids*: i64[]`<br>`monitored*: bool` | `object` | cli, mcp, api |
 | `sonarr` | `episodefile.delete` | false | true | `id*: i64` | `void` | cli, mcp, api |
 | `sonarr` | `health` | false | false |  | `HealthCheck[]` | cli, mcp, api |
-| `sonarr` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `sonarr` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `sonarr` | `history.failed-retry` | false | false | `id*: i64` | `void` | cli, mcp, api |
 | `sonarr` | `history.list` | false | false | `page: u32`<br>`page_size: u32`<br>`series_id: i64`<br>`episode_id: i64` | `HistoryPage` | cli, mcp, api |
@@ -742,7 +665,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `sonarr` | `release.grab` | false | false | `guid*: string` | `object` | cli, mcp, api |
 | `sonarr` | `release.search` | false | false | `series_id: i64`<br>`season_number: i32` | `Release[]` | cli, mcp, api |
 | `sonarr` | `rootfolder.list` | false | false |  | `RootFolder[]` | cli, mcp, api |
-| `sonarr` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `sonarr` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `sonarr` | `series.add` | false | false | `tvdb_id*: i64`<br>`title*: string`<br>`quality_profile_id*: i64`<br>`language_profile_id*: i64`<br>`root_folder_path*: string`<br>`monitored: bool`<br>`series_type: string` | `Series` | cli, mcp, api |
 | `sonarr` | `series.delete` | false | true | `id*: i64`<br>`delete_files: bool` | `void` | cli, mcp, api |
@@ -767,13 +689,11 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `stash` | `component.save` | false | false | `id*: string`<br>`label: string` | `SaveResult` | cli, mcp, api |
 | `stash` | `component.workspace` | false | false | `id*: string` | `WorkspacePath` | cli, mcp, api |
 | `stash` | `components.list` | false | false |  | `ComponentSummary[]` | cli, mcp, api |
-| `stash` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `stash` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `stash` | `provider.link` | false | false | `id*: string`<br>`kind*: string`<br>`label*: string`<br>`config*: object` | `Provider` | cli, mcp, api |
 | `stash` | `provider.pull` | false | true | `id*: string`<br>`provider_id*: string` | `SyncResult` | cli, mcp, api |
 | `stash` | `provider.push` | false | true | `id*: string`<br>`provider_id*: string` | `SyncResult` | cli, mcp, api |
 | `stash` | `providers.list` | false | false |  | `Provider[]` | cli, mcp, api |
-| `stash` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `stash` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `stash` | `target.add` | false | false | `name*: string`<br>`kind*: string`<br>`path: string`<br>`gateway_id: string` | `Target` | cli, mcp, api |
 | `stash` | `target.remove` | false | true | `id*: string` | `RemoveResult` | cli, mcp, api |
@@ -793,20 +713,17 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `tailscale` | `dns.search_paths` | false | false |  | `DnsSearchPaths` | cli, mcp, api |
 | `tailscale` | `dns.split-get` | false | false |  | `object` | cli, mcp, api |
 | `tailscale` | `dns.split-set` | false | false | `config*: object` | `object` | cli, mcp, api |
-| `tailscale` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `tailscale` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `tailscale` | `key.create` | false | false | `capabilities*: object` | `object` | cli, mcp, api |
 | `tailscale` | `key.delete` | false | true | `key_id*: string` | `void` | cli, mcp, api |
 | `tailscale` | `key.get` | false | false | `key_id*: string` | `AuthKey` | cli, mcp, api |
 | `tailscale` | `key.list` | false | false |  | `KeyList` | cli, mcp, api |
-| `tailscale` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `tailscale` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `tailscale` | `tailnet.settings-get` | false | false |  | `object` | cli, mcp, api |
 | `tailscale` | `tailnet.settings-patch` | false | false | `settings*: object` | `object` | cli, mcp, api |
 | `tailscale` | `user.list` | false | false |  | `object` | cli, mcp, api |
 | `tautulli` | `activity.list` | false | false |  | `Value` | cli, mcp, api |
 | `tautulli` | `activity.stream` | false | false | `session_key*: string` | `Value` | cli, mcp, api |
-| `tautulli` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `tautulli` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `tautulli` | `history.list` | false | false | `page: integer`<br>`page_size: integer`<br>`order_dir: string`<br>`media_type: string`<br>`user_id: integer`<br>`section_id: integer`<br>`rating_key: integer` | `Value` | cli, mcp, api |
 | `tautulli` | `libraries.get` | false | false | `section_id*: integer` | `Value` | cli, mcp, api |
@@ -820,7 +737,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `tautulli` | `plays.by-hour` | false | false | `time_range: integer` | `Value` | cli, mcp, api |
 | `tautulli` | `plays.by-month` | false | false | `time_range: integer` | `Value` | cli, mcp, api |
 | `tautulli` | `plays.by-stream-type` | false | false | `time_range: integer` | `Value` | cli, mcp, api |
-| `tautulli` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `tautulli` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `tautulli` | `server.pms-update` | false | false |  | `Value` | cli, mcp, api |
 | `tautulli` | `stats.home` | false | false | `time_range: integer`<br>`stats_count: integer` | `Value` | cli, mcp, api |
@@ -839,9 +755,7 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `tei` | `embed.similarity` | false | false | `inputs*: json` | `f32[]` | cli, mcp, api |
 | `tei` | `embed.sparse` | false | false | `inputs*: json`<br>`truncate: bool` | `SparseToken[][]` | cli, mcp, api |
 | `tei` | `embed.tokenize` | false | false | `inputs*: json`<br>`add_special_tokens: bool` | `u32[][]` | cli, mcp, api |
-| `tei` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `tei` | `help` | false | false |  | `Catalog` | cli, mcp, api |
-| `tei` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `tei` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `tei` | `server.health` | false | false |  | `void` | cli, mcp, api |
 | `tei` | `server.info` | false | false |  | `Info` | cli, mcp, api |
@@ -887,7 +801,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `unifi` | `firewall.zones.get` | false | false | `site_id*: string`<br>`firewall_zone_id*: string` | `FirewallZone` | cli, mcp, api |
 | `unifi` | `firewall.zones.list` | false | false | `site_id*: string` | `Page` | cli, mcp, api |
 | `unifi` | `firewall.zones.update` | false | true | `site_id*: string`<br>`firewall_zone_id*: string` | `FirewallZone` | cli, mcp, api |
-| `unifi` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `unifi` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `unifi` | `hotspot.vouchers.create` | false | true | `site_id*: string` | `Voucher` | cli, mcp, api |
 | `unifi` | `hotspot.vouchers.delete` | false | true | `site_id*: string`<br>`filter: string` | `Confirmation` | cli, mcp, api |
@@ -928,41 +841,39 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `unifi` | `wifi.broadcasts.list` | false | false | `site_id*: string` | `Page` | cli, mcp, api |
 | `unifi` | `wifi.broadcasts.update` | false | true | `site_id*: string`<br>`wifi_broadcast_id*: string` | `WifiBroadcast` | cli, mcp, api |
 | `unifi` | `wifi.update` | false | true | `site_id*: string`<br>`wifi_id*: string` | `Value` | cli, mcp, api |
-| `unraid` | `disk.list` | false | false |  | `Vec<DiskInfo>` | cli, mcp, api |
-| `unraid` | `docker.list` | false | false |  | `Vec<DockerContainer>` | cli, mcp, api |
+| `unraid` | `disk.list` | false | false |  | `Vec&lt;DiskInfo&gt;` | cli, mcp, api |
+| `unraid` | `docker.list` | false | false |  | `Vec&lt;DockerContainer&gt;` | cli, mcp, api |
 | `unraid` | `docker.restart` | false | true | `id*: string` | `void` | cli, mcp, api |
 | `unraid` | `docker.start` | false | true | `id*: string` | `void` | cli, mcp, api |
 | `unraid` | `docker.stop` | false | true | `id*: string` | `void` | cli, mcp, api |
 | `unraid` | `flash.backup` | false | true |  | `{ ok: true }` | cli, mcp, api |
 | `unraid` | `flash.status` | false | false |  | `FlashStatus` | cli, mcp, api |
-| `unraid` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `unraid` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `unraid` | `log.read` | false | false | `path*: string`<br>`lines: integer` | `{ content: string }` | cli, mcp, api |
 | `unraid` | `network.list` | false | false |  | `NetworkInfo` | cli, mcp, api |
 | `unraid` | `notification.archive` | false | true | `id*: string` | `{ ok: true, id: string }` | cli, mcp, api |
 | `unraid` | `notification.create` | false | false | `title*: string`<br>`description: string`<br>`importance: string`<br>`type: string` | `{ ok: true }` | cli, mcp, api |
-| `unraid` | `notification.list` | false | false |  | `Vec<NotificationInfo>` | cli, mcp, api |
+| `unraid` | `notification.list` | false | false |  | `Vec&lt;NotificationInfo&gt;` | cli, mcp, api |
 | `unraid` | `parity.check-cancel` | false | true |  | `{ ok: true }` | cli, mcp, api |
 | `unraid` | `parity.check-pause` | false | false |  | `{ ok: true }` | cli, mcp, api |
 | `unraid` | `parity.check-start` | false | false | `correcting: bool` | `{ ok: true }` | cli, mcp, api |
-| `unraid` | `parity.history` | false | false |  | `Vec<ParityHistoryEntry>` | cli, mcp, api |
-| `unraid` | `plugin.list` | false | false |  | `Vec<Plugin>` | cli, mcp, api |
+| `unraid` | `parity.history` | false | false |  | `Vec&lt;ParityHistoryEntry&gt;` | cli, mcp, api |
+| `unraid` | `plugin.list` | false | false |  | `Vec&lt;Plugin&gt;` | cli, mcp, api |
 | `unraid` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
-| `unraid` | `share.list` | false | false |  | `Vec<Share>` | cli, mcp, api |
+| `unraid` | `share.list` | false | false |  | `Vec&lt;Share&gt;` | cli, mcp, api |
 | `unraid` | `system.array` | false | false |  | `ArrayStatus` | cli, mcp, api |
 | `unraid` | `system.info` | false | false |  | `SystemInfo` | cli, mcp, api |
 | `unraid` | `system.metrics` | false | false |  | `SystemMetrics` | cli, mcp, api |
 | `unraid` | `system.online` | false | false |  | `object: { online: bool }` | cli, mcp, api |
 | `unraid` | `ups.config` | false | false |  | `UpsConfig` | cli, mcp, api |
-| `unraid` | `ups.devices` | false | false |  | `Vec<UpsDevice>` | cli, mcp, api |
-| `unraid` | `vm.list` | false | false |  | `Vec<VmInfo>` | cli, mcp, api |
+| `unraid` | `ups.devices` | false | false |  | `Vec&lt;UpsDevice&gt;` | cli, mcp, api |
+| `unraid` | `vm.list` | false | false |  | `Vec&lt;VmInfo&gt;` | cli, mcp, api |
 | `unraid` | `vm.pause` | false | true | `id*: string` | `{ ok: true, id: string }` | cli, mcp, api |
 | `unraid` | `vm.resume` | false | false | `id*: string` | `{ ok: true, id: string }` | cli, mcp, api |
 | `unraid` | `vm.start` | false | true | `id*: string` | `{ ok: true, id: string }` | cli, mcp, api |
 | `unraid` | `vm.stop` | false | true | `id*: string` | `{ ok: true, id: string }` | cli, mcp, api |
 | `uptime-kuma` | `contract.status` | false | false |  | `UptimeKumaResponse` | cli, mcp, api |
 | `uptime-kuma` | `heartbeat.list` | false | false | `monitor_id*: integer`<br>`hours: integer` | `UptimeKumaResponse` | cli, mcp, api |
-| `uptime-kuma` | `help` | true | false |  | `HelpPayload` | cli, mcp, api |
 | `uptime-kuma` | `help` | false | false |  | `Catalog` | cli, mcp, api |
 | `uptime-kuma` | `monitor.create` | false | true | `config*: object` | `UptimeKumaResponse` | cli, mcp, api |
 | `uptime-kuma` | `monitor.delete` | false | true | `id*: integer` | `UptimeKumaResponse` | cli, mcp, api |
@@ -974,7 +885,6 @@ This is a global inventory, not the active runtime exposure or authorization pol
 | `uptime-kuma` | `notification.add` | false | true | `config*: object` | `UptimeKumaResponse` | cli, mcp, api |
 | `uptime-kuma` | `notification.list` | false | false |  | `UptimeKumaResponse` | cli, mcp, api |
 | `uptime-kuma` | `notification.test` | false | true | `notification_id*: integer` | `UptimeKumaResponse` | cli, mcp, api |
-| `uptime-kuma` | `schema` | true | false | `action*: string` | `ActionSpec` | cli, mcp, api |
 | `uptime-kuma` | `schema` | false | false | `action*: string` | `Schema` | cli, mcp, api |
 | `uptime-kuma` | `server.health` | false | false |  | `null` | cli, mcp, api |
 | `uptime-kuma` | `status.summary` | false | false |  | `UptimeKumaResponse` | cli, mcp, api |

@@ -1,6 +1,7 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*.*.*'
@@ -11,6 +12,7 @@ concurrency:
 
 permissions:
   contents: write
+  packages: write
 
 env:
   CARGO_INCREMENTAL: "0"
@@ -34,16 +36,27 @@ jobs:
 
   build:
     name: Build (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     needs: frontend-assets
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
             use-cross: false
+            binary: lab
+            archive: lab-x86_64-unknown-linux-gnu.tar.gz
           - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
             use-cross: true
+            binary: lab
+            archive: lab-aarch64-unknown-linux-gnu.tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use-cross: false
+            binary: lab.exe
+            archive: lab-x86_64-pc-windows-msvc.zip
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -56,34 +69,86 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Install cross
-        if: matrix.use-cross
+        if: matrix.use-cross == true
         uses: taiki-e/install-action@cross
 
       - name: Build with cross
-        if: matrix.use-cross
+        if: matrix.use-cross == true
         run: cross build --workspace --all-features --release --target ${{ matrix.target }}
 
       - name: Build natively
-        if: ${{ !matrix.use-cross }}
+        if: matrix.use-cross != true
         run: cargo build --workspace --all-features --release --target ${{ matrix.target }}
 
-      - name: Package
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
         run: |
           set -euo pipefail
           mkdir -p dist
-          cp "target/${{ matrix.target }}/release/lab" "dist/lab"
-          tar -C dist -czf "lab-${{ matrix.target }}.tar.gz" lab
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
+          tar -C dist -czf "${{ matrix.archive }}" "${{ matrix.binary }}"
+          sha256sum "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256"
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
+          Compress-Archive -Path "dist/${{ matrix.binary }}" -DestinationPath "${{ matrix.archive }}" -Force
+          $hash = (Get-FileHash "${{ matrix.archive }}" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  ${{ matrix.archive }}" | Out-File -FilePath "${{ matrix.archive }}.sha256" -Encoding ascii
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: lab-${{ matrix.target }}
-          path: lab-${{ matrix.target }}.tar.gz
+          path: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256
           if-no-files-found: error
+
+  container:
+    name: Container image
+    needs: frontend-assets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: gateway-admin-out
+          path: apps/gateway-admin/out
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GitHub Container Registry
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build container image
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: config/Dockerfile
+          push: false
+          tags: lab:release-dry-run
+      - name: Build and push container image
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: config/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}:latest
 
   release:
     name: Create Release
-    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, container]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -92,5 +157,9 @@ jobs:
           merge-multiple: true
       - uses: softprops/action-gh-release@v2
         with:
-          files: lab-*.tar.gz
+          files: |
+            lab-*.tar.gz
+            lab-*.tar.gz.sha256
+            lab-*.zip
+            lab-*.zip.sha256
           generate_release_notes: true

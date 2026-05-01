@@ -157,7 +157,7 @@
     "surfaces": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "default_port": null,
@@ -409,7 +409,7 @@
     "surfaces": {
       "cli": true,
       "mcp": true,
-      "api": true,
+      "api": false,
       "web_ui": false
     },
     "default_port": null,

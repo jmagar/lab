@@ -11,6 +11,14 @@ check:
 test:
     cargo nextest run --workspace --all-features
 
+# Regenerate code-owned documentation inventories
+docs-generate:
+    cargo run --package lab@0.12.1 --all-features -- docs generate
+
+# Verify generated documentation inventories are fresh
+docs-check:
+    cargo run --package lab@0.12.1 --all-features -- docs check
+
 # Run integration tests (requires running services)
 test-integration:
     cargo nextest run --workspace --all-features -- --ignored

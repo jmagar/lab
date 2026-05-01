@@ -14,7 +14,7 @@
     "required": false,
     "secret": true,
     "description": "HMAC key for permission outcome signing; auto-generated if absent",
-    "example": "",
+    "example": "<lab_acp_hmac_secret>",
     "default_port": null
   },
   {
@@ -32,7 +32,7 @@
     "required": false,
     "secret": true,
     "description": "Optional pre-authenticated AdGuard Home session cookie",
-    "example": "agh_session=...",
+    "example": "<adguard_session_cookie>",
     "default_port": 3000
   },
   {
@@ -59,7 +59,7 @@
     "required": false,
     "secret": true,
     "description": "Bearer token if behind auth proxy",
-    "example": "abc123...",
+    "example": "<apprise_token>",
     "default_port": 8000
   },
   {
@@ -77,7 +77,7 @@
     "required": true,
     "secret": true,
     "description": "API key for authentication (X-API-Key header)",
-    "example": "arck_xxx",
+    "example": "<arcane_api_key>",
     "default_port": 3000
   },
   {
@@ -122,7 +122,7 @@
     "required": false,
     "secret": true,
     "description": "Optional Dozzle jwt session cookie",
-    "example": "jwt=...",
+    "example": "<dozzle_session_cookie>",
     "default_port": null
   },
   {
@@ -167,7 +167,7 @@
     "required": false,
     "secret": true,
     "description": "Optional JWT bearer token for Glances",
-    "example": "jwt...",
+    "example": "<glances_token>",
     "default_port": 61208
   },
   {
@@ -185,7 +185,7 @@
     "required": false,
     "secret": true,
     "description": "App token used by message.send (overrides GOTIFY_TOKEN for sending)",
-    "example": "A1b2C3d4E5...",
+    "example": "<gotify_app_token>",
     "default_port": 80
   },
   {
@@ -194,7 +194,7 @@
     "required": false,
     "secret": true,
     "description": "Client token used by message/app/client management actions (overrides GOTIFY_TOKEN)",
-    "example": "A1b2C3d4E5...",
+    "example": "<gotify_client_token>",
     "default_port": 80
   },
   {
@@ -203,7 +203,7 @@
     "required": false,
     "secret": true,
     "description": "Token for Gotify API access; used as fallback when scoped tokens are absent",
-    "example": "A1b2C3d4E5...",
+    "example": "<gotify_token>",
     "default_port": 80
   },
   {
@@ -221,7 +221,7 @@
     "required": true,
     "secret": true,
     "description": "Immich API key",
-    "example": "immich_api_key",
+    "example": "<immich_api_key>",
     "default_port": 2283
   },
   {
@@ -257,7 +257,7 @@
     "required": true,
     "secret": true,
     "description": "REST API token from the Linkding Settings page",
-    "example": "abc123def456...",
+    "example": "<linkding_token>",
     "default_port": 9090
   },
   {
@@ -329,7 +329,7 @@
     "required": true,
     "secret": true,
     "description": "Subsonic token salt",
-    "example": "randomsalt",
+    "example": "<navidrome_salt>",
     "default_port": 4533
   },
   {
@@ -383,7 +383,7 @@
     "required": true,
     "secret": true,
     "description": "Neo4j password",
-    "example": "change-me",
+    "example": "<neo4j_password>",
     "default_port": 7687
   },
   {
@@ -455,7 +455,7 @@
     "required": true,
     "secret": true,
     "description": "OpenACP bearer token or scoped JWT",
-    "example": "0123456789abcdef...",
+    "example": "<openacp_token>",
     "default_port": 21420
   },
   {
@@ -500,7 +500,7 @@
     "required": true,
     "secret": true,
     "description": "API key from Overseerr Settings → General",
-    "example": "MTY4NzA...",
+    "example": "<overseerr_api_key>",
     "default_port": 5055
   },
   {
@@ -518,7 +518,7 @@
     "required": true,
     "secret": true,
     "description": "API token from Account → API Token",
-    "example": "abc123def456...",
+    "example": "<paperless_token>",
     "default_port": 8000
   },
   {
@@ -536,7 +536,7 @@
     "required": true,
     "secret": true,
     "description": "Pi-hole web/API password",
-    "example": "change-me",
+    "example": "<pihole_password>",
     "default_port": 80
   },
   {
@@ -545,7 +545,7 @@
     "required": false,
     "secret": true,
     "description": "Optional Pi-hole TOTP code for two-factor auth",
-    "example": "123456",
+    "example": "<pihole_totp>",
     "default_port": 80
   },
   {
@@ -581,7 +581,7 @@
     "required": true,
     "secret": true,
     "description": "Prowlarr API key (Settings → General → API Key)",
-    "example": "abc123def456",
+    "example": "<prowlarr_api_key>",
     "default_port": 9696
   },
   {
@@ -599,7 +599,7 @@
     "required": true,
     "secret": true,
     "description": "WebUI password (username defaults to 'admin')",
-    "example": "adminadmin",
+    "example": "<qbittorrent_password>",
     "default_port": 8080
   },
   {
@@ -608,7 +608,7 @@
     "required": false,
     "secret": true,
     "description": "Pre-obtained session cookie (SID=<value>) — skips login handshake",
-    "example": "SID=abc123def456",
+    "example": "<qbittorrent_sid>",
     "default_port": 8080
   },
   {
@@ -635,7 +635,7 @@
     "required": false,
     "secret": true,
     "description": "API key (only if Qdrant is auth-protected)",
-    "example": "abc123...",
+    "example": "<qdrant_api_key>",
     "default_port": 6333
   },
   {
@@ -653,7 +653,7 @@
     "required": true,
     "secret": true,
     "description": "API key from Settings → General",
-    "example": "abc123def456...",
+    "example": "<radarr_api_key>",
     "default_port": 7878
   },
   {
@@ -671,7 +671,7 @@
     "required": true,
     "secret": true,
     "description": "API key from SABnzbd Config → General",
-    "example": "abc123def456...",
+    "example": "<sabnzbd_api_key>",
     "default_port": 8080
   },
   {
@@ -689,7 +689,7 @@
     "required": false,
     "secret": true,
     "description": "Optional bearer token or reverse-proxy token",
-    "example": "abc123...",
+    "example": "<scrutiny_api_key>",
     "default_port": 8080
   },
   {
@@ -698,7 +698,7 @@
     "required": false,
     "secret": true,
     "description": "Alias for optional bearer token or reverse-proxy token",
-    "example": "abc123...",
+    "example": "<scrutiny_token>",
     "default_port": 8080
   },
   {
@@ -716,7 +716,7 @@
     "required": true,
     "secret": true,
     "description": "Sonarr API key (Settings → General → API Key)",
-    "example": "abc123def456",
+    "example": "<sonarr_api_key>",
     "default_port": 8989
   },
   {
@@ -734,7 +734,7 @@
     "required": true,
     "secret": true,
     "description": "Tailscale API access token (tskey-api-*)",
-    "example": "tskey-api-xxxxx",
+    "example": "<tailscale_api_key>",
     "default_port": null
   },
   {
@@ -779,7 +779,7 @@
     "required": false,
     "secret": true,
     "description": "Bearer token (only when launched with --api-key)",
-    "example": "abc123...",
+    "example": "<tei_api_key>",
     "default_port": 80
   },
   {
@@ -806,7 +806,7 @@
     "required": true,
     "secret": true,
     "description": "API key from UniFi Integrations",
-    "example": "abc123def456...",
+    "example": "<unifi_api_key>",
     "default_port": 443
   },
   {
@@ -833,7 +833,7 @@
     "required": true,
     "secret": true,
     "description": "Unraid API key (X-API-Key header)",
-    "example": "your-api-key",
+    "example": "<unraid_api_key>",
     "default_port": 31337
   },
   {

@@ -22,6 +22,13 @@ Node role is resolved from:
 
 If `[node].controller` is missing, the local host resolves itself as the controller. Legacy `[device].master` remains a compatibility fallback.
 
+Container deployments must resolve the host machine identity, not Docker's
+ephemeral container hostname. The bundled Compose file mounts host
+`/etc/hostname` at `/run/host/hostname`; `lab serve` checks that file before
+falling back to the process `HOSTNAME`. Operators can also set
+`LAB_HOST_HOSTNAME` explicitly for runtimes that cannot mount the host hostname
+file.
+
 Example:
 
 ```toml

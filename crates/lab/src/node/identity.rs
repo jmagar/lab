@@ -5,7 +5,54 @@ use anyhow::Result;
 
 use crate::config::{NodeRole, ResolvedNodeRuntime};
 
+const HOST_HOSTNAME_PATH: &str = "/run/host/hostname";
+
 pub fn resolve_local_hostname() -> Result<String> {
+    if let Some(value) = std::env::var("LAB_HOST_HOSTNAME")
+        .ok()
+        .and_then(|value| normalize_host_identifier(&value))
+    {
+        return Ok(value);
+    }
+
+    match fs::read_to_string(HOST_HOSTNAME_PATH) {
+        Ok(value) => {
+            if let Some(normalized) = normalize_host_identifier(&value) {
+                return Ok(normalized);
+            }
+            tracing::debug!(
+                surface = "node",
+                service = "identity",
+                action = "hostname.resolve",
+                event = "identity.cache_miss",
+                source = HOST_HOSTNAME_PATH,
+                "host hostname file was empty after normalization",
+            );
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            tracing::debug!(
+                surface = "node",
+                service = "identity",
+                action = "hostname.resolve",
+                event = "identity.cache_miss",
+                source = HOST_HOSTNAME_PATH,
+                "host hostname file was not mounted",
+            );
+        }
+        Err(error) => {
+            tracing::warn!(
+                surface = "node",
+                service = "identity",
+                action = "hostname.resolve",
+                event = "identity.fetch_failure",
+                kind = "identity_fetch_failed",
+                source = HOST_HOSTNAME_PATH,
+                error = %error,
+                "host hostname fetch failed",
+            );
+        }
+    }
+
     if let Some(value) = std::env::var("HOSTNAME")
         .ok()
         .or_else(|| std::env::var("COMPUTERNAME").ok())
@@ -13,6 +60,7 @@ pub fn resolve_local_hostname() -> Result<String> {
     {
         return Ok(value);
     }
+
     tracing::debug!(
         surface = "node",
         service = "identity",
@@ -138,6 +186,8 @@ mod tests {
     fn hostname_resolution_logs_misses_and_fetch_failures() {
         let source = include_str!("identity.rs");
         for field in [
+            "LAB_HOST_HOSTNAME",
+            "HOST_HOSTNAME_PATH",
             "event = \"identity.cache_miss\"",
             "event = \"identity.fetch_failure\"",
             "kind = \"identity_fetch_failed\"",

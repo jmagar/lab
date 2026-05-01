@@ -1,5 +1,6 @@
 //! Deterministic generated documentation artifacts.
 
+mod action_catalog;
 mod artifacts;
 mod projection;
 mod render;
