@@ -116,6 +116,10 @@ Stable kinds emitted by `crates/lab/src/config/env_merge.rs` (the shared
 - `commit_rollback_failed` — `setup.draft.commit` attempted a rollback to
   the most recent backup and the rollback itself failed. The envelope names
   the backup path so an operator can recover manually. HTTP 500.
+- `audit_timeout` — `setup.draft.commit` aborted because the inline
+  `doctor.audit.full` call did not return within `AUDIT_TIMEOUT` (30s).
+  Caller should retry after fixing whichever service probe is hanging
+  (typically a misconfigured `*_URL` for an unreachable host). HTTP 504.
 
 Removed from drafts (not used in code; do not reintroduce):
 `merge_locked_by_other`, `merge_concurrent_write`, `backup_failed_disk_full`,

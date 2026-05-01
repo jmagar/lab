@@ -9,7 +9,14 @@ use lab_apis::core::action::ActionSpec;
 use lab_apis::setup::{CommitOutcome, DraftEntry, SetupClient};
 use serde_json::{Value, json};
 
+use std::time::Duration;
+
 use crate::config::env_merge::{self, EnvEntry, MergeRequest, snapshot_mtime};
+
+/// Maximum elapsed time for the inline doctor.audit.full call inside
+/// setup.draft.commit. A misconfigured probe (network hang, dead host)
+/// will return audit_timeout instead of stalling the wizard forever.
+const AUDIT_TIMEOUT: Duration = Duration::from_secs(30);
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::{action_schema, help_payload, to_json};
 use crate::registry::{build_default_registry, service_meta};
@@ -218,7 +225,22 @@ async fn draft_commit_action(params: &Value) -> Result<Value, ToolError> {
 
     // Run doctor.audit.full inline. The orchestrator-exception clause in
     // dispatch/CLAUDE.md permits Bootstrap services to invoke peer dispatch.
-    let audit = crate::dispatch::doctor::dispatch("audit.full", json!({})).await?;
+    // Bounded by AUDIT_TIMEOUT so a hung service probe cannot stall the
+    // wizard indefinitely (doctor's Semaphore(5) bounds concurrency, not
+    // total elapsed time).
+    let audit_call = crate::dispatch::doctor::dispatch("audit.full", json!({}));
+    let audit = match tokio::time::timeout(AUDIT_TIMEOUT, audit_call).await {
+        Ok(result) => result?,
+        Err(_) => {
+            return Err(ToolError::Sdk {
+                sdk_kind: "audit_timeout".into(),
+                message: format!(
+                    "doctor.audit.full did not return within {}s",
+                    AUDIT_TIMEOUT.as_secs()
+                ),
+            });
+        }
+    };
     let (audit_pass_count, audit_total_count, all_pass) = audit_summary(&audit);
     if !all_pass {
         // Return the structured audit response inline (no preflight_failed wrap).
