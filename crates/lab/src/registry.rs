@@ -267,9 +267,18 @@ pub fn build_default_registry() -> ToolRegistry {
             dispatch: dispatch_fn!(crate::dispatch::doctor::dispatch),
         });
     }
-    // setup registration is deferred to Chunk E (Phase 3 API routes); see
-    // registry_and_router_service_sets_are_identical — registration must
-    // land in the same commit as the HTTP route group.
+    // setup is always-on (Bootstrap orchestrator; no feature flag).
+    {
+        let meta = lab_apis::setup::META;
+        reg.register(RegisteredService {
+            name: meta.name,
+            description: meta.description,
+            category: category_slug(meta.category),
+            status: "available",
+            actions: crate::dispatch::setup::ACTIONS,
+            dispatch: dispatch_fn!(crate::dispatch::setup::dispatch),
+        });
+    }
 
     reg.register(RegisteredService {
         name: "logs",
@@ -673,6 +682,7 @@ mod tests {
             s.insert("logs");
             s.insert(lab_apis::marketplace::META.name); // always-on
             s.insert(lab_apis::doctor::META.name); // always-on
+            s.insert(lab_apis::setup::META.name); // always-on
             s.insert(lab_apis::stash::META.name); // always-on
             #[cfg(feature = "radarr")]
             s.insert(lab_apis::radarr::META.name);

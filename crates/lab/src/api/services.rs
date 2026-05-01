@@ -19,6 +19,7 @@ pub mod extract;
 pub mod gateway;
 pub mod logs;
 pub mod marketplace;
+pub mod setup;
 pub mod stash;
 
 #[cfg(feature = "radarr")]
@@ -76,6 +77,9 @@ pub mod gotify;
 
 #[cfg(feature = "openai")]
 pub mod openai;
+
+#[cfg(feature = "notebooklm")]
+pub mod notebooklm;
 
 #[cfg(feature = "qdrant")]
 pub mod qdrant;

@@ -37,6 +37,9 @@ pub mod nodes;
 /// Static Labby web asset serving helpers.
 pub mod web;
 
+/// Host header validation Layer (DNS rebinding mitigation for v1).
+pub mod host_validation;
+
 /// Per-service HTTP route handlers (one module per service).
 pub mod services;
 

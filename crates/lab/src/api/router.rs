@@ -391,6 +391,15 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
             .nest("/extract", services::extract::routes(state.clone()))
             .nest("/marketplace", services::marketplace::routes(state.clone()))
             .nest("/doctor", services::doctor::routes(state.clone()))
+            // /setup is gated by host_validation_layer — non-loopback Host
+            // headers are rejected before reaching the dispatcher (DNS
+            // rebinding mitigation for the v1 unauthenticated wizard).
+            .nest(
+                "/setup",
+                services::setup::routes(state.clone()).layer(
+                    axum::middleware::from_fn(crate::api::host_validation::host_validation_layer),
+                ),
+            )
             .nest("/stash", services::stash::routes(state.clone()))
             .nest(
                 "/auth/allowed-emails",
@@ -458,6 +467,7 @@ fn build_v1_router(state: &AppState, api_auth_configured: bool) -> Router<AppSta
         mount_if_enabled!(v1, state, "overseerr", "overseerr", overseerr);
         mount_if_enabled!(v1, state, "gotify", "gotify", gotify);
         mount_if_enabled!(v1, state, "openai", "openai", openai);
+        mount_if_enabled!(v1, state, "notebooklm", "notebooklm", notebooklm);
         mount_if_enabled!(v1, state, "qdrant", "qdrant", qdrant);
         mount_if_enabled!(v1, state, "tei", "tei", tei);
         mount_if_enabled!(v1, state, "apprise", "apprise", apprise);
@@ -981,19 +991,33 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
         })
         .collect();
 
-    // Include common dev ports so browser clients on localhost:PORT work
-    // without explicit LAB_CORS_ORIGINS configuration (lab-3qn.19).
+    // Production loopback origins — always allowed.
+    // 8765 is the default lab serve port; both `127.0.0.1` and `localhost`
+    // are needed because some browsers resolve only one variant (lab-bg3e.3).
     let mut origins: Vec<HeaderValue> = vec![
         HeaderValue::from_static("http://localhost"),
-        HeaderValue::from_static("http://localhost:3000"),
-        HeaderValue::from_static("http://localhost:5173"),
-        HeaderValue::from_static("http://localhost:8080"),
+        HeaderValue::from_static("http://localhost:8765"),
         HeaderValue::from_static("http://127.0.0.1"),
-        HeaderValue::from_static("http://127.0.0.1:3000"),
-        HeaderValue::from_static("http://127.0.0.1:5173"),
-        HeaderValue::from_static("http://127.0.0.1:8080"),
+        HeaderValue::from_static("http://127.0.0.1:8765"),
         HeaderValue::from_static("http://[::1]"),
+        HeaderValue::from_static("http://[::1]:8765"),
     ];
+    // Dev ports (3000/5173/8080) are gated behind LAB_DEV_MODE=1 to prevent
+    // a malicious npm postinstall HTTP server (or rogue browser extension on
+    // those origins) from reading Setup API responses on a v1 unauthed lab
+    // (lab-bg3e.3 security hardening).
+    let dev_mode_enabled =
+        std::env::var("LAB_DEV_MODE").as_deref() == Ok("1");
+    if dev_mode_enabled {
+        origins.extend([
+            HeaderValue::from_static("http://localhost:3000"),
+            HeaderValue::from_static("http://localhost:5173"),
+            HeaderValue::from_static("http://localhost:8080"),
+            HeaderValue::from_static("http://127.0.0.1:3000"),
+            HeaderValue::from_static("http://127.0.0.1:5173"),
+            HeaderValue::from_static("http://127.0.0.1:8080"),
+        ]);
+    }
     origins.extend(env_origins);
 
     // Explicit allowlist instead of Any — prevents arbitrary headers from
