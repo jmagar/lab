@@ -106,3 +106,10 @@ mcp-token:
         echo "✓ appended LAB_MCP_HTTP_TOKEN to .env"
     fi
     echo "  $token"
+
+# Smoke-test the lab-bg3e.3 setup wizard end-to-end against a throw-away
+# LAB_HOME. Used by CI to verify first-run detection + draft commit cycle
+# without touching the operator's real ~/.lab/.
+smoke-setup:
+    rm -rf /tmp/lab-smoke-home
+    LAB_HOME=/tmp/lab-smoke-home cargo run --all-features -- setup --no-browser --smoke

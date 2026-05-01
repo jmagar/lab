@@ -26,6 +26,8 @@ extract/
 
 ## `extract.apply` — `.env` write algorithm
 
+The 8-rule algorithm below is **implemented** in `crates/lab/src/config/env_merge.rs` (lab-bg3e.3). Both `extract.apply` (when implemented) and `setup.draft.commit` delegate to that module — do not re-implement.
+
 `extract.apply` is marked **`destructive: true`** because it mutates `~/.lab/.env`. The writer follows these 8 rules, no exceptions:
 
 1. **Backup first.** Copy `.env` → `.env.bak.<timestamp>` before any write.

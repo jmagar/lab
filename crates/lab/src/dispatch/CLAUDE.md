@@ -226,3 +226,23 @@ Reserve `HTTP` for actual transport concerns such as:
 - `HttpClient`
 - upstream HTTP requests
 - HTTP status codes
+
+
+## Orchestrator Exception (lab-bg3e.3)
+
+`Category::Bootstrap` services may invoke peer dispatch actions when the
+operation is intrinsically composite. The current sanctioned cross-call:
+
+- `setup.draft.commit` invokes `doctor::dispatch("audit.full", _)` to gate
+  the merge of `.env.draft` into `.env` on a clean health audit.
+
+Dependency direction is one-way:
+
+- setup may depend on doctor and extract.
+- doctor and extract MUST NOT depend on setup.
+
+Surface adapters (CLI/MCP/HTTP) MUST NOT chain dispatch calls themselves —
+that work belongs in the shared dispatch layer so all three surfaces share
+identical orchestration semantics. If you find yourself reaching into
+another service from a surface module, move the orchestration into
+`dispatch/` instead.

@@ -90,6 +90,40 @@ The following kinds are emitted by the `stash` dispatch service.
 - `export_target_not_empty` — the output directory for `component.export` is non-empty and `force` is not set. HTTP 409.
 - `ambiguous_kind` — component kind could not be auto-detected from the source path and no `kind` override was provided. HTTP 422.
 
+### Setup / env_merge kinds (lab-bg3e.3)
+
+Stable kinds emitted by `crates/lab/src/config/env_merge.rs` (the shared
+`.env` merge primitive used by `setup.draft.commit` and, later,
+`extract.apply`). Surfaced through `MergeError::kind()` and pass-through to
+`ToolError::Sdk { sdk_kind }` envelopes.
+
+- `merge_temp_create` — could not create the same-directory `tempfile` used
+  for atomic write. Filesystem permission or quota issue on the parent dir.
+  HTTP 500.
+- `merge_sync_failed` — `File::sync_all` on the temp file returned an error
+  before persist. Indicates an I/O or storage-backend failure mid-flush.
+  HTTP 500.
+- `merge_persist_cross_fs` — `tempfile::persist()` was rejected because the
+  temp and target are on different filesystems (EXDEV). The merge module
+  always allocates the temp inside the target's parent dir, so this should
+  not surface in practice — emit only as a defensive signal. HTTP 500.
+- `merge_write_conflict { reason }` — the merge aborted before persist
+  because the target's mtime changed since the caller's snapshot
+  (`reason: "mtime_skew"`) or, in v2, fs2 lock contention
+  (`reason: "lock_contention_v2"`). v1 only emits `mtime_skew`. HTTP 409.
+- `write_failed { reason }` — generic post-temp write failure; `reason` is
+  one of `storage_full`, `permission_denied`, or `other(os_msg)`. HTTP 500.
+- `commit_rollback_failed` — `setup.draft.commit` attempted a rollback to
+  the most recent backup and the rollback itself failed. The envelope names
+  the backup path so an operator can recover manually. HTTP 500.
+
+Removed from drafts (not used in code; do not reintroduce):
+`merge_locked_by_other`, `merge_concurrent_write`, `backup_failed_disk_full`,
+`preflight_failed`. The first two collapse into `merge_write_conflict`; the
+third into `write_failed`; the fourth is unnecessary because
+`setup.draft.commit` returns the doctor.audit.full body inline on failure
+instead of double-wrapping.
+
 ### Marketplace artifact update kinds
 
 - `git_not_available` — `artifact.update.check` could not spawn `git`. Install git on the controller host to use update checking. HTTP 500.
