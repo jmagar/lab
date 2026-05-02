@@ -230,6 +230,7 @@ pub async fn export_component(
         .collect::<Result<Vec<_>, _>>()?;
 
     let file_count = file_reads.len();
+    #[cfg(unix)]
     let unix_mode = revision.unix_mode;
     let output_path_clone = output_path.clone();
     let rev_id_clone = revision.id.clone();

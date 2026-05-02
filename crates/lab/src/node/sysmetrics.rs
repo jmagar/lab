@@ -124,55 +124,58 @@ fn local_ips(node_id: &str) -> Vec<String> {
 }
 
 /// Read the first CPU temperature from `/sys/class/thermal` on Linux.
+#[cfg(target_os = "linux")]
 fn read_cpu_temp(node_id: &str) -> Option<f32> {
-    #[cfg(target_os = "linux")]
-    {
-        use std::fs;
-        match fs::read_dir("/sys/class/thermal") {
-            Ok(entries) => {
-                let mut zones: Vec<_> = entries
-                    .flatten()
-                    .filter(|e| {
-                        e.file_name()
-                            .to_str()
-                            .is_some_and(|n| n.starts_with("thermal_zone"))
-                    })
-                    .collect();
-                zones.sort_by_key(|e| e.file_name());
-                for entry in zones {
-                    let path = entry.path();
-                    let zone_type = fs::read_to_string(path.join("type"))
-                        .unwrap_or_default()
-                        .trim()
-                        .to_ascii_lowercase();
-                    // Only cpu/acpi/pkg zones; skip non-thermal sensors
-                    if !zone_type.is_empty()
-                        && !["cpu", "x86", "acpi", "pkg", "tzone"]
-                            .iter()
-                            .any(|kw| zone_type.contains(kw))
-                    {
-                        continue;
-                    }
-                    if let Ok(raw) = fs::read_to_string(path.join("temp")) {
-                        if let Ok(millidegrees) = raw.trim().parse::<f32>() {
-                            let celsius = millidegrees / 1000.0;
-                            if celsius > 0.0 && celsius < 200.0 {
-                                return Some(celsius);
-                            }
+    use std::fs;
+    match fs::read_dir("/sys/class/thermal") {
+        Ok(entries) => {
+            let mut zones: Vec<_> = entries
+                .flatten()
+                .filter(|e| {
+                    e.file_name()
+                        .to_str()
+                        .is_some_and(|n| n.starts_with("thermal_zone"))
+                })
+                .collect();
+            zones.sort_by_key(|e| e.file_name());
+            for entry in zones {
+                let path = entry.path();
+                let zone_type = fs::read_to_string(path.join("type"))
+                    .unwrap_or_default()
+                    .trim()
+                    .to_ascii_lowercase();
+                // Only cpu/acpi/pkg zones; skip non-thermal sensors
+                if !zone_type.is_empty()
+                    && !["cpu", "x86", "acpi", "pkg", "tzone"]
+                        .iter()
+                        .any(|kw| zone_type.contains(kw))
+                {
+                    continue;
+                }
+                if let Ok(raw) = fs::read_to_string(path.join("temp")) {
+                    if let Ok(millidegrees) = raw.trim().parse::<f32>() {
+                        let celsius = millidegrees / 1000.0;
+                        if celsius > 0.0 && celsius < 200.0 {
+                            return Some(celsius);
                         }
                     }
                 }
             }
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
-                warn_collection_failure(
-                    node_id,
-                    "cpu_temperature",
-                    &format!("failed to read thermal zones: {error}"),
-                );
-            }
-            Err(_) => {}
         }
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+            warn_collection_failure(
+                node_id,
+                "cpu_temperature",
+                &format!("failed to read thermal zones: {error}"),
+            );
+        }
+        Err(_) => {}
     }
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_cpu_temp(_node_id: &str) -> Option<f32> {
     None
 }
 
