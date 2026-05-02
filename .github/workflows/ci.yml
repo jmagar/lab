@@ -132,6 +132,8 @@ jobs:
           path: apps/gateway-admin/out
       - uses: dtolnay/rust-toolchain@1.94.1
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ runner.os != 'Windows' }}
       - run: cargo build --workspace --all-features --release
       - name: Verify release binary
         if: runner.os != 'Windows'
