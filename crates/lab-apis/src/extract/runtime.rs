@@ -486,6 +486,62 @@ mod tests {
     }
 
     #[test]
+    fn docker_ps_filters_recent_supported_containers() {
+        let containers = parse_docker_ps_lines(
+            r#"{"Names":"jellyfin","Image":"jellyfin/jellyfin:latest"}
+{"Names":"immich-server","Image":"ghcr.io/immich-app/immich-server:release"}
+{"Names":"media-navidrome","Image":"deluan/navidrome:latest"}
+{"Names":"uptime-kuma","Image":"louislam/uptime-kuma:1"}
+{"Names":"adguard","Image":"adguard/adguardhome:latest"}
+{"Names":"pihole","Image":"pihole/pihole:latest"}
+{"Names":"freshrss","Image":"freshrss/freshrss:latest"}
+{"Names":"node-exporter","Image":"prom/node-exporter:latest"}"#,
+        )
+        .expect("parse docker ps");
+
+        assert_eq!(
+            containers,
+            vec![
+                RuntimeContainerSummary {
+                    service: "jellyfin".to_owned(),
+                    container_name: "jellyfin".to_owned(),
+                    image: Some("jellyfin/jellyfin:latest".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "immich".to_owned(),
+                    container_name: "immich-server".to_owned(),
+                    image: Some("ghcr.io/immich-app/immich-server:release".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "navidrome".to_owned(),
+                    container_name: "media-navidrome".to_owned(),
+                    image: Some("deluan/navidrome:latest".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "uptime_kuma".to_owned(),
+                    container_name: "uptime-kuma".to_owned(),
+                    image: Some("louislam/uptime-kuma:1".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "adguard".to_owned(),
+                    container_name: "adguard".to_owned(),
+                    image: Some("adguard/adguardhome:latest".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "pihole".to_owned(),
+                    container_name: "pihole".to_owned(),
+                    image: Some("pihole/pihole:latest".to_owned()),
+                },
+                RuntimeContainerSummary {
+                    service: "freshrss".to_owned(),
+                    container_name: "freshrss".to_owned(),
+                    image: Some("freshrss/freshrss:latest".to_owned()),
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn tailscale_lookup_rejects_malformed_ipv4_values() {
         assert_eq!(parse_tailscale_ipv4("1.2.3\n"), None);
         assert_eq!(

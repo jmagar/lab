@@ -759,6 +759,16 @@ fn preferred_container_port(service: &str) -> Option<u16> {
         "tautulli" => Some(8181),
         "overseerr" => Some(5055),
         "linkding" => Some(9090),
+        "jellyfin" => Some(8096),
+        "immich" => Some(2283),
+        "navidrome" => Some(4533),
+        "dozzle" => Some(8080),
+        "scrutiny" => Some(8080),
+        "glances" => Some(61208),
+        "uptime_kuma" => Some(3001),
+        "adguard" => Some(3000),
+        "pihole" => Some(80),
+        "freshrss" => Some(80),
         _ => None,
     }
 }
@@ -793,6 +803,16 @@ fn default_env_field(service: &str) -> &'static str {
         "tautulli" => "TAUTULLI_API_KEY",
         "overseerr" => "OVERSEERR_API_KEY",
         "linkding" => "LINKDING_TOKEN",
+        "jellyfin" => "JELLYFIN_API_KEY",
+        "immich" => "IMMICH_API_KEY",
+        "navidrome" => "NAVIDROME_TOKEN",
+        "dozzle" => "DOZZLE_SESSION_COOKIE",
+        "scrutiny" => "SCRUTINY_API_KEY",
+        "glances" => "GLANCES_TOKEN",
+        "uptime_kuma" => "UPTIME_KUMA_PASSWORD",
+        "adguard" => "ADGUARD_PASSWORD",
+        "pihole" => "PIHOLE_PASSWORD",
+        "freshrss" => "FRESHRSS_API_PASSWORD",
         _ => "EXTRACT_SECRET",
     }
 }
@@ -1271,6 +1291,69 @@ mod tests {
 
         let port = choose_published_port(&details, None).expect("preferred port");
         assert_eq!(port.container_port, 32400);
+    }
+
+    #[test]
+    fn choose_published_port_covers_recent_service_defaults() {
+        for (service, expected_container_port) in [
+            ("jellyfin", 8096),
+            ("immich", 2283),
+            ("navidrome", 4533),
+            ("dozzle", 8080),
+            ("scrutiny", 8080),
+            ("glances", 61208),
+            ("uptime_kuma", 3001),
+            ("adguard", 3000),
+            ("pihole", 80),
+            ("freshrss", 80),
+        ] {
+            let details = RuntimeContainerDetails {
+                service: service.to_owned(),
+                container_name: service.to_owned(),
+                image: None,
+                published_ports: vec![
+                    PublishedPort {
+                        host_port: 22,
+                        container_port: 22,
+                        protocol: "tcp".to_owned(),
+                    },
+                    PublishedPort {
+                        host_port: expected_container_port,
+                        container_port: expected_container_port,
+                        protocol: "tcp".to_owned(),
+                    },
+                ],
+                mounts: vec![],
+            };
+
+            let port = choose_published_port(&details, None).expect("preferred port");
+            assert_eq!(
+                port.container_port, expected_container_port,
+                "{service} should prefer its runtime service port"
+            );
+        }
+    }
+
+    #[test]
+    fn default_env_fields_cover_recent_service_mappings() {
+        for (service, expected_env_field) in [
+            ("jellyfin", "JELLYFIN_API_KEY"),
+            ("immich", "IMMICH_API_KEY"),
+            ("navidrome", "NAVIDROME_TOKEN"),
+            ("dozzle", "DOZZLE_SESSION_COOKIE"),
+            ("scrutiny", "SCRUTINY_API_KEY"),
+            ("glances", "GLANCES_TOKEN"),
+            ("uptime_kuma", "UPTIME_KUMA_PASSWORD"),
+            ("adguard", "ADGUARD_PASSWORD"),
+            ("pihole", "PIHOLE_PASSWORD"),
+            ("freshrss", "FRESHRSS_API_PASSWORD"),
+        ] {
+            assert_eq!(
+                default_env_field(service),
+                expected_env_field,
+                "{service} should emit the documented credential env key"
+            );
+        }
     }
 
     #[test]

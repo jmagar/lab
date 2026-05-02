@@ -1,0 +1,52 @@
+[
+  {
+    "id": "codex-acp",
+    "name": "Codex CLI",
+    "version": "0.12.0",
+    "distribution": "npx",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@zed-industries/codex-acp@0.12.0"
+    ],
+    "env": {
+      "CODEX_HOME": "/home/lab/.lab/acp/codex-home"
+    },
+    "installed_at": "2026-05-01T16:56:38-04:00",
+    "sha256": null
+  },
+  {
+    "id": "claude-acp",
+    "name": "Claude Agent",
+    "version": "latest",
+    "distribution": "npx",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@agentclientprotocol/claude-agent-acp"
+    ],
+    "env": {
+      "CLAUDE_CONFIG_DIR": "/home/lab/.lab/acp/claude-home",
+      "LAB_SPAWN_DEPTH": "1"
+    },
+    "installed_at": "2026-05-01T16:56:38-04:00",
+    "sha256": null
+  },
+  {
+    "id": "gemini",
+    "name": "Gemini CLI",
+    "version": "0.40.0",
+    "distribution": "npx",
+    "command": "npx",
+    "args": [
+      "-y",
+      "@google/gemini-cli@0.40.0",
+      "--acp"
+    ],
+    "env": {
+      "GEMINI_CONFIG_DIR": "/home/lab/.gemini"
+    },
+    "installed_at": "2026-05-01T16:56:38-04:00",
+    "sha256": null
+  }
+]

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -355,7 +355,7 @@ struct ProviderLaunch {
     args: Vec<String>,
     /// Working directory override for the subprocess. `None` falls back to
     /// the session-level cwd from `StartSessionInput`.
-    cwd: Option<std::path::PathBuf>,
+    cwd: Option<PathBuf>,
     /// Per-provider env overrides merged on top of the global allowlist.
     env: std::collections::BTreeMap<String, String>,
 }
@@ -460,10 +460,7 @@ pub fn codex_provider_health() -> AcpProviderHealth {
     {
         true
     } else {
-        let probe = std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
-            .arg(&command)
-            .output();
-        probe.is_ok_and(|output| output.status.success())
+        command_available(&command)
     };
 
     AcpProviderHealth {
@@ -522,15 +519,71 @@ fn cached_command_lookup(command: &str) -> bool {
         }
     }
 
-    let probe = std::process::Command::new(if cfg!(windows) { "where" } else { "which" })
-        .arg(command)
-        .output();
-    let available = probe.is_ok_and(|output| output.status.success());
+    let available = command_exists_on_path(command);
 
     if let Ok(mut map) = cache.lock() {
         map.insert(command.to_string(), (Instant::now(), available));
     }
     available
+}
+
+fn command_exists_on_path(command: &str) -> bool {
+    if command.trim().is_empty() {
+        return false;
+    }
+
+    let Some(path_var) = std::env::var_os("PATH") else {
+        return false;
+    };
+
+    for dir in std::env::split_paths(&path_var) {
+        if command_exists_in_dir(&dir, command) {
+            return true;
+        }
+    }
+    false
+}
+
+fn command_exists_in_dir(dir: &Path, command: &str) -> bool {
+    #[cfg(windows)]
+    {
+        let pathext = std::env::var_os("PATHEXT")
+            .map(|value| {
+                value
+                    .to_string_lossy()
+                    .split(';')
+                    .filter(|ext| !ext.trim().is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect::<Vec<_>>()
+            })
+            .filter(|exts| !exts.is_empty())
+            .unwrap_or_else(|| {
+                vec![
+                    ".COM".to_string(),
+                    ".EXE".to_string(),
+                    ".BAT".to_string(),
+                    ".CMD".to_string(),
+                ]
+            });
+
+        if Path::new(command).extension().is_some() {
+            return dir.join(command).is_file();
+        }
+
+        pathext
+            .iter()
+            .any(|ext| dir.join(format!("{command}{ext}")).is_file())
+    }
+
+    #[cfg(not(windows))]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path: PathBuf = dir.join(command);
+        path.metadata()
+            .map(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
 }
 
 fn resolve_codex_launch() -> (String, Vec<String>) {
@@ -1812,7 +1865,7 @@ mod tests {
                 "value with spaces".into(),
                 "--quoted=\"x\"".into(),
             ],
-            cwd: Some(std::path::PathBuf::from("/work dir")),
+            cwd: Some(PathBuf::from("/work dir")),
             env: env.clone(),
             installed_at: "2026-04-30T00:00:00Z".into(),
             sha256: None,
