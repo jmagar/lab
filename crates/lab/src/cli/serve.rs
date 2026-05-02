@@ -916,7 +916,7 @@ async fn run_http(
     );
     let listener = bind_or_reclaim(&addr, port).await?;
     // Notify systemd that the socket is ready (sd_notify READY=1).
-    #[cfg(feature = "systemd")]
+    #[cfg(all(feature = "systemd", unix))]
     {
         if std::env::var_os("NOTIFY_SOCKET").is_some() {
             if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {

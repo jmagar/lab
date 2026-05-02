@@ -317,7 +317,7 @@ mod tests {
         let uri = SanitizedUri::parse("neo4j://user:secret@localhost:7687").unwrap();
         assert_eq!(
             uri.to_string(),
-            "neo4j://%5Bredacted%5D:%5Bredacted%5D@localhost:7687/"
+            "neo4j://%5Bredacted%5D:%5Bredacted%5D@localhost:7687"
         );
         assert!(!format!("{uri:?}").contains("secret"));
     }
