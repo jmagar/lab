@@ -47,7 +47,7 @@ tracing-subscriber.workspace = true
 tracing-appender = "0.2"
 
 clap.workspace = true
-clap_complete.workspace = true
+clap_complete = { workspace = true, optional = true }
 tabled.workspace = true
 owo-colors.workspace = true
 is-terminal.workspace = true
@@ -124,7 +124,14 @@ acp_registry = ["lab-apis/acp_registry"]
 node-runtime = []
 adguard = ["lab-apis/adguard"]
 all = ["lab-apis/all", "controller", "services-all", "lab-admin"]
-controller = ["gateway", "marketplace", "deploy", "fs", "acp_registry"]
+controller = [
+  "gateway",
+  "marketplace",
+  "deploy",
+  "fs",
+  "acp_registry",
+  "dep:clap_complete",
+]
 gateway = []
 marketplace = ["mcpregistry"]
 services-all = [

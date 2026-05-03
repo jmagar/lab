@@ -5,6 +5,7 @@
 //! See `crates/lab/src/cli/CLAUDE.md` for the rulebook.
 
 pub mod audit;
+#[cfg(feature = "controller")]
 pub mod completions;
 pub mod docs;
 pub mod doctor;
@@ -167,6 +168,7 @@ pub enum Command {
     /// Generate a new service onboarding scaffold.
     Scaffold(scaffold::ScaffoldArgs),
     /// Generate shell completions.
+    #[cfg(feature = "controller")]
     Completions(completions::CompletionsArgs),
     /// Scan a local or SSH appdata path and extract service credentials.
     Extract(extract::ExtractCmd),
@@ -306,6 +308,7 @@ pub async fn dispatch(cli: Cli, config: LabConfig) -> Result<ExitCode> {
         Command::Setup(args) => setup::run(args).await,
         Command::Help => help::run(format),
         Command::Scaffold(args) => scaffold::run(args, format),
+        #[cfg(feature = "controller")]
         Command::Completions(args) => completions::run(&args),
         Command::Extract(cmd) => cmd.run(color).await.map(|()| ExitCode::SUCCESS),
         Command::Gateway(args) => gateway::run(args, format, &config).await,
