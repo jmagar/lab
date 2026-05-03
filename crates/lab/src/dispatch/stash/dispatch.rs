@@ -28,6 +28,26 @@ use super::params::{
 use super::service;
 use super::store::StashStore;
 
+// ── Blocking helper ───────────────────────────────────────────────────────────
+
+/// Run a synchronous closure in a `spawn_blocking` thread pool task.
+///
+/// All stash service functions are synchronous (they call `std::fs::*` and
+/// `fd_lock`) and must run in a dedicated blocking thread, not on a Tokio
+/// worker. This helper is the single wrapper used by all sync dispatch arms.
+async fn run_blocking<F, T>(f: F) -> Result<T, ToolError>
+where
+    F: FnOnce() -> Result<T, ToolError> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| ToolError::Sdk {
+            sdk_kind: "internal_error".into(),
+            message: format!("spawn_blocking panicked: {e}"),
+        })?
+}
+
 /// Top-level MCP/CLI entry point.
 ///
 /// Handles `help` and `schema` directly, then constructs the store and
@@ -87,12 +107,18 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
                     hint: None,
                 });
             }
+            // Store construction + ensure_dirs are synchronous fs ops — run in
+            // blocking thread pool so we never block a Tokio worker (lab-p760).
             let root = require_stash_root()?;
-            let store = StashStore::new(root.clone());
-            store.ensure_dirs().map_err(|e| ToolError::Sdk {
-                sdk_kind: "internal_error".into(),
-                message: format!("stash store init: {e}"),
-            })?;
+            let store = run_blocking(move || {
+                let store = StashStore::new(root.clone());
+                store.ensure_dirs().map_err(|e| ToolError::Sdk {
+                    sdk_kind: "internal_error".into(),
+                    message: format!("stash store init: {e}"),
+                })?;
+                Ok(store)
+            })
+            .await?;
             dispatch_with_store(&store, other, params).await
         }
     }
@@ -102,36 +128,88 @@ async fn dispatch_inner(action: &str, params: Value) -> Result<Value, ToolError>
 ///
 /// Called by `dispatch()` after store setup, and may be called directly by
 /// API handlers that hold the store in `AppState`.
+///
+/// # Blocking safety (lab-p760)
+///
+/// All synchronous service functions (`components_list`, `component_get`, etc.)
+/// perform `std::fs::*` I/O and/or acquire `fd_lock` advisory locks. They must
+/// run in `spawn_blocking` thread pool tasks, not on Tokio worker threads.
+///
+/// Arms that call `.await` on already-async service functions (import, save,
+/// export, deploy) are exempt — those functions manage their own spawn_blocking
+/// internally.
 pub async fn dispatch_with_store(
     store: &StashStore,
     action: &str,
     params: Value,
 ) -> Result<Value, ToolError> {
     match action {
-        "components.list" => service::components_list(store),
+        // ── Sync arms: all wrapped in run_blocking ────────────────────────────
+        "components.list" => {
+            let s = store.clone();
+            run_blocking(move || service::components_list(&s)).await
+        }
         "component.get" => {
             let p = parse_get_params(&params)?;
-            service::component_get(store, p)
+            let s = store.clone();
+            run_blocking(move || service::component_get(&s, p)).await
         }
         "component.create" => {
             let p = parse_create_params(&params)?;
-            service::component_create(store, p)
+            let s = store.clone();
+            run_blocking(move || service::component_create(&s, p)).await
         }
+        "component.workspace" => {
+            let p = parse_workspace_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::component_workspace(&s, p)).await
+        }
+        "component.revisions" => {
+            let p = parse_revisions_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::component_revisions(&s, p)).await
+        }
+        "providers.list" => {
+            let s = store.clone();
+            run_blocking(move || service::providers_list(&s, &params)).await
+        }
+        "provider.link" => {
+            let p = parse_link_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::provider_link(&s, p)).await
+        }
+        "provider.push" => {
+            let p = parse_provider_sync_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::provider_push(&s, p)).await
+        }
+        "provider.pull" => {
+            let p = parse_provider_sync_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::provider_pull(&s, p)).await
+        }
+        "targets.list" => {
+            let s = store.clone();
+            run_blocking(move || service::targets_list(&s)).await
+        }
+        "target.add" => {
+            let p = parse_target_add_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::target_add(&s, p)).await
+        }
+        "target.remove" => {
+            let p = parse_target_remove_params(&params)?;
+            let s = store.clone();
+            run_blocking(move || service::target_remove(&s, p)).await
+        }
+        // ── Async arms: already manage their own spawn_blocking internally ────
         "component.import" => {
             let p = parse_import_params(&params)?;
             service::component_import(store, p).await
         }
-        "component.workspace" => {
-            let p = parse_workspace_params(&params)?;
-            service::component_workspace(store, p)
-        }
         "component.save" => {
             let p = parse_save_params(&params)?;
             service::component_save(store, p).await
-        }
-        "component.revisions" => {
-            let p = parse_revisions_params(&params)?;
-            service::component_revisions(store, p)
         }
         "component.export" => {
             let p = parse_export_params(&params)?;
@@ -140,28 +218,6 @@ pub async fn dispatch_with_store(
         "component.deploy" => {
             let p = parse_deploy_params(&params)?;
             service::component_deploy(store, p).await
-        }
-        "providers.list" => service::providers_list(store, &params),
-        "provider.link" => {
-            let p = parse_link_params(&params)?;
-            service::provider_link(store, p)
-        }
-        "provider.push" => {
-            let p = parse_provider_sync_params(&params)?;
-            service::provider_push(store, p)
-        }
-        "provider.pull" => {
-            let p = parse_provider_sync_params(&params)?;
-            service::provider_pull(store, p)
-        }
-        "targets.list" => service::targets_list(store),
-        "target.add" => {
-            let p = parse_target_add_params(&params)?;
-            service::target_add(store, p)
-        }
-        "target.remove" => {
-            let p = parse_target_remove_params(&params)?;
-            service::target_remove(store, p)
         }
         unknown => Err(ToolError::UnknownAction {
             message: format!("unknown action `{unknown}` for service `stash`"),
