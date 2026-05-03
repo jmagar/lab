@@ -36,8 +36,11 @@ pub trait StashProvider: Send + Sync {
     /// Pull the latest revision from the remote storage location.
     ///
     /// Returns `None` when no remote revisions exist for `component_id`.
-    /// On success, returns a freshly created [`StashRevision`] record
-    /// (files already written to `store.revision_files_path(new_rev_id)`).
+    /// On success, returns a freshly created [`StashRevision`] record whose
+    /// **files are already written** to `store.revision_files_path(new_rev_id)`,
+    /// but whose **meta is NOT yet written** — the caller must call
+    /// `store.write_revision_meta(&rev)` and update `head_revision_id` while
+    /// holding the component advisory lock (lab-qytb).
     fn pull_latest(
         &self,
         store: &StashStore,

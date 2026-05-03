@@ -527,7 +527,7 @@ pub fn provider_pull(store: &StashStore, p: ProviderSyncParams) -> Result<Value,
         });
     }
 
-    // Build provider and pull.
+    // Build provider and pull files (meta NOT yet written — see provider trait doc).
     let provider = provider_from_record(&record)?;
     let pulled_rev = provider.pull_latest(store, &p.id)?;
 
@@ -540,8 +540,17 @@ pub fn provider_pull(store: &StashStore, p: ProviderSyncParams) -> Result<Value,
         })),
         Some(rev) => {
             let rev_id = rev.id.clone();
-            // Update head_revision_id under advisory lock.
+            let file_count = rev.file_count;
+
+            // Write revision meta AND update head_revision_id under the same
+            // advisory lock. lab-qytb: previously write_revision_meta was called
+            // inside pull_latest (outside any lock), racing with concurrent
+            // component.save which holds the lock for its own append_revision_to_index.
             store.with_component_lock(&p.id, || {
+                // Write meta first (and append to index) while holding the lock.
+                store.write_revision_meta(&rev)?;
+
+                // Then advance head_revision_id.
                 let mut component = store.read_component(&p.id)?.ok_or_else(|| ToolError::Sdk {
                     sdk_kind: "not_found".into(),
                     message: format!("component `{}` not found", p.id),
@@ -555,7 +564,7 @@ pub fn provider_pull(store: &StashStore, p: ProviderSyncParams) -> Result<Value,
                 "component_id": p.id,
                 "provider_id": p.provider_id,
                 "revision_id": rev_id,
-                "file_count": rev.file_count,
+                "file_count": file_count,
             }))
         }
     }

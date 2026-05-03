@@ -136,6 +136,12 @@ impl StashProvider for FilesystemProvider {
         let content_digest = compute_digest(&file_entries)?;
         let now = jiff::Timestamp::now().to_string();
 
+        // Return the revision WITHOUT writing meta to the store.
+        // lab-qytb: write_revision_meta calls append_revision_to_index which is
+        // a read-modify-write on the index file. That write must happen inside
+        // the component advisory lock in service.rs to prevent races with
+        // concurrent component.save operations. The caller is responsible for
+        // calling store.write_revision_meta(&rev) under the lock.
         let rev = StashRevision {
             id: new_rev_id.clone(),
             component_id: component_id.to_string(),
@@ -146,7 +152,6 @@ impl StashProvider for FilesystemProvider {
             unix_mode: None,
         };
 
-        store.write_revision_meta(&rev)?;
         Ok(Some(rev))
     }
 
