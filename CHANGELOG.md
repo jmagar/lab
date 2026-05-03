@@ -8,6 +8,76 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.12.2] — 2026-05-03
+
+| Commit | Change |
+|--------|--------|
+| `50824844` | chore(lab-in5q.4): fix internal cross-references in moved doc files |
+| `498b1ffa` | chore(lab-in5q.3): update Rust source doc path comments |
+| `7ce5812e` | chore(lab-in5q.2): update CLAUDE.md references for moved doc files |
+| `79824d98` | chore(lab-in5q.1): reorganize docs/ root — move 34 files into surfaces/ runtime/ services/ dev/ |
+| `cf9373e7` | chore: dev tooling, ACP multi-turn fix, and docs reorg prep |
+| `386e6d7b` | chore: save CI debugging session state |
+| `9689190c` | fix: avoid Windows CI cache save failure |
+| `6f8b8189` | fix: Windows release warnings |
+| `68a35a37` | chore: trigger CI after history rewrite |
+| `11199215` | fix: CI failures |
+| `60568674` | chore: set up CI release smoke and generated docs |
+| `da3a8d10` | docs: say copy config.example.toml to ~/.lab/config.toml |
+| `0db193bf` | fix: config.toml is gitignored; update docs |
+| `3a226869` | feat: fleet scan wizard step, config consolidation, and TS fixes |
+| `8b1b9967` | chore: document cargo-deny advisory exceptions |
+| `a0c5f734` | chore: integrate service wave and CI updates |
+| `d31767c9` | fix(lab-8l5s): preserve ServiceForm RHF state across tab switch |
+| `ef2cae3a` | docs(lab-qz0z): document R5 RHF state-loss tradeoff inline |
+| `233595ca` | fix(lab-qz0z): post-review cleanup (HTTPS_SCHEME_RE, %00 blocking) |
+| `f911d607` | fix(lab-qz0z): mirror sessionStorage write outside React state updater |
+| `8510d39c` | fix(lab-qz0z): lifecycle cleanups (P3-3, P3-4, P3-7) |
+| `de0952f7` | fix(lab-qz0z): RHF perf — Controller for bool, memoized callbacks |
+| `00210371` | fix(lab-qz0z): TypeScript and code-quality nits batch |
+| `19f16e8c` | fix(lab-qz0z): secret-handling hardening (P2-6, P3-8) |
+| `65c4bcc7` | fix(lab-qz0z): harden schemaBuilder validation |
+| `619c8445` | feat(lab,lab-apis,lab-auth): backend in-flight work |
+| `13e29ede` | fix(lab-qbbt): distinguish transport errors from blocking findings |
+| `7be1b484` | fix(lab-emkz): lazy-mount only the active ServiceForm tab |
+| `6c16f591` | fix(lab-1ai7): re-check pathname after setup.state await |
+| `f987aae6` | fix(lab-kltp): surface draft-stale check failures instead of silencing |
+| `fbd2af79` | fix(lab-ijf3): synchronous lock + AbortController for core-config save |
+| `7bf605a3` | fix(lab-fcz0): thread AbortSignal through doctor.service.probe |
+| `9a641bc6` | fix(lab-4cn9): persist wizard selectedServices to sessionStorage |
+| `7dd6570f` | fix(lab-68ja): centralize '***' secret sentinel as STORED_SECRET_MARKER |
+| `44a3728a` | fix(lab-zmj1): extract CORE_FIELDS to shared module |
+| `77efe9b5` | fix(lab-7bat): remove dead draftValues/setDraftValue from WizardContext |
+| `927a1a6a` | feat(lab-apis,lab): onboard 3 services + extend adguard/glances/uptime-kuma |
+| `9604c93f` | feat(lab-apis,lab): onboard 6 services (dozzle, freshrss, immich, loki, prowlarr, sabnzbd) |
+| `331a38e1` | feat(lab-bg3e.4,bg3e.5): /setup wizard + /settings rail web UI |
+| `9d24b17e` | test(lab-bg3e.3.11): mechanical guard for orchestrator one-way dependencies |
+| `b28d5a28` | refactor(lab-bg3e.3.7): env_merge polish |
+| `2ef9b43c` | fix(lab-bg3e.3.9): defense-in-depth hardening |
+| `7a612a65` | refactor(lab-bg3e.3.8): tighten setup dispatch hygiene |
+| `07041287` | refactor(lab-bg3e.3.10): drop dead is_headless() |
+| `8195e86b` | feat(lab-bg3e.3.4): add write_service_creds shim over env_merge::merge |
+| `b705d37b` | perf(lab-bg3e.3.1): memoize ToolRegistry + env-var/secret-key indexes |
+| `4e717482` | fix(lab-bg3e.3.2): wrap doctor.audit.full in 30s timeout |
+| `de859e41` | fix(lab-bg3e.3.3): apply host_validation Layer to all v1 unauthenticated routes |
+| `758ec61f` | perf(lab-bg3e.3.6): single-pass audit_summary count |
+| `bb1d071a` | fix(lab-bg3e.3.5): fsync parent dir after env_merge::persist |
+
+### Highlights
+
+- **ACP multi-turn drain timeout** — `acp_turn_drain_timeout()` + `DEFAULT_TURN_DRAIN_TIMEOUT` (5 min, overridable via `LAB_ACP_TURN_DRAIN_TIMEOUT_MS`) drains stale messages left by idle-completed turns before starting the next prompt. Prevents a late `PromptResponse`/`StopReason` from poisoning the new inner read loop during long agentic tool calls.
+- **Docs reorganization (lab-in5q)** — 34 docs moved from `docs/` root into `docs/surfaces/`, `docs/runtime/`, `docs/services/`, and `docs/dev/`; CLAUDE.md, README references, and Rust source path comments all updated.
+- **Service onboarding wave** — 9 new services onboarded: dozzle, freshrss, immich, loki, prowlarr, sabnzbd (wave 1) + 3 more + adguard/glances/uptime-kuma extensions.
+- **Setup wizard + settings rail UI (lab-bg3e)** — full `/setup` wizard flow (fleet scan, service creds, config write) and `/settings` side-rail; `write_service_creds` shim, `env_merge` polish, `ToolRegistry` memoization, `doctor.audit.full` timeout, host-validation middleware, fsync-after-persist hardening.
+- **Frontend hardening (lab-qz0z, lab-8l5s, and others)** — RHF state preservation across tab switches, secret-sentinel centralization, schemaBuilder validation hardening, sessionStorage persistence for wizard selections, AbortController for config saves, lazy-mount for inactive ServiceForm tabs.
+- **CI improvements** — release smoke tests, generated-docs pipeline, Windows cache-save fix, cargo-deny advisory exceptions.
+
+### Version bumps
+
+- Rust workspace: `0.12.1 → 0.12.2`
+
+---
+
 ## [0.12.1] — 2026-04-30
 
 | Commit | Change |

@@ -62,6 +62,22 @@ fn acp_prompt_idle_timeout() -> Duration {
         .unwrap_or(DEFAULT_PROMPT_IDLE_TIMEOUT)
 }
 
+// Maximum time to wait for a late PromptResponse after idle_completion. During
+// agentic tool calls, codex-acp may be working silently for longer than the
+// idle timeout, so PromptResponse (and its StopReason) can arrive well after
+// the inner prompt loop has already broken. This drain window is how long we
+// are willing to wait before starting the next turn regardless.
+const DEFAULT_TURN_DRAIN_TIMEOUT: Duration = Duration::from_secs(300);
+
+fn acp_turn_drain_timeout() -> Duration {
+    std::env::var("LAB_ACP_TURN_DRAIN_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .filter(|duration| !duration.is_zero())
+        .unwrap_or(DEFAULT_TURN_DRAIN_TIMEOUT)
+}
+
 fn acp_permission_timeout() -> Duration {
     std::env::var("LAB_ACP_PERMISSION_TIMEOUT_MS")
         .ok()
@@ -1126,10 +1142,96 @@ async fn run_codex_session(
                         drop(sender.send(Ok(started)));
                     }
 
+                    // True when the previous turn ended via idle_completion rather than
+                    // an explicit StopReason. In that case codex-acp may still be
+                    // processing (e.g. a long tool call) and will send PromptResponse
+                    // after the inner loop has broken. The drain block below consumes
+                    // that late StopReason before starting the next turn so it cannot
+                    // poison the new inner read loop.
+                    let mut previous_turn_idle = false;
+
                     while let Some(command) = command_rx.recv().await {
                         match command {
                             SessionCommand::Prompt(prompt) => {
                                 prompt_lifecycle.start();
+
+                                if previous_turn_idle {
+                                    // Drain stale messages left by the previous idle-completed turn.
+                                    // We loop until StopReason (turn fully acknowledged by the
+                                    // provider), a connection error, or the drain timeout.
+                                    let deadline =
+                                        tokio::time::Instant::now() + acp_turn_drain_timeout();
+                                    tracing::debug!(
+                                        surface = "acp",
+                                        service = "runtime",
+                                        action = "turn_drain.start",
+                                        session_id = %session_id,
+                                        "Draining stale messages from previous idle-completed turn",
+                                    );
+                                    loop {
+                                        let now = tokio::time::Instant::now();
+                                        if now >= deadline {
+                                            tracing::warn!(
+                                                surface = "acp",
+                                                service = "runtime",
+                                                action = "turn_drain.timeout",
+                                                session_id = %session_id,
+                                                timeout_secs = acp_turn_drain_timeout().as_secs(),
+                                                "Drain timeout: starting next turn without consuming \
+                                                 late StopReason; next turn may see unexpected content",
+                                            );
+                                            break;
+                                        }
+                                        match tokio::time::timeout(
+                                            deadline - now,
+                                            session.read_update(),
+                                        )
+                                        .await
+                                        {
+                                            Ok(Ok(
+                                                agent_client_protocol::SessionMessage::StopReason(
+                                                    _,
+                                                ),
+                                            )) => {
+                                                tracing::debug!(
+                                                    surface = "acp",
+                                                    service = "runtime",
+                                                    action = "turn_drain.done",
+                                                    session_id = %session_id,
+                                                    "Drained late StopReason; previous turn is clean",
+                                                );
+                                                break;
+                                            }
+                                            Ok(Ok(_)) => {
+                                                // Discard stale content from the previous turn.
+                                            }
+                                            Ok(Err(error)) => {
+                                                tracing::warn!(
+                                                    surface = "acp",
+                                                    service = "runtime",
+                                                    action = "turn_drain.error",
+                                                    session_id = %session_id,
+                                                    error = %error,
+                                                    "Connection error while draining previous turn",
+                                                );
+                                                break;
+                                            }
+                                            Err(_elapsed) => {
+                                                tracing::warn!(
+                                                    surface = "acp",
+                                                    service = "runtime",
+                                                    action = "turn_drain.timeout",
+                                                    session_id = %session_id,
+                                                    timeout_secs = acp_turn_drain_timeout().as_secs(),
+                                                    "Drain timeout: starting next turn without consuming \
+                                                     late StopReason; next turn may see unexpected content",
+                                                );
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
                                 let stream_message_ids =
                                     Arc::new(Mutex::new(StreamMessageIds::default()));
                                 drop(
@@ -1159,8 +1261,18 @@ async fn run_codex_session(
                                     .map_err(|error| acp_internal_error(error.to_string()))?;
 
                                 let mut saw_assistant_output = false;
+                                // Set to true when the turn ends via idle_completion rather
+                                // than an explicit StopReason so the drain block above runs
+                                // before the next turn's prompt is dispatched.
+                                let mut ended_via_idle = false;
                                 loop {
                                     let update = tokio::select! {
+                                        // Prefer consuming a real update over the idle timeout.
+                                        // Without `biased`, when both arms are ready simultaneously
+                                        // (provider sent PromptResponse just as the timer fires),
+                                        // tokio picks randomly. A timeout win leaves StopReason
+                                        // in the channel where it poisons the next turn's read loop.
+                                        biased;
                                         update = session.read_update() => Some(update),
                                         () = tokio::time::sleep(acp_prompt_idle_timeout()), if saw_assistant_output => None,
                                     };
@@ -1190,6 +1302,7 @@ async fn run_codex_session(
                                                     .await,
                                             );
                                             prompt_lifecycle.finish();
+                                            ended_via_idle = true;
                                             break;
                                         }
                                     };
@@ -1290,6 +1403,7 @@ async fn run_codex_session(
                                         }
                                     }
                                 }
+                                previous_turn_idle = ended_via_idle;
                             }
                             SessionCommand::Cancel => {
                                 permissions.cancel_session(&session.session_id().to_string());
@@ -1340,6 +1454,18 @@ async fn run_codex_session(
     }
 
     let run_error = run_result.err();
+
+    if let Some(ref error) = run_error {
+        tracing::error!(
+            surface = "acp",
+            service = "runtime",
+            action = "connect_with.error",
+            session_id = %session_id,
+            error = %error,
+            error_debug = ?error,
+            "ACP connect_with returned error — this is why the subprocess is being terminated",
+        );
+    }
 
     terminate_codex_child(&mut child, child_process_group).await;
 

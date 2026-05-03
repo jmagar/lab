@@ -1,110 +1,120 @@
 [package]
-name                   = "lab"
-description            = "Pluggable homelab CLI + MCP server. One binary, runtime service selection."
-version.workspace      = true
-edition.workspace      = true
+name = "lab"
+description = "Pluggable homelab CLI + MCP server. One binary, runtime service selection."
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-authors.workspace      = true
-readme                 = "../../README.md"
-keywords               = ["homelab", "mcp", "cli", "tui"]
-categories             = ["command-line-utilities", "development-tools"]
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["homelab", "mcp", "cli", "tui"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "lab"
 path = "src/main.rs"
 
 [dependencies]
-lab-apis           = { path = "../lab-apis", default-features = false }
-lab-auth           = { path = "../lab-auth" }
+lab-apis = { path = "../lab-apis", default-features = false }
+lab-auth = { path = "../lab-auth" }
 
-tokio                        = { workspace = true, features = ["process"] }
-process-wrap                 = { version = "9.1.0", default-features = false, features = ["tokio1", "process-group"] }
-nix                          = { version = "0.29", default-features = false, features = ["signal", "process"] }
-sysinfo                      = { version = "0.38", default-features = false, features = ["system", "disk", "network"] }
-futures.workspace            = true
-reqwest.workspace            = true
-url.workspace                = true
-serde.workspace              = true
+tokio = { workspace = true, features = ["process"] }
+process-wrap = { version = "9.1.0", default-features = false, features = [
+  "tokio1",
+  "process-group",
+] }
+nix = { version = "0.29", default-features = false, features = [
+  "signal",
+  "process",
+] }
+sysinfo = { version = "0.38", default-features = false, features = [
+  "system",
+  "disk",
+  "network",
+] }
+futures.workspace = true
+reqwest.workspace = true
+url.workspace = true
+serde.workspace = true
 serde_json = { workspace = true, features = ["preserve_order"] }
-anyhow.workspace             = true
-thiserror.workspace          = true
-jiff.workspace               = true
+anyhow.workspace = true
+thiserror.workspace = true
+jiff.workspace = true
 
-tracing.workspace            = true
+tracing.workspace = true
 tracing-subscriber.workspace = true
-tracing-appender     = "0.2"
+tracing-appender = "0.2"
 
-clap.workspace               = true
-clap_complete.workspace      = true
-tabled.workspace             = true
-owo-colors.workspace         = true
-is-terminal.workspace        = true
-indicatif.workspace          = true
-dialoguer.workspace          = true
-console.workspace            = true
+clap.workspace = true
+clap_complete.workspace = true
+tabled.workspace = true
+owo-colors.workspace = true
+is-terminal.workspace = true
+indicatif.workspace = true
+dialoguer.workspace = true
+console.workspace = true
 
-dotenvy.workspace            = true
-toml.workspace               = true
+dotenvy.workspace = true
+toml.workspace = true
 
-ratatui.workspace            = true
-crossterm.workspace          = true
+ratatui.workspace = true
+crossterm.workspace = true
 
-base64.workspace             = true
-fd-lock                      = "4"
-fs4                          = "1"
-tempfile                     = "3.10"
-subtle                       = "2"
-indexmap                     = { version = "2", features = ["serde"] }
-secrecy                      = "0.8"
-sha2                         = "0.10"
-xxhash-rust                  = { version = "0.8", features = ["xxh3"] }
-hmac.workspace               = true
-chacha20poly1305             = "0.10"
-dashmap                      = "6"
-diffy-imara                  = "0.3"
-arc-swap                     = "1"
-tokio-util                   = { version = "0.7", features = ["rt", "compat"] }
-strip-ansi-escapes           = "0.2"
-agent-client-protocol        = "0"
+base64.workspace = true
+fd-lock = "4"
+fs4 = "1"
+tempfile = "3.10"
+subtle = "2"
+indexmap = { version = "2", features = ["serde"] }
+secrecy = "0.8"
+sha2 = "0.10"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+hmac.workspace = true
+chacha20poly1305 = "0.10"
+dashmap = "6"
+diffy-imara = "0.3"
+arc-swap = "1"
+tokio-util = { version = "0.7", features = ["rt", "compat"] }
+strip-ansi-escapes = "0.2"
+agent-client-protocol = { version = "0", features = ["unstable"] }
 
-hex                          = "0.4"
-ulid                         = "1"
-num_cpus                     = "1"
+hex = "0.4"
+ulid = "1"
+num_cpus = "1"
 
 # optional — deploy feature
-regex                        = { version = "1", optional = true }
+regex = { version = "1", optional = true }
 
-rmcp.workspace               = true
-jsonwebtoken.workspace       = true
-rusqlite.workspace           = true
-r2d2                         = "0.8"
-r2d2_sqlite                  = "0.33"
-uuid.workspace               = true
+rmcp.workspace = true
+jsonwebtoken.workspace = true
+rusqlite.workspace = true
+r2d2 = "0.8"
+r2d2_sqlite = "0.33"
+uuid.workspace = true
 
-axum.workspace               = true
-tower.workspace              = true
-tower-http.workspace         = true
-utoipa.workspace             = true
-utoipa-scalar.workspace      = true
-include_dir                  = "0.7"
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+utoipa.workspace = true
+utoipa-scalar.workspace = true
+include_dir = "0.7"
 
-oauth2                       = { version = "5.0", default-features = false }
-tokio-tungstenite            = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
+oauth2 = { version = "5.0", default-features = false }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-webpki-roots"] }
 
 # optional — fs feature (workspace filesystem browser)
-walkdir                      = { version = "2", optional = true }
-globset                      = { version = "0.4", optional = true }
-unicode-normalization        = { version = "0.1", optional = true }
-rustix                       = { version = "1", features = ["fs"], optional = true }
+walkdir = { version = "2", optional = true }
+globset = { version = "0.4", optional = true }
+unicode-normalization = { version = "0.1", optional = true }
+rustix = { version = "1", features = ["fs"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
-sd-notify                    = { version = "0.4", optional = true }
+sd-notify = { version = "0.4", optional = true }
 
 [dev-dependencies]
-wiremock.workspace           = true
-proptest                     = "1"
+wiremock.workspace = true
+proptest = "1"
 
 [lib]
 path = "src/lib.rs"
@@ -113,66 +123,58 @@ path = "src/lib.rs"
 acp_registry = ["lab-apis/acp_registry"]
 adguard = ["lab-apis/adguard"]
 all = [
-    "lab-apis/all",
-    "radarr",
-    "sonarr",
-    "prowlarr",
-    "overseerr",
-    "plex",
-    "tautulli",
-    "sabnzbd",
-    "qbittorrent",
-    "tailscale",
-    "unraid",
-    "unifi",
-    "arcane",
-    "linkding",
-    "memos",
-    "beads",
-    "bytestash",
-    "paperless",
-    "gotify",
-    "jellyfin",
-    "adguard",
-    "glances",
-    "pihole",
-    "neo4j",
-    "uptime_kuma",
-    "immich",
-    "loggifly",
-    "navidrome",
-    "scrutiny",
-    "freshrss",
-    "openacp",
-    "apprise",
-    "openai",
-    "notebooklm",
-    "qdrant",
-    "tei",
-    "lab-admin",
-    "fs",
-    "deploy",
-    "mcpregistry",
-    "acp_registry",
-    "dozzle",
+  "lab-apis/all",
+  "radarr",
+  "sonarr",
+  "prowlarr",
+  "overseerr",
+  "plex",
+  "tautulli",
+  "sabnzbd",
+  "qbittorrent",
+  "tailscale",
+  "unraid",
+  "unifi",
+  "arcane",
+  "linkding",
+  "memos",
+  "beads",
+  "bytestash",
+  "paperless",
+  "gotify",
+  "jellyfin",
+  "adguard",
+  "glances",
+  "pihole",
+  "neo4j",
+  "uptime_kuma",
+  "immich",
+  "loggifly",
+  "navidrome",
+  "scrutiny",
+  "freshrss",
+  "openacp",
+  "apprise",
+  "openai",
+  "notebooklm",
+  "qdrant",
+  "tei",
+  "lab-admin",
+  "fs",
+  "deploy",
+  "mcpregistry",
+  "acp_registry",
+  "dozzle",
 ]
 apprise = ["lab-apis/apprise"]
 arcane = ["lab-apis/arcane"]
 beads = ["lab-apis/beads"]
 bytestash = ["lab-apis/bytestash"]
 default = ["all"]
-deploy = [
-    "lab-apis/deploy",
-    "dep:regex",
-]
+deploy = ["lab-apis/deploy", "dep:regex"]
 dozzle = ["lab-apis/dozzle"]
 freshrss = ["lab-apis/freshrss"]
-fs = [
-    "dep:walkdir",
-    "dep:globset",
-    "dep:unicode-normalization",
-    "dep:rustix",
-]
+fs = ["dep:walkdir", "dep:globset", "dep:unicode-normalization", "dep:rustix"]
 glances = ["lab-apis/glances"]
 gotify = ["lab-apis/gotify"]
 immich = ["lab-apis/immich"]
