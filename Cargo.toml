@@ -266,3 +266,15 @@ opt-level = 1
 inherits = "release"
 debug = true
 strip = "none"
+
+[profile.controller-deploy]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = false
+
+[profile.node-deploy]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+incremental = false

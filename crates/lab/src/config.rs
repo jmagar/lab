@@ -104,6 +104,14 @@ pub struct DeployPreferences {
     pub hosts: BTreeMap<String, DeployHostOverride>,
 }
 
+/// Artifact role for deploy targets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactRole {
+    Controller,
+    Node,
+}
+
 /// Default policy applied to every deploy target unless overridden.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DeployDefaults {
@@ -118,6 +126,15 @@ pub struct DeployDefaults {
     /// Base URL of the master lab instance that deployed hosts should phone home to.
     /// e.g. "http://dookie:8765". If absent, phone-home is skipped.
     pub master_url: Option<String>,
+    /// Artifact role for this deploy target.
+    #[serde(default)]
+    pub artifact_role: Option<ArtifactRole>,
+    /// Cross-compilation target triple, e.g. "aarch64-unknown-linux-gnu".
+    #[serde(default)]
+    pub target_triple: Option<String>,
+    /// Maximum build time in seconds before declaring the build failed.
+    #[serde(default)]
+    pub build_timeout_secs: Option<u64>,
 }
 
 /// Per-host policy overrides for deploy.
@@ -128,6 +145,15 @@ pub struct DeployHostOverride {
     #[serde(default)]
     pub restart: Option<RestartModel>,
     pub service_scope: Option<ServiceScope>,
+    /// Artifact role override for this specific host.
+    #[serde(default)]
+    pub artifact_role: Option<ArtifactRole>,
+    /// Cross-compilation target triple override for this specific host.
+    #[serde(default)]
+    pub target_triple: Option<String>,
+    /// Build timeout override in seconds for this specific host.
+    #[serde(default)]
+    pub build_timeout_secs: Option<u64>,
 }
 
 /// Restart policy used by rollout/update flows after a binary install.

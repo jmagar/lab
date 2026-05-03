@@ -1,4 +1,4 @@
-use lab::config::{LabConfig, NodeRuntimeRole, RestartModel};
+use lab::config::{ArtifactRole, LabConfig, NodeRuntimeRole, RestartModel};
 
 #[test]
 fn parses_node_controller_config_block() {
@@ -90,4 +90,33 @@ fn parses_deploy_restart_model_blocks() {
             ]
         })
     );
+}
+
+#[test]
+fn parses_artifact_role_controller() {
+    let config: LabConfig = toml::from_str(
+        r#"
+        [deploy.defaults]
+        artifact_role = "controller"
+
+        [deploy.hosts.dookie]
+        artifact_role = "controller"
+    "#,
+    )
+    .unwrap();
+    let defaults = config.deploy.unwrap().defaults.unwrap();
+    assert_eq!(defaults.artifact_role, Some(ArtifactRole::Controller));
+}
+
+#[test]
+fn parses_artifact_role_node() {
+    let config: LabConfig = toml::from_str(
+        r#"
+        [deploy.defaults]
+        artifact_role = "node"
+    "#,
+    )
+    .unwrap();
+    let defaults = config.deploy.unwrap().defaults.unwrap();
+    assert_eq!(defaults.artifact_role, Some(ArtifactRole::Node));
 }

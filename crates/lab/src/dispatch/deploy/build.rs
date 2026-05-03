@@ -4,7 +4,9 @@ use lab_apis::deploy::DeployError;
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+
+use crate::config::ArtifactRole;
 
 /// Artifact produced by a successful local build.
 #[derive(Debug, Clone)]
@@ -15,19 +17,87 @@ pub struct BuildOutcome {
     pub target_triple: String,
 }
 
-/// Run `cargo build --release --all-features --manifest-path <workspace>/crates/lab/Cargo.toml`
-/// and hash the output.
-pub async fn build_release() -> Result<BuildOutcome, DeployError> {
+/// Describes a specific artifact to build or reuse.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ArtifactProfile {
+    pub role: ArtifactRole,
+    /// Target triple, e.g. `"x86_64-unknown-linux-gnu"`.
+    pub target_triple: String,
+    /// Binary name, e.g. `"lab"`.
+    pub bin: String,
+    /// Cargo feature list, e.g. `["all"]` or `["node-runtime"]`.
+    pub cargo_features: Vec<String>,
+    /// Cargo profile name, e.g. `"controller-deploy"` or `"node-deploy"`.
+    pub cargo_profile: String,
+    /// Maximum build time in seconds. `None` defaults to 1800 (30 min).
+    pub build_timeout_secs: Option<u64>,
+}
+
+impl ArtifactProfile {
+    /// Build profile for the controller role (full-featured, fast-compile profile).
+    pub fn controller() -> Self {
+        Self {
+            role: ArtifactRole::Controller,
+            target_triple: detect_host_triple(),
+            bin: "lab".to_string(),
+            cargo_features: vec!["all".to_string()],
+            cargo_profile: "controller-deploy".to_string(),
+            build_timeout_secs: None,
+        }
+    }
+
+    /// Build profile for the node role (full-featured for now, fast-compile profile).
+    pub fn node() -> Self {
+        Self {
+            role: ArtifactRole::Node,
+            target_triple: detect_host_triple(),
+            bin: "lab".to_string(),
+            cargo_features: vec!["all".to_string()],
+            cargo_profile: "node-deploy".to_string(),
+            build_timeout_secs: None,
+        }
+    }
+}
+
+/// Path where cargo places the binary for an `ArtifactProfile`.
+///
+/// - **Host triple**: `target/<cargo_profile>/<bin>`
+/// - **Cross-compilation**: `target/<triple>/<cargo_profile>/<bin>`
+/// - Windows targets get `.exe` appended.
+pub fn expected_artifact_path_for_profile(profile: &ArtifactProfile) -> PathBuf {
+    let name = if profile.target_triple.contains("windows") {
+        format!("{}.exe", profile.bin)
+    } else {
+        profile.bin.clone()
+    };
+    let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.join("target"))
+        .unwrap_or_else(|| PathBuf::from("target"));
+    if profile.target_triple == detect_host_triple() {
+        workspace.join(&profile.cargo_profile).join(&name)
+    } else {
+        workspace
+            .join(&profile.target_triple)
+            .join(&profile.cargo_profile)
+            .join(&name)
+    }
+}
+
+/// Build or reuse a role/profile-specific artifact.
+pub async fn build_artifact(profile: &ArtifactProfile) -> Result<BuildOutcome, DeployError> {
     let build_started = Instant::now();
-    let target_triple = detect_host_triple();
-    let profile = "release";
-    let required_free_bytes = 1_500_000_000;
+    let required_free_bytes = 1_500_000_000u64;
+    let cargo_profile = &profile.cargo_profile;
+    let target_triple = &profile.target_triple;
     tracing::info!(
         surface = "dispatch", service = "deploy.build", action = "build.start",
         target_triple = %target_triple,
-        profile,
+        profile = %cargo_profile,
+        role = ?profile.role,
         required_free_bytes,
-        "starting local release build",
+        "starting local build",
     );
     let free = tokio::task::spawn_blocking(estimate_free_bytes)
         .await
@@ -35,7 +105,7 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             reason: format!("disk-space check join: {e}"),
         })??;
     check_disk_space(free, required_free_bytes)?;
-    let path = expected_artifact_path("lab");
+    let path = expected_artifact_path_for_profile(profile);
     let rebuild_needed = tokio::task::spawn_blocking({
         let path = path.clone();
         move || rebuild_needed(&path)
@@ -47,14 +117,29 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     let manifest_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
     if rebuild_needed {
         let cargo_started = Instant::now();
-        let output = tokio::process::Command::new("cargo")
-            .args(["build", "--release", "--all-features", "--manifest-path"])
-            .arg(&manifest_path)
-            .output()
-            .await
-            .map_err(|e| DeployError::BuildFailed {
-                reason: format!("spawn cargo: {e}"),
-            })?;
+        let features = profile.cargo_features.join(",");
+        let timeout_secs = profile.build_timeout_secs.unwrap_or(1800);
+        let output = tokio::time::timeout(
+            Duration::from_secs(timeout_secs),
+            tokio::process::Command::new("cargo")
+                .args([
+                    "build",
+                    "--profile",
+                    cargo_profile.as_str(),
+                    "--features",
+                    features.as_str(),
+                    "--manifest-path",
+                ])
+                .arg(&manifest_path)
+                .output(),
+        )
+        .await
+        .map_err(|_| DeployError::BuildFailed {
+            reason: format!("build timed out after {timeout_secs}s"),
+        })?
+        .map_err(|e| DeployError::BuildFailed {
+            reason: format!("spawn cargo: {e}"),
+        })?;
         let cargo_elapsed_ms = cargo_started.elapsed().as_millis();
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -63,11 +148,11 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
             tracing::warn!(
                 surface = "dispatch", service = "deploy.build", action = "build.finish",
                 target_triple = %target_triple,
-                profile,
+                profile = %cargo_profile,
                 elapsed_ms = build_started.elapsed().as_millis(),
                 cargo_elapsed_ms,
                 kind = "build_failed",
-                "local release build failed",
+                "local build failed",
             );
             return Err(DeployError::BuildFailed { reason: tail });
         }
@@ -75,22 +160,20 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
         tracing::info!(
             surface = "dispatch", service = "deploy.build", action = "build.reuse",
             target_triple = %target_triple,
-            profile,
+            profile = %cargo_profile,
             artifact = %path.display(),
             "deploy.build.reuse_existing_release",
         );
     }
-    // Stat + sha256 + host-triple detection are all blocking I/O or subprocess
-    // calls; run them inside spawn_blocking to avoid stalling the async runtime.
-    let (metadata, sha256, target_triple) = tokio::task::spawn_blocking({
+    let (metadata, sha256, target_triple_owned) = tokio::task::spawn_blocking({
         let p = path.clone();
-        let target_triple = target_triple.clone();
+        let triple = target_triple.clone();
         move || -> Result<_, DeployError> {
             let meta = std::fs::metadata(&p).map_err(|e| DeployError::BuildFailed {
                 reason: format!("stat artifact: {e}"),
             })?;
             let sha256 = sha256_file_blocking(&p)?;
-            Ok((meta, sha256, target_triple))
+            Ok((meta, sha256, triple))
         }
     })
     .await
@@ -101,18 +184,37 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
         path,
         sha256: sha256.clone(),
         size_bytes: metadata.len(),
-        target_triple: target_triple.clone(),
+        target_triple: target_triple_owned.clone(),
     };
     tracing::info!(
         surface = "dispatch", service = "deploy.build", action = "build.finish",
-        profile,
+        profile = %cargo_profile,
         elapsed_ms = build_started.elapsed().as_millis(),
         size_bytes = outcome.size_bytes,
         sha256 = %sha256,
-        target_triple = %target_triple,
-        "local release build complete",
+        target_triple = %target_triple_owned,
+        "local build complete",
     );
     Ok(outcome)
+}
+
+/// Legacy wrapper: builds with the `release` profile, all features.
+///
+/// Delegates to [`build_artifact`] with an explicit [`ArtifactProfile`] using the
+/// `"release"` cargo profile. Preserved for callers that have not yet been updated
+/// to pass an explicit profile.
+///
+/// New code should call [`build_artifact`] directly with an [`ArtifactProfile`].
+pub async fn build_release() -> Result<BuildOutcome, DeployError> {
+    let profile = ArtifactProfile {
+        role: ArtifactRole::Controller,
+        target_triple: detect_host_triple(),
+        bin: "lab".to_string(),
+        cargo_features: vec!["all".to_string()],
+        cargo_profile: "release".to_string(),
+        build_timeout_secs: None,
+    };
+    build_artifact(&profile).await
 }
 
 /// Path where cargo places the binary for `target_triple`.
@@ -362,5 +464,44 @@ mod tests {
             "got {}",
             root.display()
         );
+    }
+
+    #[test]
+    fn controller_deploy_profile_path() {
+        let controller = ArtifactProfile::controller();
+        let p = expected_artifact_path_for_profile(&controller);
+        assert!(
+            p.ends_with("target/controller-deploy/lab"),
+            "got {}",
+            p.display()
+        );
+    }
+
+    #[test]
+    fn node_deploy_profile_path() {
+        let node = ArtifactProfile::node();
+        let p = expected_artifact_path_for_profile(&node);
+        assert!(p.ends_with("target/node-deploy/lab"), "got {}", p.display());
+    }
+
+    #[test]
+    fn cross_compile_profile_path_includes_triple() {
+        let host = detect_host_triple();
+        let cross_triple = if host.contains("x86_64") {
+            "aarch64-unknown-linux-gnu"
+        } else {
+            "x86_64-unknown-linux-gnu"
+        };
+        let profile = ArtifactProfile {
+            role: ArtifactRole::Controller,
+            target_triple: cross_triple.to_string(),
+            bin: "lab".to_string(),
+            cargo_features: vec!["all".to_string()],
+            cargo_profile: "controller-deploy".to_string(),
+            build_timeout_secs: None,
+        };
+        let p = expected_artifact_path_for_profile(&profile);
+        let expected = format!("target/{cross_triple}/controller-deploy/lab");
+        assert!(p.ends_with(&expected), "got {}", p.display());
     }
 }
