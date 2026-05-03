@@ -50,8 +50,9 @@ impl MasterClient {
                 .unwrap_or(false)),
             Err(error) => {
                 // If the node is simply not found, it's not connected.
+                // ApiError::NotFound displays as "not found"; the kind tag is "not_found".
                 let msg = error.to_string();
-                if msg.contains("not_found") || msg.contains("404") {
+                if msg.contains("not found") || msg.contains("not_found") || msg.contains("404") {
                     return Ok(false);
                 }
                 Err(error)
@@ -163,4 +164,160 @@ fn master_bearer_token() -> Option<String> {
     std::env::var("LAB_MCP_HTTP_TOKEN")
         .ok()
         .filter(|value| !value.trim().is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// Helper: create a `MasterClient` pointed at a wiremock server.
+    async fn client_for(server: &MockServer) -> MasterClient {
+        MasterClient::new(server.uri()).expect("MasterClient::new")
+    }
+
+    // ----------------------------------------------------------------
+    // wait_for_node_connected — success on first poll
+    // ----------------------------------------------------------------
+
+    /// When the very first poll returns `{"connected": true}`, the function
+    /// should return `Ok(())` immediately without sleeping.
+    #[tokio::test]
+    async fn wait_connected_returns_ok_immediately_when_first_poll_succeeds() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"connected": true})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let result = client
+            .wait_for_node_connected("testnode", std::time::Duration::from_secs(5))
+            .await;
+
+        assert!(result.is_ok(), "expected Ok(()), got {result:?}");
+    }
+
+    // ----------------------------------------------------------------
+    // wait_for_node_connected — timeout when polls keep returning false
+    // ----------------------------------------------------------------
+
+    /// A zero-duration timeout means the deadline has already passed after the
+    /// first poll (which returns false). The function must bail without sleeping.
+    #[tokio::test]
+    async fn wait_connected_returns_err_on_timeout() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"connected": false})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        // Zero-duration timeout: deadline fires immediately after the first poll.
+        let result = client
+            .wait_for_node_connected("testnode", std::time::Duration::ZERO)
+            .await;
+
+        assert!(result.is_err(), "expected Err(timeout), got Ok(())");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("timed out"),
+            "error should mention timeout, got: {msg}"
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // wait_for_node_connected — retries until success
+    // ----------------------------------------------------------------
+
+    /// The first poll returns `{"connected": false}`; the second returns
+    /// `{"connected": true}`. The 2s backoff sleep (2^1 = 2s) is real wall time,
+    /// which is acceptable for this behavioral test.
+    #[tokio::test]
+    async fn wait_connected_retries_and_succeeds_on_second_poll() {
+        let server = MockServer::start().await;
+
+        // First call: not connected.
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"connected": false})),
+            )
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Subsequent calls: connected.
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"connected": true})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let result = client
+            .wait_for_node_connected("testnode", std::time::Duration::from_secs(10))
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "expected Ok(()) after retry, got {result:?}"
+        );
+
+        // Confirm both mocks were exercised (at least 2 requests).
+        assert!(
+            server.received_requests().await.unwrap().len() >= 2,
+            "expected at least 2 HTTP requests"
+        );
+    }
+
+    // ----------------------------------------------------------------
+    // wait_for_node_connected — transport errors are swallowed, not fatal
+    // ----------------------------------------------------------------
+
+    /// A 500 response causes `node_connected` to return `Err`. That error must
+    /// be logged as WARN and treated as "not yet connected" rather than aborting
+    /// the poll loop. The second poll returns `{"connected": true}`.
+    #[tokio::test]
+    async fn wait_connected_swallows_transport_error_and_retries() {
+        let server = MockServer::start().await;
+
+        // First call: server error — triggers the `Err` arm in the loop.
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(ResponseTemplate::new(500))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+
+        // Second call: node is now connected.
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/testnode"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"connected": true})),
+            )
+            .mount(&server)
+            .await;
+
+        let client = client_for(&server).await;
+        let result = client
+            .wait_for_node_connected("testnode", std::time::Duration::from_secs(10))
+            .await;
+
+        assert!(
+            result.is_ok(),
+            "transport error should be swallowed, not fatal; got {result:?}"
+        );
+    }
 }
