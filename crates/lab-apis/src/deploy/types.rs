@@ -44,11 +44,26 @@ pub struct DeployPlanHost {
     pub canary: bool,
 }
 
+/// Per-role artifact information included in plan and run summary responses.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeployArtifactSummary {
+    /// Artifact role: `"controller"` or `"node"`.
+    pub role: String,
+    /// Filesystem path of the artifact.
+    pub path: String,
+    /// SHA-256 hex digest of the artifact, if known.
+    pub sha256: Option<String>,
+}
+
 /// Output of `deploy.plan` — what `run` would do if invoked now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployPlan {
     pub artifact_path: String,
     pub artifact_sha256: Option<String>,
+    /// Per-role artifact information. Additive field — populated when
+    /// multiple artifact roles are required (controller + node split).
+    #[serde(default)]
+    pub artifacts: Vec<DeployArtifactSummary>,
     /// Per-host resolved SSH target and install config.
     pub host_details: Vec<DeployPlanHost>,
     pub max_parallel: u32,
@@ -107,6 +122,10 @@ pub struct HostStatusEvent {
 pub struct DeployRunSummary {
     pub run_id: String,
     pub artifact_sha256: String,
+    /// Per-role artifact information. Additive field — populated when
+    /// multiple artifact roles were built (controller + node split).
+    #[serde(default)]
+    pub artifacts: Vec<DeployArtifactSummary>,
     pub hosts: Vec<DeployHostResult>,
     pub succeeded: usize,
     pub failed: usize,

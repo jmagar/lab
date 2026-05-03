@@ -459,3 +459,98 @@ async fn unknown_host_alias_in_factory_path_is_separate_from_plan_validation() {
     let inner = RecordingIo::new();
     let _t = TimedIo::new(inner, Duration::from_millis(0));
 }
+
+// ── Task 13: per-role artifact plan test ──────────────────────────────────
+
+/// Verify that `plan_impl` populates `DeployPlan.artifacts` with one entry per
+/// role required by the requested targets.
+///
+/// This test uses the public `DefaultRunner::plan_impl` path which only inspects
+/// the on-disk artifact path (no build is triggered). We do NOT need a live SSH
+/// host — `plan_impl` only validates aliases against the inventory.
+#[tokio::test]
+async fn plan_artifacts_includes_per_role_entries() {
+    use lab::config::{ArtifactRole, DeployDefaults, DeployHostOverride, DeployPreferences};
+    use lab::dispatch::deploy::runner::{DefaultRunner, build_default_runner};
+    use lab_apis::core::ssh::SshHostTarget;
+    use lab_apis::deploy::DeployRequest;
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    // Build a config with two hosts: one controller-role, one node-role.
+    let mut hosts = BTreeMap::new();
+    hosts.insert(
+        "ctrl-host".to_string(),
+        DeployHostOverride {
+            artifact_role: Some(ArtifactRole::Controller),
+            ..Default::default()
+        },
+    );
+    hosts.insert(
+        "node-host".to_string(),
+        DeployHostOverride {
+            artifact_role: Some(ArtifactRole::Node),
+            ..Default::default()
+        },
+    );
+    let prefs = DeployPreferences {
+        defaults: Some(DeployDefaults {
+            remote_path: Some("/usr/local/bin/lab".to_string()),
+            ..Default::default()
+        }),
+        hosts,
+    };
+
+    // Build a minimal SSH inventory with the two hosts.
+    let inventory = vec![
+        SshHostTarget {
+            alias: "ctrl-host".to_string(),
+            hostname: None,
+            user: None,
+            port: None,
+            identity_file: None,
+        },
+        SshHostTarget {
+            alias: "node-host".to_string(),
+            hostname: None,
+            user: None,
+            port: None,
+            identity_file: None,
+        },
+    ];
+
+    let runner = DefaultRunner::new(
+        prefs,
+        Arc::new(inventory),
+        Arc::new(lab::dispatch::deploy::lock::HostLockRegistry::default()),
+    );
+
+    let req = DeployRequest {
+        targets: vec!["ctrl-host".to_string(), "node-host".to_string()],
+        max_parallel: Some(1),
+        fail_fast: false,
+        confirm: true,
+    };
+
+    let plan = runner
+        .plan_impl(req)
+        .await
+        .expect("plan_impl should succeed");
+
+    // The `artifacts` list must contain both roles.
+    let roles: std::collections::HashSet<String> =
+        plan.artifacts.iter().map(|a| a.role.clone()).collect();
+    assert!(
+        roles.contains("controller"),
+        "expected 'controller' in artifacts; got: {roles:?}"
+    );
+    assert!(
+        roles.contains("node"),
+        "expected 'node' in artifacts; got: {roles:?}"
+    );
+    assert_eq!(
+        plan.artifacts.len(),
+        2,
+        "expected exactly 2 artifact entries"
+    );
+}

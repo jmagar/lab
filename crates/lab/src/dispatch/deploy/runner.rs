@@ -240,6 +240,27 @@ impl DefaultRunner {
             })
             .collect();
 
+        // Collect per-role artifact paths for the plan summary.
+        let needed_roles: std::collections::HashSet<crate::config::ArtifactRole> = req
+            .targets
+            .iter()
+            .map(|alias| self.resolve_artifact_role(alias))
+            .collect();
+        let role_artifact_paths: Vec<(crate::config::ArtifactRole, std::path::PathBuf)> =
+            needed_roles
+                .into_iter()
+                .map(|role| {
+                    let profile = match role {
+                        crate::config::ArtifactRole::Controller => {
+                            build::ArtifactProfile::controller()
+                        }
+                        crate::config::ArtifactRole::Node => build::ArtifactProfile::node(),
+                    };
+                    let path = build::expected_artifact_path_for_profile(&profile);
+                    (role, path)
+                })
+                .collect();
+
         // --- async: only owned values, no &self ---
         Box::pin(async move {
             let artifact = build::expected_artifact_path("lab");
@@ -252,9 +273,18 @@ impl DefaultRunner {
             } else {
                 None
             };
+            let artifacts = role_artifact_paths
+                .into_iter()
+                .map(|(role, path)| lab_apis::deploy::DeployArtifactSummary {
+                    role: format!("{role:?}").to_ascii_lowercase(),
+                    path: path.to_string_lossy().into_owned(),
+                    sha256: None,
+                })
+                .collect();
             Ok(DeployPlan {
                 artifact_path: artifact.to_string_lossy().into_owned(),
                 artifact_sha256,
+                artifacts,
                 host_details,
                 max_parallel,
                 canary_hosts,
@@ -333,11 +363,16 @@ impl DefaultRunner {
                 );
 
                 let mut all_results: Vec<DeployHostResult> = Vec::new();
+                let artifact_map = {
+                    let mut m = std::collections::HashMap::new();
+                    m.insert(build_outcome.role, build_outcome.clone());
+                    m
+                };
 
                 if !canary_jobs.is_empty() {
                     let canary_results = DefaultRunner::run_jobs(
                         canary_jobs,
-                        build_outcome.clone(),
+                        artifact_map.clone(),
                         1,
                         req.fail_fast,
                         run_id.clone(),
@@ -369,7 +404,7 @@ impl DefaultRunner {
                 if !rest_jobs.is_empty() {
                     let rest_results = DefaultRunner::run_jobs(
                         rest_jobs,
-                        build_outcome.clone(),
+                        artifact_map,
                         max_parallel,
                         req.fail_fast,
                         run_id.clone(),
@@ -620,6 +655,8 @@ struct HostJob {
     unit: Option<String>,
     scope: Option<ServiceScope>,
     master_url: Option<String>,
+    /// Artifact role for this host, resolved from per-host override or defaults.
+    artifact_role: crate::config::ArtifactRole,
 }
 
 impl DefaultRunner {
@@ -628,6 +665,16 @@ impl DefaultRunner {
             .defaults
             .as_ref()
             .and_then(|d| d.master_url.clone())
+    }
+
+    /// Resolve the artifact role for a host: per-host override → defaults → Node.
+    fn resolve_artifact_role(&self, host: &str) -> crate::config::ArtifactRole {
+        self.config
+            .hosts
+            .get(host)
+            .and_then(|h| h.artifact_role)
+            .or_else(|| self.config.defaults.as_ref().and_then(|d| d.artifact_role))
+            .unwrap_or(crate::config::ArtifactRole::Node)
     }
 
     fn build_jobs(&self, hosts: &[String]) -> Vec<HostJob> {
@@ -643,6 +690,7 @@ impl DefaultRunner {
                     unit: self.effective_unit(h),
                     scope: self.effective_scope(h),
                     master_url: master_url.clone(),
+                    artifact_role: self.resolve_artifact_role(h),
                 })
             })
             .collect()
@@ -650,13 +698,17 @@ impl DefaultRunner {
 
     /// Fan out `jobs` at `max_parallel` concurrency, honoring fail-fast.
     ///
+    /// Each job carries its own `artifact_role`; the caller supplies an
+    /// `artifacts` map built once before this call so each role is compiled
+    /// at most once even when multiple hosts share a role.
+    ///
     /// `locks` is passed by `Arc` so the stream closures do not borrow
     /// `&self` — a Rust 2024 RPIT-lifetime-capture limitation (#100013)
     /// rejects `&self`-capturing futures inside `buffer_unordered` when the
     /// surrounding function returns `impl Future`.
     async fn run_jobs(
         jobs: Vec<HostJob>,
-        build: Arc<BuildOutcome>,
+        artifacts: std::collections::HashMap<crate::config::ArtifactRole, Arc<BuildOutcome>>,
         max_parallel: usize,
         fail_fast: bool,
         run_id: String,
@@ -666,18 +718,24 @@ impl DefaultRunner {
         use std::sync::atomic::{AtomicBool, Ordering};
         use tracing::Instrument;
 
+        let artifacts = Arc::new(artifacts);
         let stop = Arc::new(AtomicBool::new(false));
 
         stream::iter(jobs)
             .map(move |job| {
                 let stop = stop.clone();
-                let build = build.clone();
+                let artifacts = artifacts.clone();
                 let run_id = run_id.clone();
                 let locks = locks.clone();
                 async move {
                     if stop.load(Ordering::SeqCst) {
                         return aborted_result(&job.host);
                     }
+                    let build = Arc::clone(
+                        artifacts
+                            .get(&job.artifact_role)
+                            .expect("artifact for role was built before run_jobs"),
+                    );
                     let span = tracing::info_span!(
                         "deploy.host",
                         host = %job.host,
@@ -1199,6 +1257,7 @@ fn summarize(
     DeployRunSummary {
         run_id,
         artifact_sha256,
+        artifacts: vec![],
         succeeded,
         failed,
         ok: failed == 0,

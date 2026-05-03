@@ -294,7 +294,12 @@ impl StashStore {
     /// the per-component index at `revisions/by-component/<component_id>.json`.
     ///
     /// Write order: meta first, then index.  A crash between the two leaves
-    /// meta-without-index, which `list_revisions_for` recovers via fallback scan.
+    /// meta-without-index. Recovery depends on the component's prior state:
+    /// - If no index yet exists, `list_revisions_for` falls back to the O(R) scan
+    ///   and finds the orphaned meta. Full recovery.
+    /// - If an index already exists, the new revision's ID is simply absent from
+    ///   the index. The revision is invisible until the index is manually repaired
+    ///   or the index is removed to trigger a full scan.
     /// Reverse order (index before meta) would leave a dangling index entry
     /// that points to non-existent meta.
     ///
@@ -314,6 +319,9 @@ impl StashStore {
     /// Reads the existing index (or starts with an empty vec), appends `rev_id`,
     /// and writes atomically.  Duplicate IDs are not checked — the caller
     /// (`write_revision_meta`) guarantees uniqueness.
+    ///
+    /// Returns `decode_error` when the index exists but is corrupt — never
+    /// silently overwrites a non-empty index with a single-entry vec.
     pub fn append_revision_to_index(
         &self,
         component_id: &str,
@@ -323,7 +331,16 @@ impl StashStore {
         Self::validate_id(rev_id)?;
         let index_path = self.component_revision_index_path(component_id);
         let mut ids: Vec<String> = match std::fs::read(&index_path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| {
+                ToolError::Sdk {
+                    sdk_kind: "decode_error".into(),
+                    message: format!(
+                        "revision index for `{component_id}` is corrupt and cannot be appended to: {e}; \
+                         inspect `{}` and repair or remove it",
+                        index_path.display()
+                    ),
+                }
+            })?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(io_internal(e)),
         };
@@ -343,24 +360,39 @@ impl StashStore {
         let index_path = self.component_revision_index_path(component_id);
         if index_path.exists() {
             // Fast path: index present — load only the revisions listed in it.
+            // If the index is corrupt, fall through to the O(R) scan rather than
+            // returning empty results; a corrupt-but-present index must not hide
+            // revisions whose meta.json files are intact on disk.
             let bytes = std::fs::read(&index_path).map_err(io_internal)?;
-            let ids: Vec<String> = serde_json::from_slice(&bytes).unwrap_or_default();
-            let mut out = Vec::with_capacity(ids.len());
-            for rev_id in &ids {
-                let meta_path = self.revision_meta_path(rev_id);
-                let rev_bytes = match std::fs::read(&meta_path) {
-                    Ok(b) => b,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(e) => return Err(io_internal(e)),
-                };
-                let rev: StashRevision =
-                    serde_json::from_slice(&rev_bytes).map_err(decode_error)?;
-                out.push(rev);
+            match serde_json::from_slice::<Vec<String>>(&bytes) {
+                Ok(ids) => {
+                    let mut out = Vec::with_capacity(ids.len());
+                    for rev_id in &ids {
+                        let meta_path = self.revision_meta_path(rev_id);
+                        let rev_bytes = match std::fs::read(&meta_path) {
+                            Ok(b) => b,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(e) => return Err(io_internal(e)),
+                        };
+                        let rev: StashRevision =
+                            serde_json::from_slice(&rev_bytes).map_err(decode_error)?;
+                        out.push(rev);
+                    }
+                    return Ok(out);
+                }
+                Err(_) => {
+                    // Index is corrupt — fall through to the full scan below.
+                    tracing::warn!(
+                        component_id,
+                        index = %index_path.display(),
+                        "revision index is corrupt; falling back to full scan"
+                    );
+                }
             }
-            return Ok(out);
         }
 
-        // Fallback: O(R) full scan — used for stores pre-dating the index.
+        // Fallback: O(R) full scan — used for stores pre-dating the index or
+        // when the index is corrupt (see above).
         let revisions_dir = self.root.join(DIR_REVISIONS);
         if !revisions_dir.exists() {
             return Ok(Vec::new());
@@ -479,6 +511,9 @@ impl StashStore {
     ///
     /// Reads the existing index (or starts with an empty vec), appends
     /// `provider_id`, and writes atomically.
+    ///
+    /// Returns `decode_error` when the index exists but is corrupt — never
+    /// silently overwrites a non-empty index with a single-entry vec.
     pub fn append_provider_to_index(
         &self,
         component_id: &str,
@@ -488,7 +523,16 @@ impl StashStore {
         Self::validate_id(provider_id)?;
         let index_path = self.component_provider_index_path(component_id);
         let mut ids: Vec<String> = match std::fs::read(&index_path) {
-            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| {
+                ToolError::Sdk {
+                    sdk_kind: "decode_error".into(),
+                    message: format!(
+                        "provider index for `{component_id}` is corrupt and cannot be appended to: {e}; \
+                         inspect `{}` and repair or remove it",
+                        index_path.display()
+                    ),
+                }
+            })?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
             Err(e) => return Err(io_internal(e)),
         };
@@ -509,25 +553,37 @@ impl StashStore {
 
         let index_path = self.component_provider_index_path(component_id);
         if index_path.exists() {
-            // Fast path: index present.
+            // Fast path: index present — load only the providers listed in it.
+            // If the index is corrupt, fall through to the O(P) scan rather than
+            // returning empty results.
             let bytes = std::fs::read(&index_path).map_err(io_internal)?;
-            let ids: Vec<String> = serde_json::from_slice(&bytes).unwrap_or_default();
-            let mut out = Vec::with_capacity(ids.len());
-            for prov_id in &ids {
-                let prov_path = self.provider_record_path(prov_id);
-                let prov_bytes = match std::fs::read(&prov_path) {
-                    Ok(b) => b,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                    Err(e) => return Err(io_internal(e)),
-                };
-                let record: StashProviderRecord =
-                    serde_json::from_slice(&prov_bytes).map_err(decode_error)?;
-                out.push(record);
+            match serde_json::from_slice::<Vec<String>>(&bytes) {
+                Ok(ids) => {
+                    let mut out = Vec::with_capacity(ids.len());
+                    for prov_id in &ids {
+                        let prov_path = self.provider_record_path(prov_id);
+                        let prov_bytes = match std::fs::read(&prov_path) {
+                            Ok(b) => b,
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                            Err(e) => return Err(io_internal(e)),
+                        };
+                        let record: StashProviderRecord =
+                            serde_json::from_slice(&prov_bytes).map_err(decode_error)?;
+                        out.push(record);
+                    }
+                    return Ok(out);
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        component_id,
+                        index = %index_path.display(),
+                        "provider index is corrupt; falling back to full scan"
+                    );
+                }
             }
-            return Ok(out);
         }
 
-        // Fallback: O(P) full scan for stores pre-dating the index.
+        // Fallback: O(P) full scan for stores pre-dating the index or when it is corrupt.
         let dir = self.root.join(DIR_PROVIDERS);
         let all: Vec<StashProviderRecord> = list_json_records(&dir)?;
         Ok(all
@@ -1132,5 +1188,98 @@ mod tests {
         let store = StashStore::new(PathBuf::from("/stash"));
         let p = store.workspace_path("comp-01", StashWorkspaceShape::Directory, None);
         assert_eq!(p, PathBuf::from("/stash/workspaces/comp-01"));
+    }
+
+    // ── index corruption (lab-4sd2) ──────────────────────────────────────────
+
+    /// A corrupt revision index must not destroy prior IDs on the next save.
+    /// After corruption, append_revision_to_index must return decode_error.
+    #[test]
+    fn corrupt_revision_index_append_returns_decode_error_not_silent_reset() {
+        let (store, _dir) = make_store();
+        let rev1 = sample_revision("rev-01", "comp-01");
+        store.write_revision_meta(&rev1).expect("write rev1");
+
+        // Corrupt the index file.
+        let index_path = store.component_revision_index_path("comp-01");
+        std::fs::write(&index_path, b"not valid json").expect("corrupt index");
+
+        // Attempting to append a new revision must fail with decode_error,
+        // NOT silently overwrite the index with a single-entry vec.
+        let err = store
+            .append_revision_to_index("comp-01", "rev-02")
+            .expect_err("corrupt index must produce error");
+        assert_eq!(
+            err.kind(),
+            "decode_error",
+            "expected decode_error, got: {err:?}"
+        );
+
+        // The corrupt file must still be intact (not overwritten).
+        let contents = std::fs::read(&index_path).expect("read after failed append");
+        assert_eq!(
+            &contents, b"not valid json",
+            "corrupt index must not be overwritten"
+        );
+    }
+
+    /// A corrupt revision index on the read path must fall back to the full
+    /// scan and return all revisions whose meta.json files are intact.
+    #[test]
+    fn corrupt_revision_index_read_falls_back_to_full_scan() {
+        let (store, _dir) = make_store();
+        // Write two revisions (this creates the index).
+        let rev1 = sample_revision("rev-01", "comp-01");
+        let rev2 = sample_revision("rev-02", "comp-01");
+        store.write_revision_meta(&rev1).expect("write rev1");
+        store.write_revision_meta(&rev2).expect("write rev2");
+
+        // Corrupt the index.
+        let index_path = store.component_revision_index_path("comp-01");
+        std::fs::write(&index_path, b"{{corrupt}}").expect("corrupt index");
+
+        // list_revisions_for must fall back and find both revisions via full scan.
+        let revs = store
+            .list_revisions_for("comp-01")
+            .expect("list must succeed via fallback scan");
+        assert_eq!(
+            revs.len(),
+            2,
+            "both revisions must be found despite corrupt index"
+        );
+    }
+
+    /// A corrupt provider index on the append path must return decode_error.
+    #[test]
+    fn corrupt_provider_index_append_returns_decode_error() {
+        let (store, _dir) = make_store();
+        let p1 = sample_provider("prov-01", "comp-01");
+        store.write_provider(&p1).expect("write prov1");
+
+        let index_path = store.component_provider_index_path("comp-01");
+        std::fs::write(&index_path, b"not json").expect("corrupt index");
+
+        let err = store
+            .append_provider_to_index("comp-01", "prov-02")
+            .expect_err("must fail");
+        assert_eq!(err.kind(), "decode_error");
+    }
+
+    /// A corrupt provider index on the read path must fall back to the full scan.
+    #[test]
+    fn corrupt_provider_index_read_falls_back_to_full_scan() {
+        let (store, _dir) = make_store();
+        let p1 = sample_provider("prov-01", "comp-01");
+        let p2 = sample_provider("prov-02", "comp-01");
+        store.write_provider(&p1).expect("write p1");
+        store.write_provider(&p2).expect("write p2");
+
+        let index_path = store.component_provider_index_path("comp-01");
+        std::fs::write(&index_path, b"{{corrupt}}").expect("corrupt");
+
+        let providers = store
+            .list_providers_for("comp-01")
+            .expect("fallback scan must succeed");
+        assert_eq!(providers.len(), 2, "both providers found via fallback scan");
     }
 }

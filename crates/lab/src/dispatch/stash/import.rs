@@ -9,7 +9,7 @@ use lab_apis::stash::types::{StashComponent, StashComponentKind, limits};
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::reject_path_traversal;
-use crate::dispatch::path_safety::reject_symlink;
+use crate::dispatch::path_safety::{canonicalize_and_reject_system_path, reject_symlink};
 use crate::dispatch::stash::store::StashStore;
 
 // ── Kind detection ────────────────────────────────────────────────────────────
@@ -227,7 +227,7 @@ fn walk_measure_and_copy(src: &Path, dst: &Path) -> Result<(), ToolError> {
 /// * `workspace_too_large` — total workspace exceeds `MAX_WORKSPACE_SIZE`
 /// * `file_too_large` — a single file exceeds `MAX_FILE_SIZE`
 /// * `symlink_rejected` — a symlink was encountered
-/// * `path_traversal` — path component escapes source root
+/// * `path_traversal` — source path resolves to a system directory or escapes source root
 /// * `invalid_param` — name is empty or exceeds `MAX_COMPONENT_NAME_LEN`
 pub async fn import_component(
     store: &StashStore,
@@ -256,6 +256,12 @@ pub async fn import_component(
 
     // Check source is not a symlink.
     reject_symlink(source)?;
+
+    // Reject source paths that resolve into system directories.
+    // This prevents stash from being used as an arbitrary-file-read primitive:
+    // an MCP caller cannot import /etc/shadow or /proc/self/environ and then
+    // export the snapshot to an attacker-controlled path.
+    canonicalize_and_reject_system_path(source)?;
 
     // Capture source path, name, label for move into spawn_blocking.
     let id = id.to_string();
