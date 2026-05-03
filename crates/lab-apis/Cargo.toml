@@ -92,6 +92,7 @@ beads = []
 bytestash = []
 default = []
 deploy = []
+dozzle = []
 extract = [
   "dep:russh",
   "dep:russh-sftp",
@@ -99,7 +100,6 @@ extract = [
   "dep:quick-xml",
   "dep:rusqlite",
 ]
-dozzle = []
 freshrss = []
 glances = []
 gotify = []
