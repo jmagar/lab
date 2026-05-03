@@ -296,6 +296,7 @@ async fn handle_websocket(
             if !text.contains("_lab_internal") {
                 let request: RpcRequest =
                     serde_json::from_str(&text).map_err(|e| anyhow::anyhow!(e))?;
+                let first_was_initialize = request.method == "initialize";
                 let response = handle_rpc_request(
                     request,
                     &store,
@@ -317,7 +318,12 @@ async fn handle_websocket(
                     drop(write_task.await);
                     return Ok(());
                 }
-                if session_node_id.is_none() {
+                // Close only when `initialize` was attempted and rejected — the
+                // node tried to authenticate but was denied (e.g. pending
+                // enrollment, token mismatch). Do NOT close when the first
+                // message was a non-`initialize` method: the node may have sent
+                // a status push by mistake and will retry with `initialize`.
+                if first_was_initialize && session_node_id.is_none() {
                     drop(tx.send(Message::Close(None)).await);
                     drop(tx);
                     sweep_task.abort();
