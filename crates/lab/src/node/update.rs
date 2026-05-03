@@ -8,8 +8,8 @@ use serde::Serialize;
 use serde_json::json;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::config::{DeployPreferences, LabConfig, RestartModel, ServiceScope};
-use crate::dispatch::deploy::build::{BuildOutcome, build_release};
+use crate::config::{ArtifactRole, DeployPreferences, LabConfig, RestartModel, ServiceScope};
+use crate::dispatch::deploy::build::{ArtifactProfile, BuildOutcome, build_artifact};
 use crate::dispatch::deploy::host_io::{HostIo, SshHostIo};
 use crate::dispatch::deploy::params::validate_remote_path;
 use crate::dispatch::deploy::runner::build_default_runner;
@@ -68,6 +68,9 @@ struct ResolvedTargets {
 struct EffectiveTargetConfig {
     install_path: String,
     restart: Option<RestartModel>,
+    artifact_role: ArtifactRole,
+    target_triple: Option<String>,
+    build_timeout_secs: Option<u64>,
 }
 
 pub async fn run_update(
@@ -78,7 +81,41 @@ pub async fn run_update(
     let local_host = resolve_local_hostname().context("resolve local hostname for nodes update")?;
     let controller_host = controller_host(config, &local_host);
     let resolved = resolve_targets(config, &local_host, &controller_host, explicit_targets, all)?;
-    let artifact = Arc::new(build_release().await?);
+
+    // Collect the set of artifact roles required for this update pass.
+    let mut needed_roles: std::collections::HashSet<ArtifactRole> =
+        std::collections::HashSet::new();
+    for target in &resolved.remote {
+        let tc = effective_target_config(config, &target.alias);
+        needed_roles.insert(tc.artifact_role);
+    }
+    if resolved.local_controller.is_some() {
+        needed_roles.insert(ArtifactRole::Controller);
+    }
+
+    // Build each required role exactly once.
+    let mut artifact_map: std::collections::HashMap<ArtifactRole, Arc<BuildOutcome>> =
+        std::collections::HashMap::new();
+    for role in &needed_roles {
+        let mut profile = match role {
+            ArtifactRole::Controller => ArtifactProfile::controller(),
+            ArtifactRole::Node => ArtifactProfile::node(),
+        };
+        // Allow per-role timeout override from defaults (host-level overrides are
+        // applied when selecting the artifact for each target, not here).
+        if let Some(secs) = config
+            .deploy
+            .as_ref()
+            .and_then(|d| d.defaults.as_ref())
+            .and_then(|d| d.build_timeout_secs)
+        {
+            profile.build_timeout_secs = Some(secs);
+        }
+        let outcome = build_artifact(&profile)
+            .await
+            .with_context(|| format!("build artifact for role {role:?}"))?;
+        artifact_map.insert(*role, Arc::new(outcome));
+    }
 
     let controller_client =
         MasterClient::from_config(config, None).context("build controller verification client")?;
@@ -86,6 +123,11 @@ pub async fn run_update(
     let mut results = Vec::new();
     for target in resolved.remote {
         let target_config = effective_target_config(config, &target.alias);
+        let artifact = Arc::clone(
+            artifact_map
+                .get(&target_config.artifact_role)
+                .expect("artifact for role was built above"),
+        );
         let io = Arc::new(SshHostIo::new(target.alias.clone(), target.ssh.clone()));
         results.push(
             run_remote_target(
@@ -93,7 +135,7 @@ pub async fn run_update(
                 target.alias,
                 controller_host.clone(),
                 target_config,
-                artifact.clone(),
+                artifact,
                 &controller_client,
             )
             .await,
@@ -102,26 +144,38 @@ pub async fn run_update(
 
     if let Some(local_target) = resolved.local_controller {
         let target_config = effective_target_config(config, &local_target.identity);
+        let artifact = Arc::clone(
+            artifact_map
+                .get(&ArtifactRole::Controller)
+                .expect("controller artifact was built above"),
+        );
         results.push(
             run_local_controller(
                 local_target.identity,
                 controller_host,
                 target_config,
-                artifact.clone(),
+                artifact,
             )
             .await,
         );
     }
 
     let ok = results.iter().all(|result| result.ok);
+    let artifacts: Vec<_> = artifact_map
+        .values()
+        .map(|a| {
+            json!({
+                "role": format!("{:?}", a.role).to_ascii_lowercase(),
+                "path": a.path,
+                "sha256": a.sha256,
+                "size_bytes": a.size_bytes,
+                "target_triple": a.target_triple,
+            })
+        })
+        .collect();
     Ok(json!({
         "ok": ok,
-        "artifact": {
-            "path": artifact.path.clone(),
-            "sha256": artifact.sha256.clone(),
-            "size_bytes": artifact.size_bytes,
-            "target_triple": artifact.target_triple.clone(),
-        },
+        "artifacts": artifacts,
         "results": results,
     }))
 }
@@ -224,9 +278,26 @@ fn effective_target_config(config: &LabConfig, target: &str) -> EffectiveTargetC
         .or_else(|| defaults.and_then(|entry| entry.restart.clone()))
         .or_else(|| legacy_restart_model(&deploy, target));
 
+    // Remote hosts default to Node role; only override when explicitly configured.
+    let artifact_role = host
+        .and_then(|entry| entry.artifact_role)
+        .or_else(|| defaults.and_then(|entry| entry.artifact_role))
+        .unwrap_or(ArtifactRole::Node);
+
+    let target_triple = host
+        .and_then(|entry| entry.target_triple.clone())
+        .or_else(|| defaults.and_then(|entry| entry.target_triple.clone()));
+
+    let build_timeout_secs = host
+        .and_then(|entry| entry.build_timeout_secs)
+        .or_else(|| defaults.and_then(|entry| entry.build_timeout_secs));
+
     EffectiveTargetConfig {
         install_path,
         restart,
+        artifact_role,
+        target_triple,
+        build_timeout_secs,
     }
 }
 
@@ -485,10 +556,10 @@ async fn run_remote_target<I: HostIo + 'static>(
 
     log_remote_update_stage_enter(&alias, &resolved_node_id, "controller_verify");
     let controller_started = Instant::now();
-    // `node_connected` helper not yet present on MasterClient; use
-    // fetch_device as a stand-in (a 200 response implies the controller
-    // has a record for this node, which is adequate for controller_verify).
-    let controller_result = controller_client.fetch_device(&resolved_node_id).await;
+    let reconnect_timeout = std::time::Duration::from_secs(60);
+    let controller_result = controller_client
+        .wait_for_node_connected(&resolved_node_id, reconnect_timeout)
+        .await;
     let connected = controller_result.is_ok();
     stages_ms.insert(
         "controller_verify".into(),
@@ -936,23 +1007,34 @@ async fn install_local_artifact_with_sudo(source: &Path, target: &Path) -> Resul
     run_local_command_vec(&["sudo".into(), "-n".into(), "sh".into(), "-c".into(), script]).await
 }
 
-async fn verify_local_health() -> Result<()> {
+async fn check_local_endpoint(path: &str) -> Result<()> {
     let mut stream = tokio::net::TcpStream::connect("127.0.0.1:8765")
         .await
-        .context("connect to local controller health endpoint")?;
+        .with_context(|| format!("connect to local controller endpoint {path}"))?;
+    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
     stream
-        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .write_all(request.as_bytes())
         .await
-        .context("write local controller health request")?;
+        .with_context(|| format!("write local controller request {path}"))?;
     let mut response = Vec::new();
     stream
         .read_to_end(&mut response)
         .await
-        .context("read local controller health response")?;
+        .with_context(|| format!("read local controller response {path}"))?;
     let response = String::from_utf8_lossy(&response);
     if !response.starts_with("HTTP/1.1 200") && !response.starts_with("HTTP/1.0 200") {
-        bail!("local controller health check did not return 200");
+        bail!("local controller endpoint {path} did not return 200");
     }
+    Ok(())
+}
+
+async fn verify_local_health() -> Result<()> {
+    check_local_endpoint("/health")
+        .await
+        .context("local controller /health check")?;
+    check_local_endpoint("/ready")
+        .await
+        .context("local controller /ready check")?;
     Ok(())
 }
 
@@ -1140,5 +1222,87 @@ mod tests {
             .await
             .expect("restart");
         assert!(io.ops().iter().any(|op| op == "run:echo,restart"));
+    }
+
+    #[test]
+    fn remote_targets_default_to_node_artifact_role() {
+        let config = LabConfig {
+            deploy: None,
+            ..LabConfig::default()
+        };
+        let effective = effective_target_config(&config, "somehost");
+        assert_eq!(effective.artifact_role, ArtifactRole::Node);
+    }
+
+    #[test]
+    fn host_artifact_role_override_respected() {
+        use crate::config::DeployHostOverride;
+
+        let mut config = LabConfig {
+            deploy: Some(DeployPreferences::default()),
+            ..LabConfig::default()
+        };
+        config.deploy.as_mut().unwrap().hosts.insert(
+            "dookie".into(),
+            DeployHostOverride {
+                artifact_role: Some(ArtifactRole::Controller),
+                ..Default::default()
+            },
+        );
+        let effective = effective_target_config(&config, "dookie");
+        assert_eq!(effective.artifact_role, ArtifactRole::Controller);
+    }
+
+    #[test]
+    fn defaults_artifact_role_propagates_to_hosts_without_override() {
+        use crate::config::{DeployDefaults, DeployHostOverride};
+
+        let mut config = LabConfig {
+            deploy: Some(DeployPreferences {
+                defaults: Some(DeployDefaults {
+                    artifact_role: Some(ArtifactRole::Controller),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+            ..LabConfig::default()
+        };
+        // Host exists but has no artifact_role override.
+        config
+            .deploy
+            .as_mut()
+            .unwrap()
+            .hosts
+            .insert("mini1".into(), DeployHostOverride::default());
+        let effective = effective_target_config(&config, "mini1");
+        assert_eq!(effective.artifact_role, ArtifactRole::Controller);
+    }
+
+    #[test]
+    fn host_artifact_role_overrides_defaults() {
+        use crate::config::{DeployDefaults, DeployHostOverride};
+
+        let config = LabConfig {
+            deploy: Some(DeployPreferences {
+                defaults: Some(DeployDefaults {
+                    artifact_role: Some(ArtifactRole::Controller),
+                    ..Default::default()
+                }),
+                hosts: {
+                    let mut m = std::collections::BTreeMap::new();
+                    m.insert(
+                        "mini1".into(),
+                        DeployHostOverride {
+                            artifact_role: Some(ArtifactRole::Node),
+                            ..Default::default()
+                        },
+                    );
+                    m
+                },
+            }),
+            ..LabConfig::default()
+        };
+        let effective = effective_target_config(&config, "mini1");
+        assert_eq!(effective.artifact_role, ArtifactRole::Node);
     }
 }

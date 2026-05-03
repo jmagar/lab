@@ -59,6 +59,51 @@ impl MasterClient {
         }
     }
 
+    /// Poll `node_connected` until the node is connected or the timeout elapses.
+    ///
+    /// Returns `Ok(())` on success.
+    /// Returns `Err` when the timeout expires without a successful `true` response.
+    ///
+    /// Transport errors are logged as warnings and treated as "not yet connected"
+    /// — they will not abort the poll early.
+    pub async fn wait_for_node_connected(
+        &self,
+        node_id: &str,
+        timeout: std::time::Duration,
+    ) -> Result<()> {
+        use std::time::Instant;
+        let deadline = Instant::now() + timeout;
+        let mut attempt: u32 = 0;
+        loop {
+            match self.node_connected(node_id).await {
+                Ok(true) => return Ok(()),
+                Ok(false) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        surface = "node",
+                        service = "update",
+                        action = "node_connected.poll",
+                        node_id = %node_id,
+                        attempt,
+                        error = %error,
+                        "node_connected poll returned error",
+                    );
+                }
+            }
+            if Instant::now() >= deadline {
+                anyhow::bail!(
+                    "timed out waiting for node `{node_id}` to reconnect to controller ({}s)",
+                    timeout.as_secs()
+                );
+            }
+            attempt += 1;
+            // Exponential backoff: 2s, 4s, 8s, capped at 16s.
+            let delay =
+                std::time::Duration::from_secs(std::cmp::min(2u64.saturating_pow(attempt), 16));
+            tokio::time::sleep(delay).await;
+        }
+    }
+
     pub async fn fetch_enrollments(&self) -> Result<serde_json::Value> {
         self.inner.fetch_enrollments().await.map_err(Into::into)
     }

@@ -15,6 +15,8 @@ pub struct BuildOutcome {
     pub sha256: String,
     pub size_bytes: u64,
     pub target_triple: String,
+    /// The artifact role this outcome was built for.
+    pub role: ArtifactRole,
 }
 
 /// Describes a specific artifact to build or reuse.
@@ -185,6 +187,7 @@ pub async fn build_artifact(profile: &ArtifactProfile) -> Result<BuildOutcome, D
         sha256: sha256.clone(),
         size_bytes: metadata.len(),
         target_triple: target_triple_owned.clone(),
+        role: profile.role,
     };
     tracing::info!(
         surface = "dispatch", service = "deploy.build", action = "build.finish",
