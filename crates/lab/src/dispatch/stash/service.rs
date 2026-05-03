@@ -575,6 +575,9 @@ pub fn targets_list(store: &StashStore) -> Result<Value, ToolError> {
 }
 
 /// `target.add` — register a new deploy target.
+///
+/// For `kind=local`, validates `path` against the system-path denylist at
+/// registration time so operators cannot register unsafe targets silently.
 pub fn target_add(store: &StashStore, p: TargetAddParams) -> Result<Value, ToolError> {
     let id = ulid::Ulid::new().to_string().to_lowercase();
 
@@ -583,6 +586,16 @@ pub fn target_add(store: &StashStore, p: TargetAddParams) -> Result<Value, ToolE
             let path = p.path.ok_or_else(|| ToolError::InvalidParam {
                 param: "path".into(),
                 message: "path is required for kind=local".into(),
+            })?;
+            // Validate at registration time — catches unsafe targets before any
+            // deploy attempt. canonicalize_and_reject_system_path fails closed on
+            // EACCES/EIO so symlinks to system dirs are also caught here.
+            canonicalize_and_reject_system_path(&path).map_err(|e| match e {
+                ToolError::Sdk { message, .. } => ToolError::InvalidParam {
+                    param: "path".into(),
+                    message,
+                },
+                other => other,
             })?;
             StashDeployTarget::Local {
                 id: id.clone(),
@@ -668,22 +681,64 @@ mod tests {
     #[test]
     fn deploy_accepts_user_path_outside_denylist() {
         let dir = tempdir().unwrap();
-        // tempdir() returns a path like /tmp/... which IS in the denylist on Linux,
-        // so create a nested dir under a known non-system path.
-        // Since we can't always find a safe real path in CI, just test the helper
-        // directly with a path we know is outside the denylist.
         let dir_path = dir.path();
         // tempdir paths start with /tmp which is in the denylist; skip if so.
         let dir_str = dir_path.to_string_lossy();
         if dir_str.starts_with("/tmp") || dir_str.starts_with("/var") {
             return; // Skip in environments where tempdir is in a denylisted prefix.
         }
-        // If not in a denylisted prefix, the path should be accepted.
         assert!(
             canonicalize_and_reject_system_path(dir_path).is_ok(),
             "user path `{}` should not be rejected",
             dir_path.display()
         );
+    }
+
+    /// lab-gxhk: target.add must reject system paths at registration time.
+    #[test]
+    fn target_add_rejects_system_path_at_registration() {
+        use crate::dispatch::stash::params::TargetAddParams;
+        use crate::dispatch::stash::store::StashStore;
+
+        let dir = tempdir().unwrap();
+        let store = StashStore::new(dir.path().to_path_buf());
+        store.ensure_dirs().unwrap();
+
+        let p = TargetAddParams {
+            name: "bad-target".into(),
+            kind: "local".into(),
+            path: Some(std::path::PathBuf::from("/etc/cron.d")),
+            gateway_id: None,
+        };
+        let err = target_add(&store, p).expect_err("system path must be rejected");
+        assert_eq!(
+            err.kind(),
+            "invalid_param",
+            "expected invalid_param, got: {err:?}"
+        );
+    }
+
+    /// lab-gxhk: target.add must reject container/k8s roots at registration time.
+    #[test]
+    fn target_add_rejects_container_root_at_registration() {
+        use crate::dispatch::stash::params::TargetAddParams;
+        use crate::dispatch::stash::store::StashStore;
+
+        let dir = tempdir().unwrap();
+        let store = StashStore::new(dir.path().to_path_buf());
+        store.ensure_dirs().unwrap();
+
+        for bad_path in &["/app/data", "/workspace/secrets"] {
+            let p = TargetAddParams {
+                name: "container-target".into(),
+                kind: "local".into(),
+                path: Some(std::path::PathBuf::from(bad_path)),
+                gateway_id: None,
+            };
+            let err = target_add(&store, p)
+                .expect_err(&format!("container root `{bad_path}` must be rejected"));
+            assert_eq!(err.kind(), "invalid_param");
+        }
     }
 }
 
