@@ -85,12 +85,12 @@ Wildcard (`*`) is rejected with a warning — it would disable Host header valid
 
 ### Authentication
 
-Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible. The complete generated route inventory, including auth/runtime posture, lives in [generated/api-routes.md](./generated/api-routes.md).
+Protected routes (`/v1/*` and `/mcp`) require authentication when a static bearer token or OAuth mode is configured. Unauthenticated routes (`/health`, `/ready`, and OAuth metadata endpoints) are always accessible. The complete generated route inventory, including auth/runtime posture, lives in [generated/api-routes.md](../generated/api-routes.md).
 
 The Labby web UI shell is served publicly when web assets are enabled. The UI then calls the same-origin
 API and MCP routes on the same port.
 
-Auth methods (see [OAUTH.md](./OAUTH.md) for details):
+Auth methods (see [OAUTH.md](../runtime/OAUTH.md) for details):
 
 - **Static bearer token** via `LAB_MCP_HTTP_TOKEN` — constant-time comparison.
 - **OAuth mode** via `LAB_AUTH_MODE=oauth`, `LAB_PUBLIC_URL`, and Google client credentials.
@@ -159,9 +159,9 @@ The HTTP router is role-aware:
 When HTTP transport is active, the generated route inventory is the canonical
 path/auth matrix:
 
-- [generated/api-routes.md](./generated/api-routes.md)
-- [generated/api-routes.json](./generated/api-routes.json)
-- [generated/openapi.json](./generated/openapi.json)
+- [generated/api-routes.md](../generated/api-routes.md)
+- [generated/api-routes.json](../generated/api-routes.json)
+- [generated/openapi.json](../generated/openapi.json)
 
 ## Example: Local Development
 
@@ -197,9 +197,9 @@ curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
 
 ## Related Docs
 
-- [OAUTH.md](./OAUTH.md) — bearer vs OAuth mode, registration flow, and JWT validation
-- [UPSTREAM.md](./UPSTREAM.md) — upstream MCP proxy
-- [CONFIG.md](./CONFIG.md) — env var and config.toml loading
+- [OAUTH.md](../runtime/OAUTH.md) — bearer vs OAuth mode, registration flow, and JWT validation
+- [UPSTREAM.md](../services/UPSTREAM.md) — upstream MCP proxy
+- [CONFIG.md](../runtime/CONFIG.md) — env var and config.toml loading
 - [MCP.md](./MCP.md) — MCP protocol surface
 - [RMCP.md](./RMCP.md) — RMCP SDK integration contract
-- [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md) — master/non-master runtime model
+- [DEVICE_RUNTIME.md](../runtime/DEVICE_RUNTIME.md) — master/non-master runtime model

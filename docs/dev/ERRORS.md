@@ -199,7 +199,7 @@ Do not invent new kinds casually. If a new cross-service kind is needed, update 
 
 ### Upstream OAuth Kinds
 
-The upstream OAuth (outbound) surface adds five stable kinds for operator- and user-facing failures in the authorization-code + PKCE flow against OAuth-protected upstream MCP servers. Full flow documented in [UPSTREAM.md](./UPSTREAM.md).
+The upstream OAuth (outbound) surface adds five stable kinds for operator- and user-facing failures in the authorization-code + PKCE flow against OAuth-protected upstream MCP servers. Full flow documented in [UPSTREAM.md](../services/UPSTREAM.md).
 
 #### `oauth_needs_reauth`
 
@@ -466,7 +466,7 @@ At minimum, verify:
 
 ## Related Docs
 
-- [CONVENTIONS.md](./CONVENTIONS.md)
-- [MCP.md](./MCP.md)
-- [CLI.md](./CLI.md)
+- [CONVENTIONS.md](../CONVENTIONS.md)
+- [MCP.md](../surfaces/MCP.md)
+- [CLI.md](../surfaces/CLI.md)
 - [OBSERVABILITY.md](./OBSERVABILITY.md)

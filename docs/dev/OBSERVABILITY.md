@@ -395,7 +395,7 @@ boundary — it must not emit credential-bearing content.
 
 ### Upstream OAuth Redaction
 
-The outbound upstream OAuth flow (see [UPSTREAM.md](./UPSTREAM.md)) adds the following fields to the never-log list. They must not appear at any level, in dispatch events, request logs, tracing spans, error messages, or MCP notifications:
+The outbound upstream OAuth flow (see [UPSTREAM.md](../services/UPSTREAM.md)) adds the following fields to the never-log list. They must not appear at any level, in dispatch events, request logs, tracing spans, error messages, or MCP notifications:
 
 - OAuth `code` (authorization code from the callback)
 - OAuth `state` (CSRF token)

@@ -137,7 +137,7 @@ Changing a bearer-token env var does not hot-apply by itself. Use `gateway.reloa
 
 OAuth-protected upstream MCP servers are authenticated for a shared gateway
 credential rather than by a static bearer token. Configuration shape and examples live in
-[CONFIG.md — Upstream OAuth](./CONFIG.md#upstream-oauth-authorization_code--pkce).
+[CONFIG.md — Upstream OAuth](../runtime/CONFIG.md#upstream-oauth-authorization_code--pkce).
 Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 
 ### Scope
@@ -269,7 +269,7 @@ Recovery is identical in all cases: start a new authorization via
 Persisted token responses are sealed with chacha20poly1305 AEAD. A fresh 12-byte
 nonce is generated on every `seal()` call; the refresh upsert stores the new
 nonce and must never preserve the previous one. The key is loaded once at
-startup from `LAB_OAUTH_ENCRYPTION_KEY`; see [CONFIG.md](./CONFIG.md#environment-variables-2)
+startup from `LAB_OAUTH_ENCRYPTION_KEY`; see [CONFIG.md](../runtime/CONFIG.md#environment-variables-2)
 for rotation.
 
 ### Prior Art
@@ -505,7 +505,7 @@ Tool collision warnings are logged at `WARN`.
 
 ## Related Docs
 
-- [CONFIG.md](./CONFIG.md) — `[[upstream]]` config section
-- [MCP.md](./MCP.md) — upstream tool merging in MCP surface
-- [ERRORS.md](./ERRORS.md) — `upstream_error` kind
-- [TRANSPORT.md](./TRANSPORT.md) — HTTP transport setup
+- [CONFIG.md](../runtime/CONFIG.md) — `[[upstream]]` config section
+- [MCP.md](../surfaces/MCP.md) — upstream tool merging in MCP surface
+- [ERRORS.md](../dev/ERRORS.md) — `upstream_error` kind
+- [TRANSPORT.md](../surfaces/TRANSPORT.md) — HTTP transport setup
