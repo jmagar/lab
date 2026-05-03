@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::time::Duration;
 
 use futures::{SinkExt, StreamExt};
 use rmcp::service::{RxJsonRpcMessage, TxJsonRpcMessage};
@@ -222,7 +221,7 @@ pub fn decode_server_message(
 }
 
 // Re-export from net::backoff to keep existing callers within dispatch/upstream working.
-pub use crate::net::backoff::{jitter_delay, jitter_window, reprobe_backoff};
+pub use crate::net::backoff::{jitter_delay, reprobe_backoff};
 
 pub fn log_context(reason: &'static str) -> Cow<'static, str> {
     Cow::Borrowed(reason)

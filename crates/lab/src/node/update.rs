@@ -85,7 +85,11 @@ struct EffectiveTargetConfig {
     install_path: String,
     restart: Option<RestartModel>,
     artifact_role: ArtifactRole,
+    // Reserved for future cross-compilation support.
+    #[allow(dead_code)]
     target_triple: Option<String>,
+    // Reserved for per-host build timeout override.
+    #[allow(dead_code)]
     build_timeout_secs: Option<u64>,
 }
 
