@@ -208,6 +208,7 @@ pub async fn build_artifact(profile: &ArtifactProfile) -> Result<BuildOutcome, D
 /// to pass an explicit profile.
 ///
 /// New code should call [`build_artifact`] directly with an [`ArtifactProfile`].
+#[allow(dead_code)]
 pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     let profile = ArtifactProfile {
         role: ArtifactRole::Controller,
