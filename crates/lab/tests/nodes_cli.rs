@@ -168,7 +168,6 @@ fn nodes_update_parses_explicit_targets() {
 }
 
 /// These tests verify the `--role` flag parses for both values.
-/// They will FAIL (compile error) until ServeRole is added to ServeArgs.
 #[test]
 fn serve_role_node_parses() {
     Cli::try_parse_from(["lab", "serve", "--role", "node"]).unwrap();

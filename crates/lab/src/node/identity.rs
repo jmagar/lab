@@ -171,26 +171,63 @@ pub fn resolve_runtime_role_from_config(
     let explicit_role = override_role.or_else(|| config.node.as_ref().and_then(|n| n.role));
 
     match explicit_role {
-        Some(NodeRuntimeRole::Node) => {
+        Some(role_hint @ NodeRuntimeRole::Node) => {
             // A node role requires a controller host to be known.
+            let source = if override_role.is_some() {
+                "cli_override"
+            } else {
+                "config_role"
+            };
+            tracing::info!(
+                surface = "node",
+                service = "identity",
+                action = "role.resolved",
+                source = source,
+                role = ?role_hint,
+                "runtime role resolution source",
+            );
             let controller = config.controller_host().ok_or_else(|| {
-                let source = if override_role.is_some() {
-                    "--role node requires a controller host; set [node].controller in config.toml"
+                if override_role.is_some() {
+                    anyhow::anyhow!(
+                        "--role node requires a controller host; set [node].controller in config.toml"
+                    )
                 } else {
-                    "[node].role = \"node\" requires a controller host; set [node].controller in config.toml"
-                };
-                anyhow::anyhow!("{source}")
+                    anyhow::anyhow!(
+                        "[node].role = \"node\" requires a controller host; set [node].controller in config.toml"
+                    )
+                }
             })?;
             resolve_runtime_role(local_host, Some(controller))
         }
-        Some(NodeRuntimeRole::Controller) => {
+        Some(role_hint @ NodeRuntimeRole::Controller) => {
             // Explicit controller role: use local host as the master host.
+            let source = if override_role.is_some() {
+                "cli_override"
+            } else {
+                "config_role"
+            };
+            tracing::info!(
+                surface = "node",
+                service = "identity",
+                action = "role.resolved",
+                source = source,
+                role = ?role_hint,
+                "runtime role resolution source",
+            );
             let normalized =
                 normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".to_string());
             resolve_runtime_role(local_host, Some(&normalized))
         }
         None => {
             // Legacy hostname-comparison path.
+            tracing::info!(
+                surface = "node",
+                service = "identity",
+                action = "role.resolved",
+                source = "hostname_inference",
+                role = ?Option::<NodeRuntimeRole>::None,
+                "runtime role resolution source",
+            );
             resolve_runtime_role(local_host, config.controller_host())
         }
     }
