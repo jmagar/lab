@@ -21,6 +21,7 @@ pub mod core;
 pub mod servarr;
 
 /// Bootstrap utility: extract API keys from existing service config files.
+#[cfg(feature = "extract")]
 pub mod extract;
 
 /// Marketplace: browse and install Claude Code plugins.

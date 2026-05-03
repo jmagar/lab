@@ -1,6 +1,6 @@
 # lab-apis — Pure SDK Crate
 
-HTTP client library for feature-gated homelab services, plus always-on bootstrap/operator modules such as `extract`, `device_runtime`, `marketplace`, `acp`, and `doctor`. No binary dependencies (`clap`, `rmcp`,
+HTTP client library for feature-gated homelab services, plus always-on bootstrap/operator modules such as `device_runtime`, `marketplace`, `acp`, and `doctor`. No binary dependencies (`clap`, `rmcp`,
 `ratatui`, `anyhow`, `tabled` are forbidden here — they live in `lab` only).
 
 Sub-docs for key sub-modules:
@@ -10,7 +10,7 @@ Sub-docs for key sub-modules:
 
 ## Feature Flags
 
-Opt-in feature count can drift as registry/bootstrap integrations are added. `core`, `extract`, `device_runtime`, `marketplace`, `acp`, and `doctor` are always compiled — no gate possible.
+Opt-in feature count can drift as registry/bootstrap integrations are added. `core`, `device_runtime`, `marketplace`, `acp`, and `doctor` are always compiled — no gate possible. `extract` is now gated behind the `extract` feature flag (enables `russh`, `russh-sftp`, `russh-config`, `quick-xml`, and `rusqlite`).
 
 - `servarr` is pulled in **transitively** by `radarr`, `sonarr`, `prowlarr` — do not list it
   in `all` directly.

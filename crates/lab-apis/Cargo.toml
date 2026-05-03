@@ -1,85 +1,90 @@
 [package]
-name                   = "lab-apis"
-description            = "Pure Rust SDK for homelab service APIs (Servarr, Plex, qBittorrent, Unraid, UniFi, etc.)"
-version.workspace      = true
-edition.workspace      = true
+name = "lab-apis"
+description = "Pure Rust SDK for homelab service APIs (Servarr, Plex, qBittorrent, Unraid, UniFi, etc.)"
+version.workspace = true
+edition.workspace = true
 rust-version.workspace = true
-license.workspace      = true
-repository.workspace   = true
-authors.workspace      = true
-readme                 = "README.md"
-keywords               = ["homelab", "mcp", "cli", "sdk"]
-categories             = ["api-bindings", "command-line-utilities"]
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["homelab", "mcp", "cli", "sdk"]
+categories = ["api-bindings", "command-line-utilities"]
 
 [dependencies]
-tokio.workspace       = true
-futures.workspace     = true
-reqwest.workspace     = true
-base64.workspace      = true
-url.workspace         = true
-serde.workspace       = true
-serde_json.workspace  = true
-thiserror.workspace   = true
-jiff.workspace        = true
-tracing.workspace     = true
+tokio.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+base64.workspace = true
+url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+jiff.workspace = true
+tracing.workspace = true
 percent-encoding.workspace = true
-russh.workspace        = true
-russh-sftp.workspace   = true
-russh-config.workspace = true
-quick-xml.workspace    = true
-rusqlite.workspace     = true
-tempfile.workspace     = true
+russh = { workspace = true, optional = true }
+russh-sftp = { workspace = true, optional = true }
+russh-config = { workspace = true, optional = true }
+quick-xml = { workspace = true, optional = true }
+rusqlite = { workspace = true, optional = true }
+tempfile.workspace = true
 neo4rs = { version = "0.9.0-rc.9", features = ["json"], optional = true }
 rust_socketio = { version = "0.6.0", features = ["async"], optional = true }
 
 [dev-dependencies]
-tokio       = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = [
+  "test-util",
+  "macros",
+  "rt-multi-thread",
+] }
 wiremock.workspace = true
-insta.workspace    = true
+insta.workspace = true
 
 [features]
 acp_registry = []
 adguard = []
 all = [
-    "radarr",
-    "sonarr",
-    "prowlarr",
-    "overseerr",
-    "plex",
-    "tautulli",
-    "sabnzbd",
-    "qbittorrent",
-    "tailscale",
-    "linkding",
-    "memos",
-    "beads",
-    "bytestash",
-    "paperless",
-    "arcane",
-    "unraid",
-    "unifi",
-    "gotify",
-    "jellyfin",
-    "adguard",
-    "glances",
-    "pihole",
-    "neo4j",
-    "uptime_kuma",
-    "immich",
-    "loggifly",
-    "navidrome",
-    "scrutiny",
-    "freshrss",
-    "openacp",
-    "openai",
-    "notebooklm",
-    "qdrant",
-    "tei",
-    "apprise",
-    "deploy",
-    "mcpregistry",
-    "acp_registry",
-    "dozzle",
+  "radarr",
+  "sonarr",
+  "prowlarr",
+  "overseerr",
+  "plex",
+  "tautulli",
+  "sabnzbd",
+  "qbittorrent",
+  "tailscale",
+  "linkding",
+  "memos",
+  "beads",
+  "bytestash",
+  "paperless",
+  "arcane",
+  "unraid",
+  "unifi",
+  "gotify",
+  "jellyfin",
+  "adguard",
+  "glances",
+  "pihole",
+  "neo4j",
+  "uptime_kuma",
+  "immich",
+  "loggifly",
+  "navidrome",
+  "scrutiny",
+  "freshrss",
+  "openacp",
+  "openai",
+  "notebooklm",
+  "qdrant",
+  "tei",
+  "apprise",
+  "deploy",
+  "mcpregistry",
+  "acp_registry",
+  "dozzle",
+  "extract",
 ]
 apprise = []
 arcane = []
@@ -87,6 +92,13 @@ beads = []
 bytestash = []
 default = []
 deploy = []
+extract = [
+  "dep:russh",
+  "dep:russh-sftp",
+  "dep:russh-config",
+  "dep:quick-xml",
+  "dep:rusqlite",
+]
 dozzle = []
 freshrss = []
 glances = []
@@ -122,19 +134,19 @@ unifi = []
 unraid = []
 uptime_kuma = ["dep:rust_socketio"]
 [[test]]
-name     = "plex_client"
+name = "plex_client"
 required-features = ["plex"]
 
 [[test]]
-name     = "gotify_client"
+name = "gotify_client"
 required-features = ["gotify"]
 
 [[test]]
-name     = "openacp_client"
+name = "openacp_client"
 required-features = ["openacp"]
 
 [[test]]
-name     = "jellyfin_client"
+name = "jellyfin_client"
 required-features = ["jellyfin"]
 
 [lints]
