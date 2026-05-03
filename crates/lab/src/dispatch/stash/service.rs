@@ -14,6 +14,7 @@ use lab_apis::stash::{
 
 use crate::dispatch::error::ToolError;
 use crate::dispatch::helpers::to_json;
+use crate::dispatch::path_safety::canonicalize_and_reject_system_path;
 use crate::dispatch::stash::export;
 use crate::dispatch::stash::import;
 use crate::dispatch::stash::params::{
@@ -248,46 +249,16 @@ fn component_deploy_blocking(store: &StashStore, p: DeployParams) -> Result<Valu
             let target_id = id.clone();
             let deploy_path = target_path.clone();
 
-            // Reject dangerous system paths.
+            // Reject dangerous system paths — fail closed on canonicalize error.
             //
-            // lab-qz6a.20: canonicalize the deploy path before the denylist check
-            // so that paths like `/etc/../home/user/file` cannot bypass the check.
-            // The target directory may not exist yet, so we canonicalize the parent
-            // when available and rejoin the file name component.
-            // For paths that don't exist at all, fall back to lexical normalization
-            // to resolve `.` and `..` components without requiring the path to exist.
-            let canonical = if deploy_path.exists() {
-                std::fs::canonicalize(&deploy_path).unwrap_or_else(|_| normalize_path(&deploy_path))
-            } else if let Some(parent) = deploy_path.parent() {
-                if parent.exists() {
-                    std::fs::canonicalize(parent)
-                        .unwrap_or_else(|_| normalize_path(parent))
-                        .join(deploy_path.file_name().unwrap_or_default())
-                } else {
-                    normalize_path(&deploy_path)
-                }
-            } else {
-                normalize_path(&deploy_path)
-            };
-
-            // Expanded denylist covering common system and sensitive user directories.
-            // lab-qz6a.20: added /var, /tmp, /root, /home, /opt, /srv.
-            let system_paths = [
-                "/etc", "/usr", "/bin", "/sbin", "/lib", "/lib64", "/boot", "/dev", "/proc",
-                "/sys", "/var", "/tmp", "/root", "/home", "/opt", "/srv",
-            ];
-            let canonical_str = canonical.to_string_lossy();
-            for system in &system_paths {
-                if canonical_str == *system || canonical_str.starts_with(&format!("{system}/")) {
-                    return Err(ToolError::Sdk {
-                        sdk_kind: "deploy_failed".into(),
-                        message: format!(
-                            "deploy path `{}` is a system path and is not allowed",
-                            deploy_path.display()
-                        ),
-                    });
-                }
-            }
+            // lab-n4fb: replaced the previous unwrap_or_else(normalize_path) fallback
+            // that silently degraded to lexical normalization on EACCES/EIO/ELOOP.
+            // canonicalize_and_reject_system_path() returns Err on any canonicalize
+            // failure — the denylist must never fail open.
+            //
+            // Uses the extended denylist in path_safety::SYSTEM_PATH_DENYLIST which
+            // covers FHS roots + container/k8s mount roots (/app, /workspace, /data, etc.).
+            canonicalize_and_reject_system_path(&deploy_path)?;
 
             let files_dir = store.revision_files_path(&revision_id);
             let comp_id = component.id.clone();
@@ -385,9 +356,19 @@ fn copy_dir_to(
         }
 
         // Verify destination stays within canonical_target (defense-in-depth).
-        // This guards against malformed file names containing path separators.
+        // lab-n4fb: fail closed on canonicalize errors — do NOT fall back to
+        // unchecked dst_path when the path exists but canonicalize returns an
+        // error (EACCES, ELOOP, EIO). If the path doesn't exist yet, the
+        // containment check uses the lexical dst_path; the file-name component
+        // cannot contain '/' by filesystem invariant, so lexical is safe here.
         let canonical_dst = if dst_path.exists() {
-            std::fs::canonicalize(&dst_path).unwrap_or_else(|_| dst_path.clone())
+            std::fs::canonicalize(&dst_path).map_err(|e| ToolError::Sdk {
+                sdk_kind: "path_traversal".into(),
+                message: format!(
+                    "cannot verify destination `{}` is safe: {e}",
+                    dst_path.display()
+                ),
+            })?
         } else {
             dst_path.clone()
         };
@@ -639,33 +620,71 @@ pub fn target_remove(store: &StashStore, p: TargetRemoveParams) -> Result<Value,
     to_json(serde_json::json!({ "removed": true, "id": p.id }))
 }
 
-// ── Path helpers ──────────────────────────────────────────────────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
-/// Lexically normalize a path by resolving `.` and `..` components without
-/// performing any I/O. This is used as a fallback when `std::fs::canonicalize`
-/// cannot be used (e.g. the target path does not yet exist).
-///
-/// This does not resolve symlinks — it is a component-only transformation.
-/// Use `std::fs::canonicalize` when the path is known to exist.
-fn normalize_path(path: &Path) -> std::path::PathBuf {
-    use std::path::Component;
-    let mut components: Vec<Component<'_>> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                // Pop the last normal component if one exists; otherwise keep
-                // the `..` (e.g. for relative paths that go above their start).
-                if matches!(components.last(), Some(Component::Normal(_))) {
-                    components.pop();
-                } else {
-                    components.push(component);
-                }
-            }
-            Component::CurDir => {
-                // Skip `.` components.
-            }
-            c => components.push(c),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::dispatch::path_safety::canonicalize_and_reject_system_path;
+    use tempfile::tempdir;
+
+    /// lab-n4fb: system-path rejection must use the extended denylist from path_safety.
+    #[test]
+    fn deploy_rejects_known_system_paths() {
+        for path in &["/etc/passwd", "/usr/bin/sh", "/proc/cpuinfo", "/dev/null"] {
+            let p = std::path::Path::new(path);
+            // The path may not exist in the test environment, but the denylist
+            // check runs on the canonical or parent-canonical form regardless.
+            // If it does exist, we expect path_traversal. If it doesn't, we
+            // expect path_traversal (parent exists = /etc, /usr, etc. which are in denylist).
+            let result = canonicalize_and_reject_system_path(p);
+            assert!(
+                result.is_err(),
+                "expected system path `{path}` to be rejected"
+            );
+            let err = result.unwrap_err();
+            assert_eq!(
+                err.kind(),
+                "path_traversal",
+                "wrong kind for `{path}`: {err:?}"
+            );
         }
     }
-    components.iter().collect()
+
+    /// lab-n4fb: container/k8s roots must also be rejected.
+    #[test]
+    fn deploy_rejects_container_roots() {
+        for path in &["/app/config", "/workspace/.ssh", "/data/secrets"] {
+            let p = std::path::Path::new(path);
+            let result = canonicalize_and_reject_system_path(p);
+            assert!(
+                result.is_err(),
+                "expected container root `{path}` to be rejected"
+            );
+        }
+    }
+
+    /// lab-n4fb: a user-writable temp path outside the denylist should pass.
+    #[test]
+    fn deploy_accepts_user_path_outside_denylist() {
+        let dir = tempdir().unwrap();
+        // tempdir() returns a path like /tmp/... which IS in the denylist on Linux,
+        // so create a nested dir under a known non-system path.
+        // Since we can't always find a safe real path in CI, just test the helper
+        // directly with a path we know is outside the denylist.
+        let dir_path = dir.path();
+        // tempdir paths start with /tmp which is in the denylist; skip if so.
+        let dir_str = dir_path.to_string_lossy();
+        if dir_str.starts_with("/tmp") || dir_str.starts_with("/var") {
+            return; // Skip in environments where tempdir is in a denylisted prefix.
+        }
+        // If not in a denylisted prefix, the path should be accepted.
+        assert!(
+            canonicalize_and_reject_system_path(dir_path).is_ok(),
+            "user path `{}` should not be rejected",
+            dir_path.display()
+        );
+    }
 }
+
+// ── Path helpers ──────────────────────────────────────────────────────────────
