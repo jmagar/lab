@@ -123,8 +123,11 @@ path = "src/lib.rs"
 acp_registry = ["lab-apis/acp_registry"]
 node-runtime = []
 adguard = ["lab-apis/adguard"]
-all = [
-  "lab-apis/all",
+all = ["lab-apis/all", "controller", "services-all", "lab-admin"]
+controller = ["gateway", "marketplace", "deploy", "fs", "acp_registry"]
+gateway = []
+marketplace = ["mcpregistry"]
+services-all = [
   "radarr",
   "sonarr",
   "prowlarr",
@@ -160,11 +163,6 @@ all = [
   "notebooklm",
   "qdrant",
   "tei",
-  "lab-admin",
-  "fs",
-  "deploy",
-  "mcpregistry",
-  "acp_registry",
   "dozzle",
 ]
 apprise = ["lab-apis/apprise"]

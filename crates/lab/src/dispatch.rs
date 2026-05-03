@@ -20,6 +20,7 @@ pub mod extract;
 #[cfg(feature = "freshrss")]
 pub mod freshrss;
 pub mod fs;
+#[cfg(feature = "gateway")]
 pub mod gateway;
 #[cfg(feature = "glances")]
 pub mod glances;
@@ -36,6 +37,7 @@ pub mod linkding;
 #[cfg(feature = "loggifly")]
 pub mod loggifly;
 pub mod logs;
+#[cfg(feature = "marketplace")]
 pub mod marketplace;
 #[cfg(feature = "memos")]
 pub mod memos;
@@ -86,6 +88,7 @@ pub mod tei;
 pub mod unifi;
 #[cfg(feature = "unraid")]
 pub mod unraid;
+#[cfg(feature = "gateway")]
 pub mod upstream;
 #[cfg(feature = "uptime_kuma")]
 pub mod uptime_kuma;
