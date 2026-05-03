@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "immich": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "immich"
+      ]
+    }
+  }
+}

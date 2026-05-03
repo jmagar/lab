@@ -70,6 +70,7 @@ export default function ServiceSelectionPage(): React.ReactElement {
                 <Checkbox
                   checked={wizard.selectedServices.includes(s.name)}
                   onCheckedChange={() => toggle(s.name)}
+                  aria-label={`Select ${s.display_name}`}
                 />
                 <span>
                   <span className="font-medium">{s.display_name}</span>

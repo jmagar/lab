@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "neo4j": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "neo4j"
+      ]
+    }
+  }
+}

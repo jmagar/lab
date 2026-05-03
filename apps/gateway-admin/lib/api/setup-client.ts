@@ -9,6 +9,8 @@
 import { setupActionUrl } from './gateway-config.ts'
 import { performServiceAction, type ServiceActionError } from './service-action-client.ts'
 
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
+
 export class SetupApiError extends Error implements ServiceActionError {
   status: number
   code?: string
@@ -112,6 +114,91 @@ export interface SchemaGetResponse {
   services: Record<string, ServiceSchema>
 }
 
+const BASE_VALIDATION: UiValidation = {
+  required: false,
+  min_length: null,
+  max_length: null,
+  pattern: null,
+}
+
+function textUi(required = false, kind: FieldKindKey = 'text'): UiFieldSchema {
+  return {
+    kind,
+    enum_values: null,
+    advanced: false,
+    help_url: null,
+    depends_on: null,
+    validation: {
+      ...BASE_VALIDATION,
+      required,
+    },
+  }
+}
+
+const MOCK_SERVICES: Record<string, ServiceSchema> = {
+  radarr: {
+    name: 'radarr',
+    display_name: 'Radarr',
+    description: 'Movie automation service.',
+    category: 'Servarr',
+    supports_multi_instance: true,
+    default_port: 7878,
+    env: [
+      { name: 'RADARR_URL', description: 'Base URL for Radarr.', example: 'http://radarr.local:7878', secret: false, required: true, ui: textUi(true, 'url') },
+      { name: 'RADARR_API_KEY', description: 'Radarr API key.', example: '••••••••', secret: true, required: true, ui: textUi(true, 'secret') },
+    ],
+  },
+  sonarr: {
+    name: 'sonarr',
+    display_name: 'Sonarr',
+    description: 'Series automation service.',
+    category: 'Servarr',
+    supports_multi_instance: true,
+    default_port: 8989,
+    env: [
+      { name: 'SONARR_URL', description: 'Base URL for Sonarr.', example: 'http://sonarr.local:8989', secret: false, required: true, ui: textUi(true, 'url') },
+      { name: 'SONARR_API_KEY', description: 'Sonarr API key.', example: '••••••••', secret: true, required: true, ui: textUi(true, 'secret') },
+    ],
+  },
+  plex: {
+    name: 'plex',
+    display_name: 'Plex',
+    description: 'Media server status and library access.',
+    category: 'Media',
+    supports_multi_instance: false,
+    default_port: 32400,
+    env: [
+      { name: 'PLEX_URL', description: 'Base URL for Plex.', example: 'http://plex.local:32400', secret: false, required: true, ui: textUi(true, 'url') },
+      { name: 'PLEX_TOKEN', description: 'Plex access token.', example: '••••••••', secret: true, required: true, ui: textUi(true, 'secret') },
+    ],
+  },
+}
+
+const MOCK_DRAFT_ENTRIES: DraftEntry[] = [
+  { key: 'LAB_MCP_HTTP_HOST', value: '127.0.0.1' },
+  { key: 'LAB_MCP_HTTP_PORT', value: '3101' },
+  { key: 'LAB_LOG', value: 'lab=info,lab_apis=warn' },
+  { key: 'LAB_LOG_FORMAT', value: 'json' },
+  { key: 'RADARR_URL', value: 'http://radarr.local:7878' },
+  { key: 'RADARR_API_KEY', value: '********' },
+]
+
+function mockSetupSnapshot(): SetupSnapshot {
+  return {
+    first_run: false,
+    env_path: '~/.lab/.env',
+    draft_path: '~/.lab/.env.draft',
+    last_completed_step: 3,
+    draft_stale: false,
+    has_draft: true,
+    state: {
+      kind: 'partially_configured',
+      missing: ['SONARR_URL', 'SONARR_API_KEY', 'PLEX_URL', 'PLEX_TOKEN'],
+      services: Object.keys(MOCK_SERVICES),
+    },
+  }
+}
+
 // ─── Drafts ─────────────────────────────────────────────────────────────
 
 export interface DraftEntry {
@@ -140,14 +227,33 @@ export interface CommitOutcome {
 
 export const setupApi = {
   state(signal?: AbortSignal): Promise<SetupSnapshot> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      return Promise.resolve(structuredClone(mockSetupSnapshot()))
+    }
     return setupAction<SetupSnapshot>('state', {}, signal)
   },
 
   schemaGet(services?: string[], signal?: AbortSignal): Promise<SchemaGetResponse> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      const selected = services?.length ? services : Object.keys(MOCK_SERVICES)
+      return Promise.resolve({
+        services: Object.fromEntries(
+          selected
+            .map((service) => [service, MOCK_SERVICES[service]] as const)
+            .filter(([, schema]) => schema !== undefined),
+        ) as Record<string, ServiceSchema>,
+      })
+    }
     return setupAction<SchemaGetResponse>('schema.get', services ? { services } : {}, signal)
   },
 
   draftGet(signal?: AbortSignal): Promise<{ entries: DraftEntry[] }> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      return Promise.resolve({ entries: structuredClone(MOCK_DRAFT_ENTRIES) })
+    }
     return setupAction<{ entries: DraftEntry[] }>('draft.get', {}, signal)
   },
 
@@ -156,6 +262,10 @@ export const setupApi = {
     options?: { force?: boolean },
     signal?: AbortSignal,
   ): Promise<DraftSetOutcome> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      return Promise.resolve({ written: entries.length, skipped: [], backup_path: null })
+    }
     return setupAction<DraftSetOutcome>(
       'draft.set',
       { entries, force: options?.force ?? false },
@@ -167,6 +277,16 @@ export const setupApi = {
     options?: { force?: boolean },
     signal?: AbortSignal,
   ): Promise<CommitOutcome> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      return Promise.resolve({
+        written: 4,
+        skipped: [],
+        backup_path: null,
+        audit_pass_count: 3,
+        audit_total_count: 3,
+      })
+    }
     return setupAction<CommitOutcome>(
       'draft.commit',
       { force: options?.force ?? false, confirm: true },
@@ -175,6 +295,16 @@ export const setupApi = {
   },
 
   finalize(signal?: AbortSignal): Promise<CommitOutcome> {
+    if (USE_MOCK_DATA) {
+      signal?.throwIfAborted?.()
+      return Promise.resolve({
+        written: 4,
+        skipped: [],
+        backup_path: null,
+        audit_pass_count: 3,
+        audit_total_count: 3,
+      })
+    }
     return setupAction<CommitOutcome>('finalize', { confirm: true }, signal)
   },
 }

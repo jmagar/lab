@@ -280,6 +280,7 @@ function FieldRow({
               checked={f.value === 'true'}
               onCheckedChange={(checked) => f.onChange(checked ? 'true' : 'false')}
               disabled={disabled}
+              aria-label={field.name}
             />
           )}
         />

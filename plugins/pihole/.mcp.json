@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pihole": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "pihole"
+      ]
+    }
+  }
+}

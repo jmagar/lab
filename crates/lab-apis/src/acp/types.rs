@@ -28,7 +28,7 @@ impl AcpSessionState {
         matches!(
             (self, next),
             (Self::Creating, Self::Idle | Self::Failed)
-                | (Self::Idle, Self::Running | Self::Closed)
+                | (Self::Idle | Self::Completed, Self::Running | Self::Closed)
                 | (
                     Self::Running,
                     Self::Completed | Self::Failed | Self::Cancelled | Self::WaitingForPermission
@@ -37,10 +37,7 @@ impl AcpSessionState {
                     Self::WaitingForPermission,
                     Self::Running | Self::Cancelled | Self::Failed
                 )
-                | (
-                    Self::Completed | Self::Cancelled | Self::Failed,
-                    Self::Closed
-                )
+                | (Self::Cancelled | Self::Failed, Self::Closed)
         )
     }
 

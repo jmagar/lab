@@ -1,6 +1,6 @@
 # cli/ — clap subcommands (thin shims)
 
-Every file in this directory is a **thin shim**: parse args with `clap`, call a client method from `lab-apis`, format the result via `output.rs`. That's it.
+Files in this directory are **thin shims**: parse human CLI args with `clap`, call the shared dispatch layer or a typed dispatch-backed helper, and format results via `output.rs`. That's it.
 
 ## The shim rule
 

@@ -14,8 +14,12 @@ function renderMd(md: string): string {
   let inCode = false
   let codeLines: string[] = []
 
+  function escapeHtml(value: string): string {
+    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  }
+
   function flushCode() {
-    const escaped = codeLines.join('\n').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    const escaped = escapeHtml(codeLines.join('\n'))
     html += `<pre class="md-pre"><code>${escaped}</code></pre>`
     codeLines = []; inCode = false
   }
@@ -27,12 +31,12 @@ function renderMd(md: string): string {
     }
     if (inCode) { codeLines.push(line); continue }
 
-    if (/^# /.test(line))  { html += `<div class="md-h1">${line.slice(2)}</div>`; continue }
-    if (/^## /.test(line)) { html += `<div class="md-h2">${line.slice(3)}</div>`; continue }
-    if (/^### /.test(line)){ html += `<div class="md-h3">${line.slice(4)}</div>`; continue }
+    if (/^# /.test(line))  { html += `<div class="md-h1">${escapeHtml(line.slice(2))}</div>`; continue }
+    if (/^## /.test(line)) { html += `<div class="md-h2">${escapeHtml(line.slice(3))}</div>`; continue }
+    if (/^### /.test(line)){ html += `<div class="md-h3">${escapeHtml(line.slice(4))}</div>`; continue }
     if (line.trim() === '') { html += `<div class="md-gap"></div>`; continue }
 
-    const formatted = line
+    const formatted = escapeHtml(line)
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
       .replace(/`(.*?)`/g, '<code class="md-code">$1</code>')
 

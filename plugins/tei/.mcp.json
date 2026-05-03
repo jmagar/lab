@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "tei": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "tei"
+      ]
+    }
+  }
+}

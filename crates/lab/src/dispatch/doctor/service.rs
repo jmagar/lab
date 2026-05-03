@@ -196,6 +196,58 @@ fn all_service_names() -> Vec<&'static str> {
     {
         names.push("apprise");
     }
+    #[cfg(feature = "adguard")]
+    {
+        names.push("adguard");
+    }
+    #[cfg(feature = "dozzle")]
+    {
+        names.push("dozzle");
+    }
+    #[cfg(feature = "freshrss")]
+    {
+        names.push("freshrss");
+    }
+    #[cfg(feature = "glances")]
+    {
+        names.push("glances");
+    }
+    #[cfg(feature = "immich")]
+    {
+        names.push("immich");
+    }
+    #[cfg(feature = "jellyfin")]
+    {
+        names.push("jellyfin");
+    }
+    #[cfg(feature = "loggifly")]
+    {
+        names.push("loggifly");
+    }
+    #[cfg(feature = "navidrome")]
+    {
+        names.push("navidrome");
+    }
+    #[cfg(feature = "neo4j")]
+    {
+        names.push("neo4j");
+    }
+    #[cfg(feature = "pihole")]
+    {
+        names.push("pihole");
+    }
+    #[cfg(feature = "scrutiny")]
+    {
+        names.push("scrutiny");
+    }
+    #[cfg(feature = "unifi")]
+    {
+        names.push("unifi");
+    }
+    #[cfg(feature = "uptime_kuma")]
+    {
+        names.push("uptime_kuma");
+    }
     names
 }
 
@@ -328,6 +380,84 @@ fn configured_service_names(clients: &ServiceClients) -> Vec<String> {
             names.push("apprise".into());
         }
     }
+    #[cfg(feature = "adguard")]
+    {
+        if clients.adguard.is_some() {
+            names.push("adguard".into());
+        }
+    }
+    #[cfg(feature = "dozzle")]
+    {
+        if clients.dozzle.is_some() {
+            names.push("dozzle".into());
+        }
+    }
+    #[cfg(feature = "freshrss")]
+    {
+        if clients.freshrss.is_some() {
+            names.push("freshrss".into());
+        }
+    }
+    #[cfg(feature = "glances")]
+    {
+        if clients.glances.is_some() {
+            names.push("glances".into());
+        }
+    }
+    #[cfg(feature = "immich")]
+    {
+        if clients.immich.is_some() {
+            names.push("immich".into());
+        }
+    }
+    #[cfg(feature = "jellyfin")]
+    {
+        if clients.jellyfin.is_some() {
+            names.push("jellyfin".into());
+        }
+    }
+    #[cfg(feature = "loggifly")]
+    {
+        if clients.loggifly.is_some() {
+            names.push("loggifly".into());
+        }
+    }
+    #[cfg(feature = "navidrome")]
+    {
+        if clients.navidrome.is_some() {
+            names.push("navidrome".into());
+        }
+    }
+    #[cfg(feature = "neo4j")]
+    {
+        if clients.neo4j.is_some() {
+            names.push("neo4j".into());
+        }
+    }
+    #[cfg(feature = "pihole")]
+    {
+        if clients.pihole.is_some() {
+            names.push("pihole".into());
+        }
+    }
+    #[cfg(feature = "scrutiny")]
+    {
+        if clients.scrutiny.is_some() {
+            names.push("scrutiny".into());
+        }
+    }
+    #[cfg(feature = "unifi")]
+    {
+        if clients.unifi.is_some() {
+            names.push("unifi".into());
+        }
+    }
+    #[cfg(feature = "uptime_kuma")]
+    {
+        if clients.uptime_kuma.is_some() {
+            names.push("uptime_kuma".into());
+        }
+    }
     names
 }
 
@@ -383,6 +513,32 @@ async fn health_by_name_owned(clients: &ServiceClients, service: &str) -> Servic
         "tei" => probe_arc(clients.tei.as_ref()).await,
         #[cfg(feature = "apprise")]
         "apprise" => probe_arc(clients.apprise.as_ref()).await,
+        #[cfg(feature = "adguard")]
+        "adguard" => probe_arc(clients.adguard.as_ref()).await,
+        #[cfg(feature = "dozzle")]
+        "dozzle" => probe_arc(clients.dozzle.as_ref()).await,
+        #[cfg(feature = "freshrss")]
+        "freshrss" => probe_arc(clients.freshrss.as_ref()).await,
+        #[cfg(feature = "glances")]
+        "glances" => probe_arc(clients.glances.as_ref()).await,
+        #[cfg(feature = "immich")]
+        "immich" => probe_arc(clients.immich.as_ref()).await,
+        #[cfg(feature = "jellyfin")]
+        "jellyfin" => probe_arc(clients.jellyfin.as_ref()).await,
+        #[cfg(feature = "loggifly")]
+        "loggifly" => probe_arc(clients.loggifly.as_ref()).await,
+        #[cfg(feature = "navidrome")]
+        "navidrome" => probe_arc(clients.navidrome.as_ref()).await,
+        #[cfg(feature = "neo4j")]
+        "neo4j" => probe_arc(clients.neo4j.as_ref()).await,
+        #[cfg(feature = "pihole")]
+        "pihole" => probe_arc(clients.pihole.as_ref()).await,
+        #[cfg(feature = "scrutiny")]
+        "scrutiny" => probe_arc(clients.scrutiny.as_ref()).await,
+        #[cfg(feature = "unifi")]
+        "unifi" => probe_arc(clients.unifi.as_ref()).await,
+        #[cfg(feature = "uptime_kuma")]
+        "uptime_kuma" => probe_arc(clients.uptime_kuma.as_ref()).await,
         _ => ServiceStatus::unreachable(format!("unknown service `{service}`")),
     }
 }

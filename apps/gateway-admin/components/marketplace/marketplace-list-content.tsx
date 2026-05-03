@@ -42,7 +42,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useAcpAgents, useMarketplaceMutations, useMarketplaces, useMcpServers, usePlugins } from '@/lib/hooks/use-marketplace'
-import { isDevPreviewRoute } from '@/lib/dev/preview-mode'
 import { cn, getErrorMessage } from '@/lib/utils'
 import {
   buildMarketplaceCatalogItems,
@@ -229,7 +228,7 @@ function activeFilterLabels(filters: MarketplaceCatalogFilterState, sourceLabels
 function FilterCheckbox({ checked, label, onChange }: { checked: boolean; label: string; onChange: () => void }) {
   return (
     <label className="flex items-center gap-2 text-[13px] font-medium leading-[1.2] text-aurora-text-primary">
-      <Checkbox checked={checked} onCheckedChange={onChange} className="border-aurora-border-strong bg-aurora-control-surface" />
+      <Checkbox checked={checked} onCheckedChange={onChange} aria-label={label} className="border-aurora-border-strong bg-aurora-control-surface" />
       <span>{label}</span>
     </label>
   )
@@ -418,7 +417,7 @@ function LensChip({
   )
 }
 
-export function MarketplaceListContent() {
+export function MarketplaceListContent({ readOnlyPreview = false }: { readOnlyPreview?: boolean }) {
   const { data: sources = [], error: sourcesError, mutate: refreshSources } = useMarketplaces()
   const { data: plugins = [], error: pluginsError, mutate: refreshPlugins } = usePlugins()
   const { data: mcpServers = [], error: mcpError, mutate: refreshMcpServers } = useMcpServers()
@@ -432,7 +431,6 @@ export function MarketplaceListContent() {
   const isMutatingRef = useRef(false)
   const [isMutating, setIsMutating] = useState(false)
   const [addSourceOpen, setAddSourceOpen] = useState(false)
-  const readOnlyPreview = isDevPreviewRoute()
   const [previewItem, setPreviewItem] = useState<MarketplaceCatalogItem | null>(null)
   const [mcpInstallItem, setMcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
   const [acpInstallItem, setAcpInstallItem] = useState<MarketplaceCatalogItem | null>(null)
@@ -556,7 +554,7 @@ export function MarketplaceListContent() {
       <FilterGroup label="Sort">
         <div className="flex flex-wrap gap-2">
           {SORT_OPTIONS.map((option) => (
-            <button key={option.value} type="button" onClick={() => updateFilters({ sort: option.value })} className={cn('rounded-full border px-3 py-2 text-[13px] font-medium', pillTone(filters.sort === option.value))} aria-pressed={filters.sort === option.value}>
+            <button key={option.value} type="button" onClick={() => updateFilters({ sort: option.value })} className={cn('rounded-full border px-3 py-2 text-[13px] font-medium', pillTone(filters.sort === option.value))} aria-label={`Sort by ${option.label}`} aria-pressed={filters.sort === option.value}>
               {option.label}
             </button>
           ))}
@@ -600,7 +598,9 @@ export function MarketplaceListContent() {
             <p className="mt-3 max-w-3xl text-[14px] leading-[1.55] text-aurora-text-muted">
               Browse plugins, MCP servers, and ACP agents from one live catalog. Preview install flows safely from the read-only dev route.
             </p>
-            {readOnlyPreview ? <p className="mt-3 text-[12px] font-semibold text-aurora-accent-strong">Dev preview: live backend reads are enabled; install, remove, source, and wiring mutations are blocked.</p> : null}
+            <p className={cn('mt-3 text-[12px] font-semibold text-aurora-accent-strong', !readOnlyPreview && 'hidden')}>
+              Dev preview: live backend reads are enabled; install, remove, source, and wiring mutations are blocked.
+            </p>
           </section>
 
           <section className={cn(AURORA_MEDIUM_PANEL, 'p-1.5 lg:hidden')}>

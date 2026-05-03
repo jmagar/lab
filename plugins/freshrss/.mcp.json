@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "freshrss": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "freshrss"
+      ]
+    }
+  }
+}

@@ -1,0 +1,16 @@
+# Dev override — mounts the local binary directly so rebuilds don't require
+# a Docker image rebuild. After `just dev` or `just dev-debug`, a container
+# restart picks up the new binary immediately.
+#
+# First-time start:
+#   just dev-up
+#
+# Normal iteration (release build):
+#   just dev
+#
+# Fast iteration (debug build, ~3x faster compile, no optimizations):
+#   just dev-debug
+services:
+  lab-master:
+    volumes:
+      - ./bin/lab:/usr/local/bin/lab

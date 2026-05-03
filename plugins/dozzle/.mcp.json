@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dozzle": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "dozzle"
+      ]
+    }
+  }
+}

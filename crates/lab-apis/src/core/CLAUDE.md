@@ -1,6 +1,6 @@
 # core/ — Cross-cutting primitives
 
-This directory is the foundation every service module depends on. Changes here ripple across 23 clients — be conservative and align with `docs/ARCH.md`, `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, and `docs/SERIALIZATION.md` before editing.
+This directory is the foundation every service module depends on. Changes here ripple across all service clients — be conservative and align with `docs/ARCH.md`, `docs/CONVENTIONS.md`, `docs/OBSERVABILITY.md`, `docs/ERRORS.md`, and `docs/SERIALIZATION.md` before editing.
 
 ## Files
 
@@ -9,7 +9,7 @@ This directory is the foundation every service module depends on. Changes here r
 | `auth.rs` | `Auth` enum: `ApiKey { header, key }`, `Bearer { token }`, `Token { token }`, `Basic { username, password }`, `Session { cookie }`, `None`. Debug impl **must** redact secrets. |
 | `http.rs` | `HttpClient` wrapper around `reqwest::Client` — auth injection, `request.start`/`request.finish`/`request.error` tracing events, JSON and GraphQL helpers. No retry logic, no backoff, no spans — callers own those. All service clients build on this. |
 | `error.rs` | `ApiError` canonical taxonomy + `kind()` method. See below. |
-| `status.rs` | `ServiceStatus { reachable, auth_ok, version, latency_ms, message }` — returned by `ServiceClient::status()`. |
+| `status.rs` | `ServiceStatus { reachable, auth_ok, version, latency_ms, message }` — returned by `ServiceClient::health()`. |
 | `action.rs` | `ActionSpec { name, description, destructive, params, returns }` + `ParamSpec { name, ty: &'static str, required, description }`. Drives help/schema/catalog. |
 | `plugin.rs` | `PluginMeta` + `Category` (10 variants) + `EnvVar`. Per-service compile-time constants. |
 | `traits.rs` | `ServiceClient` trait with **native `async fn in trait`** — no `#[async_trait]`, no `Box<dyn>`. |

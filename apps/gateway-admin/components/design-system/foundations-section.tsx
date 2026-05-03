@@ -64,7 +64,7 @@ export function FoundationsSection() {
                 {spacingScale.map((space) => (
                   <div key={space.label} className="flex items-center gap-3">
                     <span className="w-20 text-sm text-aurora-text-muted">{space.label}</span>
-                    <div className="h-3 rounded-full bg-aurora-accent-primary/80" style={{ width: space.value }} />
+                    <div className="h-3 rounded-full bg-aurora-accent-primary/80" style={{ width: space.value, maxWidth: '100%' }} />
                     <span className="font-mono text-xs text-aurora-text-muted">{space.value}</span>
                   </div>
                 ))}

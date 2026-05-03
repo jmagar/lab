@@ -25,8 +25,8 @@ export function DesignSystemShell() {
           { label: 'Design System' },
         ]}
       />
-      <div className={cn(AURORA_PAGE_FRAME, AURORA_PAGE_SHELL)}>
-        <div className={cn(AURORA_STRONG_PANEL, 'px-6 py-6')}>
+      <div className={cn(AURORA_PAGE_FRAME, AURORA_PAGE_SHELL, 'min-w-0 [&_*]:min-w-0')}>
+        <div className={cn(AURORA_STRONG_PANEL, 'px-4 py-5 sm:px-6 sm:py-6')}>
           <p className={AURORA_MUTED_LABEL}>Internal Sandbox</p>
           <h1 className={cn(AURORA_DISPLAY_1, 'mt-2 text-aurora-text-primary')}>Design System</h1>
           <p className="mt-2 max-w-2xl text-sm text-aurora-text-muted sm:text-base">

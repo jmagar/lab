@@ -47,7 +47,7 @@ export function PatternsSection() {
       </div>
 
       <div className="space-y-4 px-5 py-5">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
           <div className={cn(AURORA_MEDIUM_PANEL, 'overflow-hidden')}>
             <div className="border-b border-aurora-border-strong px-4 py-4">
               <p className="text-sm font-medium text-aurora-text-primary">Logs stream pattern</p>
@@ -55,7 +55,7 @@ export function PatternsSection() {
                 Pair compact rows with a persistent detail surface.
               </p>
             </div>
-            <div className={`${AURORA_TAIL_ROW} border-b border-aurora-border-strong bg-aurora-page-bg px-4 py-3 ${AURORA_MUTED_LABEL}`}>
+            <div className={`${AURORA_TAIL_ROW} hidden border-b border-aurora-border-strong bg-aurora-page-bg px-4 py-3 ${AURORA_MUTED_LABEL} sm:grid`}>
               <div>Timestamp</div>
               <div>Level</div>
               <div>Subsystem</div>
@@ -70,6 +70,7 @@ export function PatternsSection() {
                     `${AURORA_TAIL_ROW} w-full px-4 py-3 text-left transition hover:bg-aurora-hover-bg/60`,
                     event.event_id === selectedEventId ? 'bg-aurora-accent-primary/12 shadow-[inset_2px_0_0_var(--aurora-accent-primary)]' : '',
                   )}
+                  aria-label={`Inspect ${event.level} log from ${event.subsystem}`}
                   onClick={() => setSelectedEventId(event.event_id)}
                 >
                   <div className="font-mono text-xs leading-5 text-aurora-text-muted">
@@ -96,9 +97,9 @@ export function PatternsSection() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
           <div className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
             <p className="text-sm font-medium text-aurora-text-primary">Gateway toolbar pattern</p>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {toolbarSummaryChips.map((chip) => (
-                <button key={chip.label} type="button" className="inline-flex items-center justify-center gap-1 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-2 py-2 text-sm font-medium text-aurora-text-primary">
+                <button key={chip.label} type="button" aria-label={chip.label} className="inline-flex items-center justify-center gap-1 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-2 py-2 text-sm font-medium text-aurora-text-primary">
                   {chip.tone === 'success' ? <ShieldCheck className="size-4 text-aurora-success" /> : null}
                   {chip.tone === 'warning' ? <AlertTriangle className="size-4 text-aurora-warn" /> : null}
                   {chip.tone === 'info' ? <Wrench className="size-4 text-aurora-accent-primary" /> : null}
@@ -116,10 +117,10 @@ export function PatternsSection() {
                   className={cn(AURORA_MESSAGE_SURFACE, 'pr-20 pl-9 text-aurora-text-primary placeholder:text-aurora-text-muted')}
                 />
                 <div className="absolute inset-y-0 right-1 flex items-center gap-1">
-                  <Button variant="outline" size="icon" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                  <Button variant="outline" size="icon" aria-label="Open gateway filters" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                     <SlidersHorizontal className="size-3.5" />
                   </Button>
-                  <Button variant="outline" size="icon" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
+                  <Button variant="outline" size="icon" aria-label="Open gateway tools" className={cn(controlTone(), 'size-8 rounded-full hover:bg-aurora-hover-bg hover:text-aurora-text-primary')}>
                     <Wrench className="size-3.5" />
                   </Button>
                 </div>

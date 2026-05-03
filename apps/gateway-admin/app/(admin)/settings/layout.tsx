@@ -12,11 +12,11 @@ export default function SettingsLayout({
   return (
     <div className="flex flex-col">
       <AppHeader />
-      <div className="grid grid-cols-[220px_1fr] gap-6 p-6">
-        <aside className="rounded-md border bg-card">
+      <div className="grid min-w-0 gap-4 p-4 sm:p-6 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-6">
+        <aside className="min-w-0 rounded-md border bg-card">
           <SettingsRail />
         </aside>
-        <main className="flex flex-col gap-4">
+        <main className="flex min-w-0 flex-col gap-4">
           <DraftStaleBanner />
           {children}
         </main>

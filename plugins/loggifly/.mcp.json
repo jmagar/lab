@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "loggifly": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "loggifly"
+      ]
+    }
+  }
+}

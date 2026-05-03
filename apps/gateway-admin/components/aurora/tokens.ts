@@ -19,29 +19,29 @@ import type { LogLevel } from '@/lib/types/logs'
 
 /** Display 1 — page titles. Manrope, 34px, extrabold, tight tracking. */
 export const AURORA_DISPLAY_1 =
-  'font-display text-[34px] leading-[1.04] font-extrabold tracking-[-0.045em]'
+  'font-display text-[34px] leading-[1.04] font-extrabold'
 
 /** Display 2 — section headers. Manrope, 19px, bold, moderate tracking. */
 export const AURORA_DISPLAY_2 =
-  'font-display text-[19px] leading-[1.12] font-bold tracking-[-0.02em]'
+  'font-display text-[19px] leading-[1.12] font-bold'
 
 /**
  * Display title — section-level heading (legacy alias for AURORA_DISPLAY_2).
  * Kept for backwards compat with gateway-theme.ts and settings page.
  */
-export const AURORA_DISPLAY_TITLE = 'font-display tracking-[-0.02em]'
+export const AURORA_DISPLAY_TITLE = 'font-display'
 
 /** Metric Display — large numbers, dashboard stats. Manrope, tabular. */
 export const AURORA_DISPLAY_NUMBER =
-  'font-display text-[28px] leading-none font-extrabold tracking-[-0.04em] tabular-nums'
+  'font-display text-[28px] leading-none font-extrabold tabular-nums'
 
 /** Card title — dense catalog/list card titles. Manrope, compact and emphatic. */
 export const AURORA_CARD_TITLE =
-  'font-display text-[15px] leading-[1.16] font-extrabold tracking-[-0.02em]'
+  'font-display text-[15px] leading-[1.16] font-extrabold'
 
 /** Compact title — empty states and compact panel headings. Manrope, below Display 2. */
 export const AURORA_COMPACT_TITLE =
-  'font-display text-[17px] leading-[1.18] font-extrabold tracking-[-0.02em]'
+  'font-display text-[17px] leading-[1.18] font-extrabold'
 
 /**
  * Eyebrow / muted label — uppercase metadata labels.
@@ -64,7 +64,7 @@ export const AURORA_DENSE_META =
 
 /** Page content frame — max-width container with standard padding. */
 export const AURORA_PAGE_FRAME =
-  'mx-auto flex w-full max-w-[1740px] flex-col gap-5 px-4 py-6 sm:px-6 xl:px-8'
+  'mx-auto flex w-full max-w-[1740px] flex-col gap-5 px-3 py-5 sm:px-6 sm:py-6 xl:px-8'
 
 /** Page background shell — subtle radial aurora gradient. */
 export const AURORA_PAGE_SHELL =
@@ -147,4 +147,4 @@ export const AURORA_LEVEL_TEXT: Record<LogLevel, string> = {
  * Logs-specific: stays in this module.
  */
 export const AURORA_TAIL_ROW =
-  'grid grid-cols-[170px_84px_130px_minmax(0,1fr)] gap-3'
+  'grid grid-cols-1 gap-1 sm:grid-cols-[170px_84px_130px_minmax(0,1fr)] sm:gap-3'

@@ -4,7 +4,7 @@ The TUI is the **discovery, configuration, and installation UX** for `lab`. CLI 
 
 ## Current State
 
-`run()` is a stub — the TUI is not yet functional end-to-end. `metadata.rs` currently only has `radarr` wired. The architecture below describes the intended design; implementation is in progress.
+The TUI has implemented app, services, marketplace, update, preview, metadata, and `.mcp.json` patching modules. Verify current feature coverage in `metadata.rs` and `services.rs` before adding or claiming a service. The architecture below describes the intended design; implementation is in progress.
 
 ## Two tabs
 

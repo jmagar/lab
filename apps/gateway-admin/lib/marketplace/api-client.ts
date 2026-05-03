@@ -7,7 +7,10 @@
 
 import { performServiceAction } from '@/lib/api/service-action-client'
 import { marketplaceActionUrl } from '@/lib/api/gateway-config'
+import { MOCK_ACP_AGENTS, MOCK_MCP_SERVERS } from './mocks'
 import type { McpServer, AcpAgent } from './types'
+
+const USE_MOCK_DATA = process.env.NEXT_PUBLIC_MOCK_DATA === 'true'
 
 class MarketplaceError extends Error {
   status: number
@@ -38,11 +41,21 @@ export interface McpListResult {
 }
 
 export async function listMcpServers(signal?: AbortSignal): Promise<McpServer[]> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return structuredClone(MOCK_MCP_SERVERS)
+  }
   const res = await marketplaceAction<McpListResult>('mcp.list', {}, signal)
   return res.servers ?? []
 }
 
 export async function getMcpServer(name: string, signal?: AbortSignal): Promise<McpServer> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const server = MOCK_MCP_SERVERS.find((candidate) => candidate.name === name)
+    if (server) return structuredClone(server)
+    throw new MarketplaceError(`Unknown MCP server: ${name}`, 404, 'not_found')
+  }
   return marketplaceAction<McpServer>('mcp.get', { name }, signal)
 }
 
@@ -79,6 +92,15 @@ export async function installMcpServer(
   params: McpInstallParams,
   signal?: AbortSignal,
 ): Promise<McpInstallResult> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return {
+      results: (params.gateway_ids ?? ['mock-gateway']).map((gateway_id) => ({
+        gateway_id,
+        ok: true,
+      })),
+    }
+  }
   const { server_name, env_vars, ...rest } = params
   return marketplaceAction<McpInstallResult>(
     'mcp.install',
@@ -94,11 +116,21 @@ export interface AcpListResult {
 }
 
 export async function listAcpAgents(signal?: AbortSignal): Promise<AcpAgent[]> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return structuredClone(MOCK_ACP_AGENTS)
+  }
   const res = await marketplaceAction<AcpListResult | AcpAgent[]>('agent.list', {}, signal)
   return Array.isArray(res) ? res : (res.agents ?? [])
 }
 
 export async function getAcpAgent(id: string, signal?: AbortSignal): Promise<AcpAgent> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    const agent = MOCK_ACP_AGENTS.find((candidate) => candidate.id === id)
+    if (agent) return structuredClone(agent)
+    throw new MarketplaceError(`Unknown ACP agent: ${id}`, 404, 'not_found')
+  }
   return marketplaceAction<AcpAgent>('agent.get', { id }, signal)
 }
 
@@ -124,6 +156,16 @@ export async function installAcpAgent(
   params: AcpAgentInstallParams,
   signal?: AbortSignal,
 ): Promise<AcpAgentInstallResult> {
+  if (USE_MOCK_DATA) {
+    signal?.throwIfAborted?.()
+    return {
+      results: params.device_ids.map((device_id) => ({
+        device_id,
+        ok: true,
+        message: `Mock-installed ${params.agent_id}`,
+      })),
+    }
+  }
   return marketplaceAction<AcpAgentInstallResult>(
     'agent.install',
     { id: params.agent_id, node_ids: params.device_ids, confirm: true },

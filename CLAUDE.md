@@ -115,13 +115,13 @@ Note: `commands.rs` and `tools.rs` do **not** live here. CLI subcommands and MCP
 
 ### The Golden Rule
 
-Business logic lives in `lab-apis/src/<service>/client.rs`. CLI (`lab/src/cli/<service>.rs`) and MCP (`lab/src/mcp/services/<service>.rs`) are **thin shims** that call client methods and format output. If you're writing logic in a CLI command or MCP dispatch, you're doing it wrong — move it to the client.
+Business logic lives in `lab-apis/src/<service>/client.rs`. Shared product semantics live in `crates/lab/src/dispatch/<service>/`. CLI, MCP, and HTTP are thin adapters over dispatch unless a surface has a genuine protocol-specific exception. If you're writing business logic in a CLI command, MCP handler, or API route, you're doing it wrong — move it to the client or shared dispatch layer.
 
 The two-crate split enforces this structurally: `lab-apis` doesn't depend on `clap` or `rmcp`, so you literally cannot reach for them while writing business logic.
 
 ### One Tool Per Service (MCP) — action + subaction dispatch
 
-Each service exposes exactly **one** MCP tool, named after the service. Operations dispatch via a flat dotted `action` string + free-form `params` object. This keeps total MCP tool count at ~20, not hundreds.
+Each service exposes exactly **one** MCP tool, named after the service. Operations dispatch via a flat dotted `action` string + free-form `params` object. This keeps total MCP tool count near the service count, not hundreds.
 
 ```jsonc
 radarr({ "action": "movie.search", "params": { "query": "The Matrix" } })
@@ -174,7 +174,7 @@ See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonica
 10. Create API route group in `crates/lab/src/api/services/foo.rs` calling the dispatch layer
 11. Register in `crates/lab/src/registry.rs` (via `register_service!` inside `build_default_registry()`), `crates/lab/src/cli.rs`, and `crates/lab/src/api/router.rs`
 12. Add `foo = ["lab-apis/foo"]` passthrough to `crates/lab/Cargo.toml`
-13. Add to plugin metadata in `crates/lab/src/tui/metadata.rs`
+13. Confirm TUI coverage: service listing comes from the shared registry, but health/config helpers in `crates/lab/src/tui/metadata.rs` and `crates/lab/src/tui/services.rs` may need service-specific entries.
 
 A service is not fully online until one successful path and one failing path are traceable end to end without leaking secrets.
 
@@ -323,8 +323,8 @@ Default verification targets the all-features build. If you run a reduced featur
 Scoped to a single crate:
 
 ```bash
-cargo test -p lab-apis        # client tests only (fast, wiremock-based)
-cargo test --manifest-path crates/lab/Cargo.toml  # CLI/MCP/TUI tests only
+cargo nextest run -p lab-apis        # client tests only (fast, wiremock-based)
+cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features  # CLI/MCP/TUI tests
 ```
 
 ## Testing

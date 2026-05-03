@@ -16,3 +16,11 @@ Example: `CardTitle` defaults to `font-display` because every Aurora card header
 - **Behavioral coupling**: callbacks, refs, anything that changes the primitive's contract.
 
 Rule of thumb: if the change describes *what the brand looks like*, bake it in. If it describes *where this instance sits in this layout*, leave it for the caller.
+
+## Local Checks
+
+Run from `apps/gateway-admin/`:
+
+- `pnpm build`
+- `pnpm test`
+- `pnpm lint`

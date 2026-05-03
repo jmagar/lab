@@ -89,7 +89,8 @@ export function DataDisplaySection() {
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
           <section className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
             <p className="text-sm font-medium text-aurora-text-primary">Dense table rows</p>
-            <Table>
+            <div className="aurora-scrollbar overflow-x-auto">
+            <Table className="min-w-[560px]">
               <TableHeader>
                 <TableRow className="border-aurora-border-strong text-aurora-text-muted">
                   <TableHead>Gateway</TableHead>
@@ -124,6 +125,7 @@ export function DataDisplaySection() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           </section>
 
           <section className={cn(AURORA_MEDIUM_PANEL, 'space-y-4 px-4 py-4')}>
@@ -132,7 +134,7 @@ export function DataDisplaySection() {
               {keyValueBlocks.map((item) => (
                 <div
                   key={item.label}
-                  className="grid grid-cols-[120px_minmax(0,1fr)] gap-3 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-3 py-3"
+                  className="grid gap-1 rounded-aurora-1 border border-aurora-border-strong bg-aurora-control-surface px-3 py-3 sm:grid-cols-[120px_minmax(0,1fr)] sm:gap-3"
                 >
                   <span className="text-sm text-aurora-text-muted">{item.label}</span>
                   <span className="min-w-0 break-words text-sm font-medium text-aurora-text-primary">

@@ -163,6 +163,7 @@ export function ControlsSection() {
                       key={option}
                       type="button"
                       aria-pressed={active}
+                      aria-label={`Toggle ${option}`}
                       className={`inline-flex min-h-[38px] items-center rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${pillTone(active)}`}
                       onClick={() => {
                         setPillFilters((current) =>
@@ -184,20 +185,20 @@ export function ControlsSection() {
               <div className="space-y-3">
                 <Label className="justify-between text-aurora-text-primary">
                   <span className="flex items-center gap-2">
-                    <Checkbox checked={notifyOwners} onCheckedChange={(checked) => setNotifyOwners(checked === true)} />
+                    <Checkbox checked={notifyOwners} onCheckedChange={(checked) => setNotifyOwners(checked === true)} aria-label="Notify owners" />
                     Notify owners
                   </span>
                   <Badge variant="secondary">{notifyOwners ? 'On' : 'Off'}</Badge>
                 </Label>
                 <Label className="justify-between text-aurora-text-primary">
                   <span>Auto-refresh panels</span>
-                  <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+                  <Switch checked={autoRefresh} onCheckedChange={setAutoRefresh} aria-label="Auto-refresh panels" />
                 </Label>
                 <RadioGroup value={accessMode} onValueChange={setAccessMode}>
                   {accessModeOptions.map((option) => (
                     <Label key={option.value} className="justify-between rounded-aurora-2 border border-aurora-border-strong bg-aurora-control-surface/70 px-3 py-3 text-aurora-text-primary">
                       <span>{option.label}</span>
-                      <RadioGroupItem value={option.value} />
+                      <RadioGroupItem value={option.value} aria-label={option.label} />
                     </Label>
                   ))}
                 </RadioGroup>

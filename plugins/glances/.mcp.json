@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "glances": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "glances"
+      ]
+    }
+  }
+}

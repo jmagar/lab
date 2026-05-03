@@ -4,7 +4,7 @@ This directory is the shared semantic layer between the product adapters and `la
 
 ## Core Rule
 
-`cli/`, `mcp/services/`, and `api/services/` are thin adapters over `dispatch/`.
+CLI, MCP, and API surfaces are thin adapters over `dispatch/`. `mcp/services/` exists only for MCP-specific exceptions.
 
 If multiple surfaces need the same action semantics, that code belongs here.
 

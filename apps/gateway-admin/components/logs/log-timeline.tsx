@@ -59,7 +59,7 @@ export function LogTimeline({
         </div>
       </div>
 
-      <div className={`${AURORA_TAIL_ROW} border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] px-5 py-3 ${AURORA_MUTED_LABEL}`}>
+      <div className={`${AURORA_TAIL_ROW} hidden border-b border-aurora-border-strong bg-[rgba(7,17,26,0.48)] px-5 py-3 ${AURORA_MUTED_LABEL} sm:grid`}>
         <div>Timestamp</div>
         <div>Level</div>
         <div>Subsystem</div>
@@ -91,7 +91,7 @@ export function LogTimeline({
                   selected && 'bg-aurora-accent-primary/12 shadow-[inset_2px_0_0_var(--aurora-accent-primary)]',
                 )}
               >
-                <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-stretch gap-2 px-5 py-3 transition-colors hover:bg-[rgba(7,17,26,0.52)]">
+                <div className="grid grid-cols-[minmax(0,1fr)_2.5rem] items-stretch gap-2 px-4 py-3 transition-colors hover:bg-[rgba(7,17,26,0.52)] sm:px-5">
                   <button
                     type="button"
                     className={`${AURORA_TAIL_ROW} min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora-accent-primary/45 focus-visible:ring-inset`}
@@ -100,10 +100,12 @@ export function LogTimeline({
                     <div className="font-mono text-xs leading-5 text-aurora-text-muted">
                       {timestampFormatter.format(new Date(event.ts))}
                     </div>
-                    <div className={`font-mono text-sm font-semibold ${AURORA_LEVEL_TEXT[event.level]}`}>
-                      {event.level.toUpperCase()}
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 sm:contents">
+                      <span className={`font-mono text-sm font-semibold ${AURORA_LEVEL_TEXT[event.level]}`}>
+                        {event.level.toUpperCase()}
+                      </span>
+                      <span className="min-w-0 truncate font-mono text-sm text-aurora-text-muted">{event.subsystem}</span>
                     </div>
-                    <div className="font-mono text-sm text-aurora-text-muted">{event.subsystem}</div>
                     <div className="min-w-0">
                       <span className="block min-w-0 truncate font-mono text-sm text-aurora-text-primary">
                         {event.message}
@@ -134,12 +136,12 @@ export function LogTimeline({
                   <div
                     id={detailsId}
                     aria-label="Expanded log message"
-                    className={`${AURORA_TAIL_ROW} px-5 pb-4`}
+                    className={`${AURORA_TAIL_ROW} px-4 pb-4 sm:px-5`}
                     role="region"
                   >
-                    <div />
-                    <div />
-                    <div />
+                    <div className="hidden sm:block" />
+                    <div className="hidden sm:block" />
+                    <div className="hidden sm:block" />
                     <div className={`${AURORA_MESSAGE_SURFACE} px-4 py-3 font-mono text-sm leading-6 whitespace-pre-wrap break-words text-aurora-text-primary`}>
                       {event.message}
                     </div>

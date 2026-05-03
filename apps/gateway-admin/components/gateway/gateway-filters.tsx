@@ -73,7 +73,7 @@ const EXPOSURE_OPTIONS: Array<{ value: ToolsExposureFilter; label: string }> = [
 function FilterCheckbox({ checked, label, onChange }: FilterCheckboxProps) {
   return (
     <label className="flex items-center gap-2 text-[13px] leading-[1.2] font-medium text-aurora-text-primary">
-      <Checkbox checked={checked} onCheckedChange={onChange} className="border-aurora-border-strong bg-aurora-control-surface" />
+      <Checkbox checked={checked} onCheckedChange={onChange} aria-label={label} className="border-aurora-border-strong bg-aurora-control-surface" />
       <span>{label}</span>
     </label>
   )
@@ -194,6 +194,7 @@ export function GatewayFilters({
                     pillTone(toolFilters.exposure === option.value),
                   )}
                   aria-pressed={toolFilters.exposure === option.value}
+                  aria-label={`Show ${option.label.toLowerCase()}`}
                 >
                   {option.label}
                 </button>

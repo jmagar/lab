@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "scrutiny": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "scrutiny"
+      ]
+    }
+  }
+}

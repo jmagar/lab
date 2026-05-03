@@ -41,6 +41,26 @@ build-release:
     cargo build --workspace --all-features --release
     install -D -m 755 target/release/lab bin/lab
 
+# Install release binary to ~/.local/bin/lab (updates the host CLI)
+install: build-release
+    install -D -m 755 bin/lab ~/.local/bin/lab
+
+# Start the dev container for the first time (or after docker-compose changes)
+dev-up:
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+# Release build → hot-swap binary into running dev container (no image rebuild)
+dev: build-release
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml restart
+
+# Debug build with Cranelift codegen (fastest compile) → hot-swap into running dev container.
+# Uses nightly toolchain — RUSTFLAGS explicitly includes mold since env var overrides config.toml.
+dev-debug:
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold -Z codegen-backend=cranelift" \
+        cargo +nightly build -p 'lab@0.12.1' --all-features
+    install -D -m 755 target/debug/lab bin/lab
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml restart
+
 # Rebuild static Labby web assets served by lab serve
 web-build:
     cd apps/gateway-admin && pnpm build

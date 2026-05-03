@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "adguard": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "adguard"
+      ]
+    }
+  }
+}

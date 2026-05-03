@@ -109,6 +109,7 @@ export default function FleetScanPage(): React.ReactElement {
                   id={`host-${host}`}
                   checked={selected.has(host)}
                   onCheckedChange={() => toggleHost(host)}
+                  aria-label={`Select ${host}`}
                 />
                 <label htmlFor={`host-${host}`} className="cursor-pointer text-sm">
                   {host}

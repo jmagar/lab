@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "navidrome": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "navidrome"
+      ]
+    }
+  }
+}

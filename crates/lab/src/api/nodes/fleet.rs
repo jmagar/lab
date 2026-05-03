@@ -317,6 +317,14 @@ async fn handle_websocket(
                     drop(write_task.await);
                     return Ok(());
                 }
+                if session_node_id.is_none() {
+                    drop(tx.send(Message::Close(None)).await);
+                    drop(tx);
+                    sweep_task.abort();
+                    heartbeat_task.abort();
+                    drop(write_task.await);
+                    return Ok(());
+                }
             }
         }
         Message::Ping(payload) => {
@@ -1388,6 +1396,14 @@ mod tests {
         let snapshot = enrollment_store.list().await.expect("list");
         assert!(snapshot.pending.contains_key("device-unknown"));
         assert!(snapshot.approved.is_empty());
+
+        let closed = tokio::time::timeout(Duration::from_secs(1), socket.next())
+            .await
+            .expect("server should close unauthenticated websocket after enrollment rejection");
+        assert!(
+            matches!(closed, None | Some(Ok(Message::Close(_)))),
+            "unexpected websocket frame after enrollment rejection: {closed:?}"
+        );
 
         server.abort();
     }

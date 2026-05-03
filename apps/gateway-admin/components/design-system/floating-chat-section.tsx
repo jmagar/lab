@@ -88,8 +88,8 @@ function PopoverDemo({ state }: { state: PopoverDemoState }) {
 
   return (
     <div
-      className="relative overflow-hidden rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-strong)]"
-      style={{ width: w, height: h }}
+      className="relative w-full overflow-hidden rounded-aurora-3 border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-strong)]"
+      style={{ width: w, maxWidth: '100%', height: h }}
     >
       {/* Header */}
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-aurora-border-strong bg-aurora-panel-strong px-3 select-none">
@@ -122,6 +122,7 @@ function PopoverDemo({ state }: { state: PopoverDemoState }) {
             <label className="flex items-center gap-2.5">
               <input
                 type="checkbox"
+                aria-label="Send page context"
                 defaultChecked={false}
                 className="size-3.5 accent-aurora-accent-primary"
                 readOnly
@@ -208,15 +209,15 @@ export function FloatingChatSection() {
         <div>
           <p className={cn(AURORA_MUTED_LABEL, 'mb-4')}>Popover States</p>
           <div className="flex flex-wrap items-start gap-8">
-            <div className="flex flex-col gap-2">
+            <div className="flex w-full max-w-[420px] flex-col gap-2">
               <p className="text-[12px] text-aurora-text-muted">Default (bottom-right)</p>
               <PopoverDemo state="default" />
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex w-full max-w-[420px] flex-col gap-2">
               <p className="text-[12px] text-aurora-text-muted">Gear config panel open</p>
               <PopoverDemo state="gear-open" />
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex w-full max-w-[320px] flex-col gap-2">
               <p className="text-[12px] text-aurora-text-muted">Compact (minimum size)</p>
               <PopoverDemo state="compact" />
             </div>

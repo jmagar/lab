@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "qdrant": {
+      "command": "lab",
+      "args": [
+        "mcp",
+        "--services",
+        "qdrant"
+      ]
+    }
+  }
+}
