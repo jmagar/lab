@@ -15,6 +15,7 @@ pub mod dispatch;
 pub mod docs;
 #[allow(unreachable_pub)]
 pub mod mcp;
+pub mod net;
 #[allow(unreachable_pub)]
 pub mod node;
 #[allow(unreachable_pub)]

@@ -17,6 +17,7 @@ mod dispatch;
 mod docs;
 mod log_fmt;
 mod mcp;
+mod net;
 mod node;
 mod oauth;
 mod observability;

@@ -14,7 +14,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest;
 use tokio_tungstenite::tungstenite::protocol::{Message, WebSocketConfig};
 use uuid::Uuid;
 
-use crate::dispatch::upstream::transport::websocket::{jitter_delay, reprobe_backoff};
+use crate::net::backoff::{jitter_delay, reprobe_backoff};
 use crate::node::install::{
     AgentInstallParams, InstallComponentParams, InstallScope, McpInstallParams,
     handle_agent_install, handle_install_component, handle_mcp_install,

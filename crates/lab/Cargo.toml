@@ -121,6 +121,7 @@ path = "src/lib.rs"
 
 [features]
 acp_registry = ["lab-apis/acp_registry"]
+node-runtime = []
 adguard = ["lab-apis/adguard"]
 all = [
   "lab-apis/all",

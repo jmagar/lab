@@ -221,38 +221,8 @@ pub fn decode_server_message(
     })
 }
 
-#[must_use]
-pub fn reprobe_backoff(attempt: u32) -> Duration {
-    let seconds = match attempt {
-        0 => 1,
-        1 => 2,
-        2 => 4,
-        3 => 8,
-        4 => 16,
-        5 => 32,
-        _ => 60,
-    };
-    Duration::from_secs(seconds)
-}
-
-pub fn jitter_window(delay: Duration) -> (Duration, Duration) {
-    let millis = delay.as_millis() as u64;
-    let spread = millis / 5;
-    let min = millis.saturating_sub(spread);
-    let max = millis.saturating_add(spread);
-    (Duration::from_millis(min), Duration::from_millis(max))
-}
-
-pub fn jitter_delay(delay: Duration, seed: u64) -> Duration {
-    let (min, max) = jitter_window(delay);
-    let min_ms = min.as_millis() as u64;
-    let max_ms = max.as_millis() as u64;
-    if min_ms >= max_ms {
-        return min;
-    }
-    let width = max_ms - min_ms;
-    Duration::from_millis(min_ms + (seed % (width + 1)))
-}
+// Re-export from net::backoff to keep existing callers within dispatch/upstream working.
+pub use crate::net::backoff::{jitter_delay, jitter_window, reprobe_backoff};
 
 pub fn log_context(reason: &'static str) -> Cow<'static, str> {
     Cow::Borrowed(reason)
@@ -309,18 +279,5 @@ mod tests {
             decoded_error,
             RxJsonRpcMessage::<RoleClient>::Error(_)
         ));
-    }
-
-    #[test]
-    fn reprobe_backoff_caps_and_jitters() {
-        let expected = [1_u64, 2, 4, 8, 16, 32, 60, 60];
-        for (attempt, seconds) in expected.into_iter().enumerate() {
-            let backoff = reprobe_backoff(attempt as u32);
-            assert_eq!(backoff, Duration::from_secs(seconds));
-            let (min, max) = jitter_window(backoff);
-            let jittered = jitter_delay(backoff, 17);
-            assert!(jittered >= min);
-            assert!(jittered <= max);
-        }
     }
 }
