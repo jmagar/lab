@@ -6,9 +6,9 @@
 
 Start with `docs/README.md` for the docs index. The topic docs in `docs/` are the source of truth; if this file disagrees with them, this file is stale.
 
-Observability is governed by `docs/OBSERVABILITY.md`. When adding or changing request paths, treat that file as the source of truth for logging boundaries, required fields, correlation, redaction, and verification.
-Errors are governed by `docs/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/design/SERIALIZATION.md`.
-Shared dispatch ownership and adapter direction are governed by `docs/DISPATCH.md`.
+Observability is governed by `docs/dev/OBSERVABILITY.md`. When adding or changing request paths, treat that file as the source of truth for logging boundaries, required fields, correlation, redaction, and verification.
+Errors are governed by `docs/dev/ERRORS.md`. Serialization and output-boundary rules are governed by `docs/design/SERIALIZATION.md`.
+Shared dispatch ownership and adapter direction are governed by `docs/dev/DISPATCH.md`.
 
 **Build assumption.** This repo is developed and verified as an **all-features** binary. Treat `cargo build --all-features`, `cargo nextest run --all-features`, and the equivalent `just` commands as the default truth. Do not delete or rewrite shared helpers just because they appear unused in a narrow feature slice; first verify whether they are used by other feature-gated services in the normal all-features build.
 
@@ -156,16 +156,16 @@ Every MCP tool failure returns a JSON envelope with a stable `kind` tag so agent
 { "kind": "rate_limited", "message": "...", "retry_after_ms": 5000 }
 ```
 
-See `docs/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonical error vocabulary rules.
+See `docs/surfaces/MCP.md` for the MCP surface and `docs/CONVENTIONS.md` for the canonical error vocabulary rules.
 
-`docs/ERRORS.md` is the canonical source of truth for stable kinds, envelope expectations, and status mapping.
+`docs/dev/ERRORS.md` is the canonical source of truth for stable kinds, envelope expectations, and status mapping.
 
 ### Adding a New Service
 
 1. `mkdir crates/lab-apis/src/foo/`
 2. Define types in `types.rs` from API spec/docs
 3. Implement `FooClient` methods in `client.rs`
-4. Add observability at the shared boundary and confirm it matches `docs/OBSERVABILITY.md`
+4. Add observability at the shared boundary and confirm it matches `docs/dev/OBSERVABILITY.md`
 5. Implement `ServiceClient` trait for health checks
 6. Add `#[cfg(feature = "foo")] pub mod foo;` to `lab-apis/src/lib.rs`
 7. Add `foo = []` feature to `crates/lab-apis/Cargo.toml`
@@ -221,7 +221,7 @@ Every service entry-point file (e.g., `radarr.rs`) declares a `pub const META: P
 - `lab-apis`: use `thiserror` for typed errors per service; every service error wraps `ApiError` transparently.
 - `lab` binary: use `anyhow` to wrap everything.
 - Always return `Result<T>`, never panic.
-- `docs/ERRORS.md` is canonical for stable `kind` values, dispatcher-level kinds, MCP and HTTP envelope behavior, and status mapping.
+- `docs/dev/ERRORS.md` is canonical for stable `kind` values, dispatcher-level kinds, MCP and HTTP envelope behavior, and status mapping.
 - Do not invent service-local error vocabularies or drift MCP and HTTP error semantics apart.
 - Adding or renaming an error `kind` is a spec change and must be reflected in the owning docs and surface code together.
 
@@ -229,7 +229,7 @@ Every service entry-point file (e.g., `radarr.rs`) declares a `pub const META: P
 
 Use `tracing` everywhere. Never use `println!` for debug info.
 
-`docs/OBSERVABILITY.md` is the canonical source of truth. Do not invent per-service log shapes.
+`docs/dev/OBSERVABILITY.md` is the canonical source of truth. Do not invent per-service log shapes.
 
 Minimum required rules:
 

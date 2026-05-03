@@ -8,7 +8,7 @@ The TUI has implemented app, services, marketplace, update, preview, metadata, a
 
 ## Two tabs
 
-The TUI has two top-level tabs (see `docs/TUI.md` for full spec):
+The TUI has two top-level tabs (see `docs/surfaces/TUI.md` for full spec):
 
 | Tab | Responsibility |
 |-----|---------------|

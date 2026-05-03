@@ -1,6 +1,6 @@
 # .github/ — CI/CD Workflows
 
-This directory contains the GitHub Actions workflows for `lab`. The authoritative contract lives in `docs/CICD.md` — this file puts it next to the code.
+This directory contains the GitHub Actions workflows for `lab`. The authoritative contract lives in `docs/runtime/CICD.md` — this file puts it next to the code.
 
 ## Workflows
 
@@ -76,7 +76,7 @@ publish `ghcr.io/jmagar/lab:<tag>` and `ghcr.io/jmagar/lab:latest`.
 
 Never run in CI. Marked `#[ignore]` in code. Run locally with `just test-integration`.
 
-See `docs/CICD.md` for the full CI/CD contract.
+See `docs/runtime/CICD.md` for the full CI/CD contract.
 
 ## Gotchas
 

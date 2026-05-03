@@ -14,11 +14,11 @@ It owns:
 Before editing here, align with:
 
 - `docs/ARCH.md`
-- `docs/DISPATCH.md`
-- `docs/OBSERVABILITY.md`
-- `docs/ERRORS.md`
+- `docs/dev/DISPATCH.md`
+- `docs/dev/OBSERVABILITY.md`
+- `docs/dev/ERRORS.md`
 - `docs/SERIALIZATION.md`
-- `docs/SERVICE_ONBOARDING.md`
+- `docs/dev/SERVICE_ONBOARDING.md`
 
 ## Layer Contract
 
@@ -111,7 +111,7 @@ Do not force MCP-style `action + params` onto the CLI unless the project docs ex
 
 ## Observability
 
-Surface layers must comply with `docs/OBSERVABILITY.md`.
+Surface layers must comply with `docs/dev/OBSERVABILITY.md`.
 
 That means:
 
@@ -123,7 +123,7 @@ That means:
 
 Surface layers must comply with:
 
-- `docs/ERRORS.md`
+- `docs/dev/ERRORS.md`
 - `docs/SERIALIZATION.md`
 
 That means:
