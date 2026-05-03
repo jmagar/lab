@@ -35,6 +35,30 @@ impl MasterClient {
         self.inner.fetch_device(node_id).await.map_err(Into::into)
     }
 
+    /// Returns `true` when the controller reports an active WebSocket connection
+    /// for the given node. Returns `false` if the node is known but not connected,
+    /// or if the node is not in inventory.
+    ///
+    /// Unlike `fetch_device`, this returns `false` on node-not-found rather than
+    /// an error — it is intended as a polling helper for rollout verification, not
+    /// as an inventory query.
+    pub async fn node_connected(&self, node_id: &str) -> Result<bool> {
+        match self.fetch_device(node_id).await {
+            Ok(value) => Ok(value
+                .get("connected")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false)),
+            Err(error) => {
+                // If the node is simply not found, it's not connected.
+                let msg = error.to_string();
+                if msg.contains("not_found") || msg.contains("404") {
+                    return Ok(false);
+                }
+                Err(error)
+            }
+        }
+    }
+
     pub async fn fetch_enrollments(&self) -> Result<serde_json::Value> {
         self.inner.fetch_enrollments().await.map_err(Into::into)
     }
