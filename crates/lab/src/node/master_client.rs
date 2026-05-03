@@ -50,9 +50,12 @@ impl MasterClient {
                 .unwrap_or(false)),
             Err(error) => {
                 // If the node is simply not found, it's not connected.
-                // ApiError::NotFound displays as "not found"; the kind tag is "not_found".
-                let msg = error.to_string();
-                if msg.contains("not found") || msg.contains("not_found") || msg.contains("404") {
+                // Use typed downcast rather than string matching to avoid false positives
+                // from proxy error bodies that happen to contain "not found".
+                if error
+                    .downcast_ref::<lab_apis::core::ApiError>()
+                    .is_some_and(|e| matches!(e, lab_apis::core::ApiError::NotFound))
+                {
                     return Ok(false);
                 }
                 Err(error)
@@ -318,6 +321,13 @@ mod tests {
         assert!(
             result.is_ok(),
             "transport error should be swallowed, not fatal; got {result:?}"
+        );
+        // Verify the loop actually retried (not an immediate return on 500).
+        let reqs = server.received_requests().await.unwrap();
+        assert!(
+            reqs.len() >= 2,
+            "transport error should trigger retry; only {} request(s) made",
+            reqs.len()
         );
     }
 }

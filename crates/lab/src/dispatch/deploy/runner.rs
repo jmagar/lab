@@ -384,12 +384,8 @@ impl DefaultRunner {
                             return Err(err.into());
                         }
                     };
-                    tracing::info!(
-                        artifact_sha256 = %outcome.sha256,
-                        size_bytes = outcome.size_bytes,
-                        role = ?role,
-                        "deploy.build.ok"
-                    );
+                    // build_artifact() already emits a conforming build.finish event;
+                    // no duplicate logging needed here.
                     artifact_map.insert(*role, Arc::new(outcome));
                 }
 
