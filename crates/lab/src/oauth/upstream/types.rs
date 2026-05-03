@@ -6,7 +6,7 @@ use thiserror::Error;
 
 /// Stable error kinds for upstream OAuth flows.
 ///
-/// These must be kept in sync with `docs/ERRORS.md`.
+/// These must be kept in sync with `docs/dev/ERRORS.md`.
 #[derive(Debug, Error)]
 pub enum OauthError {
     /// Refresh token was rejected (`invalid_grant`) or decryption failed after key

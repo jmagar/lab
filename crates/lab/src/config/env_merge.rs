@@ -159,7 +159,7 @@ impl WriteFailReason {
 }
 
 impl MergeError {
-    /// Stable error kind string for dispatch envelopes (see `docs/ERRORS.md`).
+    /// Stable error kind string for dispatch envelopes (see `docs/dev/ERRORS.md`).
     pub fn kind(&self) -> &'static str {
         match self {
             Self::TempCreate { .. } => "merge_temp_create",
@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn error_kind_strings_are_stable() {
-        // Pin the public stable kind strings used in docs/ERRORS.md.
+        // Pin the public stable kind strings used in docs/dev/ERRORS.md.
         let cases: &[(&str, MergeError)] = &[
             (
                 "merge_temp_create",

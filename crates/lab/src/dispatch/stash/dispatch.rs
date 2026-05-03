@@ -7,7 +7,7 @@
 //!
 //! `dispatch()` emits one structured event per call at the `INFO` level on
 //! success, `WARN` for caller errors, and `ERROR` for internal failures.
-//! Fields follow the standard dispatch schema from `docs/OBSERVABILITY.md`:
+//! Fields follow the standard dispatch schema from `docs/dev/OBSERVABILITY.md`:
 //! `surface`, `service`, `action`, `elapsed_ms`, and `kind` (errors only).
 //!
 //! Note: `surface` is hardcoded to `"mcp"` here — the shared dispatch layer

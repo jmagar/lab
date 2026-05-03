@@ -866,7 +866,7 @@ pub fn build_router(
         .nest("/v1/fleet", super::nodes::public_routes(state.clone()))
         // GET /v1/nodes/ws is outside bearer-auth middleware by design.
         // The `initialize` JSON-RPC method performs enrollment-token validation; all
-        // subsequent node methods require an active session. See docs/FLEET_METHODS.md.
+        // subsequent node methods require an active session. See docs/runtime/FLEET_METHODS.md.
         .route(
             "/v1/nodes/ws",
             get(crate::api::nodes::fleet::websocket_upgrade),

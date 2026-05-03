@@ -7,7 +7,7 @@
 //! - JSON response wrapping
 //!
 //! IMPORTANT: Params are NEVER logged — they may contain credentials.
-//! See `docs/OBSERVABILITY.md`.
+//! See `docs/dev/OBSERVABILITY.md`.
 
 use std::future::Future;
 

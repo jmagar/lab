@@ -2,7 +2,7 @@
 //!
 //! Every variant has a stable `kind()` tag that appears verbatim in MCP and
 //! HTTP error envelopes. Adding a new kind is a spec change — update
-//! `docs/ERRORS.md` at the same time.
+//! `docs/dev/ERRORS.md` at the same time.
 
 use thiserror::Error;
 

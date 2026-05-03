@@ -15,7 +15,7 @@ pub const META: PluginMeta = PluginMeta {
     display_name: "Device Runtime",
     description: "Lab device-runtime control plane client for fleet devices",
     category: Category::Bootstrap,
-    docs_url: "https://github.com/jmagar/lab/blob/main/docs/DEVICE_RUNTIME.md",
+    docs_url: "https://github.com/jmagar/lab/blob/main/docs/runtime/DEVICE_RUNTIME.md",
     required_env: &[],
     optional_env: &[],
     default_port: Some(8765),

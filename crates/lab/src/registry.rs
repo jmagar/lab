@@ -829,7 +829,7 @@ mod tests {
         let only_in_registry: Vec<&&str> = registry_services
             .iter()
             // lab_admin is MCP-only: no HTTP route by design (runtime opt-in via LAB_ADMIN_ENABLED=1)
-            // deploy is MCP+CLI-only for V1; HTTP API surface is deferred (see docs/DEPLOY_SERVICE.md)
+            // deploy is MCP+CLI-only for V1; HTTP API surface is deferred (see docs/runtime/DEPLOY_SERVICE.md)
             .filter(|n| {
                 !http_router_services.contains(**n) && **n != "lab_admin" && **n != "deploy"
             })
