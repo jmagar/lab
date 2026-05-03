@@ -45,6 +45,22 @@ struct UpdateTargetResult {
     failed_stage: Option<String>,
     stages_ms: BTreeMap<String, u128>,
     error: Option<String>,
+    /// Path to the pre-install backup of the previous binary, if one was created.
+    /// Present only for local-controller updates. Used for recovery if health
+    /// verification fails after install.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    backup_path: Option<String>,
+    /// Human-readable recovery hint when the controller health check fails after
+    /// install. Tells the operator how to restore the previous binary manually.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery_hint: Option<String>,
+}
+
+/// Outcome of a local artifact install, including the backup path if one was created.
+#[derive(Debug)]
+struct LocalInstallOutcome {
+    /// Path to the backup of the previous binary, if the target existed before install.
+    backup_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -612,6 +628,8 @@ async fn run_remote_target<I: HostIo + 'static>(
         failed_stage: None,
         stages_ms,
         error: None,
+        backup_path: None,
+        recovery_hint: None,
     }
 }
 
@@ -682,19 +700,26 @@ async fn run_local_controller(
     let install_path = PathBuf::from(&target_config.install_path);
 
     let install_started = Instant::now();
-    if let Err(error) = install_local_artifact(&artifact.path, &install_path).await {
-        stages_ms.insert("install".into(), install_started.elapsed().as_millis());
-        return failed_result(
-            identity.clone(),
-            UpdateTargetKind::LocalController,
-            None,
-            false,
-            "install".into(),
-            stages_ms,
-            error.to_string(),
-        );
-    }
+    let outcome = match install_local_artifact(&artifact.path, &install_path).await {
+        Ok(outcome) => outcome,
+        Err(error) => {
+            stages_ms.insert("install".into(), install_started.elapsed().as_millis());
+            return failed_result(
+                identity.clone(),
+                UpdateTargetKind::LocalController,
+                None,
+                false,
+                "install".into(),
+                stages_ms,
+                error.to_string(),
+            );
+        }
+    };
     stages_ms.insert("install".into(), install_started.elapsed().as_millis());
+    let backup_path = outcome
+        .backup_path
+        .as_ref()
+        .map(|p| p.display().to_string());
 
     let normalize_started = Instant::now();
     if let Err(error) = normalize_local_runtime(&identity).await {
@@ -729,15 +754,26 @@ async fn run_local_controller(
     let health_started = Instant::now();
     if let Err(error) = verify_local_health(health_port).await {
         stages_ms.insert("health".into(), health_started.elapsed().as_millis());
-        return failed_result(
-            identity.clone(),
-            UpdateTargetKind::LocalController,
-            None,
-            false,
-            "health".into(),
+        let recovery_hint = backup_path.as_ref().map(|b| {
+            format!(
+                "To recover: sudo install -m 755 {b} {} && sudo systemctl restart lab",
+                install_path.display()
+            )
+        });
+        return UpdateTargetResult {
+            target: identity.clone(),
+            kind: UpdateTargetKind::LocalController,
+            node_id: None,
+            connected: Some(false),
+            controller_health_ok: Some(false),
+            skipped_transfer: false,
+            ok: false,
+            failed_stage: Some("health".into()),
             stages_ms,
-            error.to_string(),
-        );
+            error: Some(error.to_string()),
+            backup_path,
+            recovery_hint,
+        };
     }
     stages_ms.insert("health".into(), health_started.elapsed().as_millis());
 
@@ -752,6 +788,8 @@ async fn run_local_controller(
         failed_stage: None,
         stages_ms,
         error: None,
+        backup_path,
+        recovery_hint: None,
     }
 }
 
@@ -948,7 +986,7 @@ async fn run_wrapper_restart<I: HostIo + 'static>(io: Arc<I>, command: &[String]
     Ok(())
 }
 
-async fn install_local_artifact(source: &Path, target: &Path) -> Result<()> {
+async fn install_local_artifact(source: &Path, target: &Path) -> Result<LocalInstallOutcome> {
     validate_remote_path(&target.display().to_string())
         .context("validate local controller install path")?;
     if local_install_requires_sudo(target) {
@@ -980,7 +1018,8 @@ async fn install_local_artifact(source: &Path, target: &Path) -> Result<()> {
             .with_context(|| format!("chmod {}", staged.display()))?;
     }
 
-    if tokio::fs::try_exists(target).await.unwrap_or(false) {
+    let target_existed = tokio::fs::try_exists(target).await.unwrap_or(false);
+    if target_existed {
         tokio::fs::rename(target, &backup)
             .await
             .with_context(|| format!("backup {} -> {}", target.display(), backup.display()))?;
@@ -988,10 +1027,17 @@ async fn install_local_artifact(source: &Path, target: &Path) -> Result<()> {
     tokio::fs::rename(&staged, target)
         .await
         .with_context(|| format!("install {} -> {}", staged.display(), target.display()))?;
-    Ok(())
+    Ok(LocalInstallOutcome {
+        backup_path: if target_existed { Some(backup) } else { None },
+    })
 }
 
-async fn install_local_artifact_with_sudo(source: &Path, target: &Path) -> Result<()> {
+async fn install_local_artifact_with_sudo(
+    source: &Path,
+    target: &Path,
+) -> Result<LocalInstallOutcome> {
+    // Pre-stat the target to determine whether a backup will be created by the script.
+    let target_existed = tokio::fs::try_exists(target).await.unwrap_or(false);
     let staged = target.with_extension("new");
     let backup = target.with_extension(format!(
         "bak.{}",
@@ -1007,7 +1053,10 @@ async fn install_local_artifact_with_sudo(source: &Path, target: &Path) -> Resul
         target = shell_quote(&target.display().to_string()),
         backup = shell_quote(&backup.display().to_string()),
     );
-    run_local_command_vec(&["sudo".into(), "-n".into(), "sh".into(), "-c".into(), script]).await
+    run_local_command_vec(&["sudo".into(), "-n".into(), "sh".into(), "-c".into(), script]).await?;
+    Ok(LocalInstallOutcome {
+        backup_path: if target_existed { Some(backup) } else { None },
+    })
 }
 
 async fn check_local_endpoint(path: &str, port: u16) -> Result<()> {
@@ -1149,6 +1198,8 @@ fn failed_result(
         failed_stage: Some(failed_stage),
         stages_ms,
         error: Some(error),
+        backup_path: None,
+        recovery_hint: None,
     }
 }
 
@@ -1307,5 +1358,98 @@ mod tests {
         };
         let effective = effective_target_config(&config, "mini1");
         assert_eq!(effective.artifact_role, ArtifactRole::Node);
+    }
+
+    // ── Task 9: recovery output ───────────────────────────────────────────────
+
+    /// When health verification fails after a local-controller install that created
+    /// a backup, the result must carry `backup_path` and a `recovery_hint`.
+    #[test]
+    fn recovery_result_includes_backup_path_and_hint() {
+        let install_path = PathBuf::from("/usr/local/bin/lab");
+        let backup = PathBuf::from("/usr/local/bin/lab.bak.1234567890");
+
+        // Simulate the path taken inside run_local_controller when health fails.
+        let backup_path_str = backup.display().to_string();
+        let recovery_hint = Some(format!(
+            "To recover: sudo install -m 755 {backup_path_str} {} && sudo systemctl restart lab",
+            install_path.display()
+        ));
+
+        let result = UpdateTargetResult {
+            target: "controller".into(),
+            kind: UpdateTargetKind::LocalController,
+            node_id: None,
+            connected: Some(false),
+            controller_health_ok: Some(false),
+            skipped_transfer: false,
+            ok: false,
+            failed_stage: Some("health".into()),
+            stages_ms: BTreeMap::new(),
+            error: Some("local controller /health check: connect to local controller endpoint /health: Connection refused (os error 111)".into()),
+            backup_path: Some(backup_path_str.clone()),
+            recovery_hint: recovery_hint.clone(),
+        };
+
+        assert_eq!(
+            result.backup_path.as_deref(),
+            Some(backup_path_str.as_str())
+        );
+        assert!(
+            result
+                .recovery_hint
+                .as_deref()
+                .unwrap()
+                .contains("sudo install -m 755")
+        );
+        assert!(
+            result
+                .recovery_hint
+                .as_deref()
+                .unwrap()
+                .contains(&backup_path_str)
+        );
+        assert!(
+            result
+                .recovery_hint
+                .as_deref()
+                .unwrap()
+                .contains("systemctl restart lab")
+        );
+        assert!(!result.ok);
+        assert_eq!(result.failed_stage.as_deref(), Some("health"));
+
+        // Verify the result serializes with both fields present.
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert!(json.get("backup_path").is_some());
+        assert!(json.get("recovery_hint").is_some());
+    }
+
+    /// When no prior binary exists (fresh install), backup_path must be None
+    /// and recovery_hint must be None on success.
+    #[test]
+    fn fresh_install_success_has_no_backup_path() {
+        let result = UpdateTargetResult {
+            target: "controller".into(),
+            kind: UpdateTargetKind::LocalController,
+            node_id: Some("controller".into()),
+            connected: None,
+            controller_health_ok: Some(true),
+            skipped_transfer: false,
+            ok: true,
+            failed_stage: None,
+            stages_ms: BTreeMap::new(),
+            error: None,
+            backup_path: None,
+            recovery_hint: None,
+        };
+
+        assert!(result.backup_path.is_none());
+        assert!(result.recovery_hint.is_none());
+
+        // Verify skip_serializing_if: None fields are absent from JSON.
+        let json = serde_json::to_value(&result).expect("serialize");
+        assert!(json.get("backup_path").is_none());
+        assert!(json.get("recovery_hint").is_none());
     }
 }

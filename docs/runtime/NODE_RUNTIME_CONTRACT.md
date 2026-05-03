@@ -206,6 +206,21 @@ Current implementation note:
 
 `systemctl is-active` is not sufficient readiness proof. A process can be active while the HTTP/WebSocket listener is unavailable or while startup is still initializing.
 
+## Systemd Integration (Future)
+
+The current implementation uses HTTP health probes (`/health`, `/ready`) and WebSocket
+connection verification to confirm readiness after restart. `systemctl is-active` is used
+only to confirm the process started (liveness), and is always followed by HTTP/WS readiness
+probes — it is never the sole check.
+
+The preferred future contract is:
+
+- `Type=notify` in the systemd unit
+- Process sends `READY=1` via `sd_notify` after HTTP/WS listeners bind and initial startup completes
+
+This would allow systemd to gate dependent services and restart policies on true readiness.
+Until implemented, systemd `is-active` reflects only process liveness, not application readiness.
+
 ## Deprecated Behavior
 
 The old non-controller HTTP phone-home model is deprecated.

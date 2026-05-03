@@ -110,3 +110,46 @@ lab nodes list
 lab nodes enrollments list
 lab logs search <device> <query>
 ```
+
+## Readiness Verification Model
+
+`nodes update` confirms readiness using HTTP health probes and WebSocket connection
+verification, not `systemctl is-active` alone.
+
+For remote node targets:
+
+1. Binary transfer and install succeed.
+2. `systemctl restart` (or wrapper command) is invoked.
+3. `<binary> --version` is run on the remote host to confirm the new binary is executable.
+4. The controller polls `node_connected(<node_id>)` with exponential backoff (2s, 4s, 8s, capped at 16s)
+   until the node reconnects over WebSocket or the rollout timeout expires.
+
+For the local controller target:
+
+1. Binary install succeeds (previous binary is backed up with a timestamp extension).
+2. `systemctl restart` is invoked; `systemctl is-active --wait` confirms process liveness.
+3. `GET /health` and `GET /ready` are probed on `127.0.0.1:<port>` to confirm application readiness.
+
+`systemctl is-active` is a liveness check only. A process can be active while the HTTP/WebSocket
+listener is still initializing. The HTTP probes are the authoritative readiness gate.
+
+## Controller Self-Update Recovery
+
+When `nodes update` updates the local controller and readiness verification fails after install:
+
+1. The previous binary is backed up before install. The backup path is included in the result
+   JSON under `backup_path` (omitted when no previous binary existed).
+2. A `recovery_hint` field in the result JSON provides the exact restore command.
+3. To restore manually:
+   ```
+   sudo install -m 755 <backup_path> /usr/local/bin/lab
+   sudo systemctl restart lab
+   ```
+4. Verify recovery:
+   ```
+   curl -sf http://127.0.0.1:<port>/health
+   curl -sf http://127.0.0.1:<port>/ready
+   ```
+
+The backup extension uses a Unix timestamp, e.g. `lab.bak.1714000000`. Fresh installs (no prior
+binary) produce no backup and omit the `backup_path` field from the result.

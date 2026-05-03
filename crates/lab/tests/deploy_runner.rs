@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use lab::config::ArtifactRole;
 use lab::dispatch::deploy::build::BuildOutcome;
 use lab::dispatch::deploy::runner::test_support::{RecordingIo, RunResp};
 use lab::dispatch::deploy::runner::{HostIo, orchestrate_with_io};
@@ -84,6 +85,7 @@ fn fake_build() -> Arc<BuildOutcome> {
         sha256: sha,
         size_bytes: 8,
         target_triple: "x86_64-unknown-linux-gnu".into(),
+        role: lab::config::ArtifactRole::Node,
     })
 }
 
