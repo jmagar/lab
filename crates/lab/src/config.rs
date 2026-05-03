@@ -154,6 +154,17 @@ pub struct DevicePreferences {
     pub master: Option<String>,
 }
 
+/// Explicit runtime role for this node, set in config or via CLI `--role`.
+///
+/// This is the user-facing vocabulary; the internal runtime maps
+/// `Controller → NodeRole::Master` and `Node → NodeRole::NonMaster`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NodeRuntimeRole {
+    Controller,
+    Node,
+}
+
 /// Node runtime preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NodePreferences {
@@ -163,6 +174,10 @@ pub struct NodePreferences {
     /// Defaults to 30 days when absent.
     #[serde(default)]
     pub log_retention_days: Option<u32>,
+    /// Explicit runtime role for this device.
+    /// When present, skips hostname-based role inference.
+    #[serde(default)]
+    pub role: Option<NodeRuntimeRole>,
 }
 
 /// Runtime role for the current device.

@@ -30,12 +30,32 @@ use crate::dispatch::logs::client::{
 use crate::mcp::peers::PeerNotifier;
 use crate::mcp::server::LabMcpServer;
 use crate::node::enrollment::store::EnrollmentStore;
-use crate::node::identity::{resolve_local_hostname, resolve_runtime_role};
+use crate::node::identity::{resolve_local_hostname, resolve_runtime_role_from_config};
 use crate::node::runtime::NodeRuntime;
 use crate::node::store::NodeStore;
 #[cfg(target_os = "linux")]
 use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
+
+/// Role override for `lab serve --role`.
+///
+/// Maps to [`crate::config::NodeRuntimeRole`] at startup; a separate type here
+/// keeps the `clap` dependency out of `config.rs`.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum ServeRole {
+    Controller,
+    Node,
+}
+
+impl From<ServeRole> for crate::config::NodeRuntimeRole {
+    fn from(role: ServeRole) -> Self {
+        match role {
+            ServeRole::Controller => crate::config::NodeRuntimeRole::Controller,
+            ServeRole::Node => crate::config::NodeRuntimeRole::Node,
+        }
+    }
+}
 
 /// Transport choices for `lab serve`.
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -93,6 +113,11 @@ pub struct ServeArgs {
     /// Example: `--log-level debug`
     #[arg(long)]
     pub log_level: Option<String>,
+    /// Explicit runtime role override. Takes precedence over [node].role in config.toml
+    /// and over hostname-based inference.
+    /// `--role node` requires a controller host to be configured.
+    #[arg(long, value_enum)]
+    pub role: Option<ServeRole>,
     #[command(subcommand)]
     pub command: Option<ServeCommand>,
 }
@@ -106,6 +131,7 @@ pub async fn run_mcp(args: McpServeArgs, config: &LabConfig) -> Result<ExitCode>
             host: None,
             port: None,
             log_level: args.log_level,
+            role: None,
             command: None,
         },
         config,
@@ -162,18 +188,9 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "service registry ready"
     );
     let local_host = resolve_local_hostname().context("resolve local hostname")?;
-    let configured_master = config
-        .node
-        .as_ref()
-        .and_then(|prefs| prefs.controller.as_deref())
-        .or_else(|| {
-            config
-                .device
-                .as_ref()
-                .and_then(|prefs| prefs.master.as_deref())
-        });
-    let resolved_runtime = resolve_runtime_role(&local_host, configured_master)
-        .context("resolve device runtime role")?;
+    let resolved_runtime =
+        resolve_runtime_role_from_config(&local_host, config, args.role.map(Into::into))
+            .context("resolve device runtime role")?;
     tracing::info!(
         subsystem = "startup",
         phase = "bootstrap.device-runtime",

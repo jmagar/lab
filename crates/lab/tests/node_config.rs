@@ -1,4 +1,4 @@
-use lab::config::{LabConfig, RestartModel};
+use lab::config::{LabConfig, NodeRuntimeRole, RestartModel};
 
 #[test]
 fn parses_node_controller_config_block() {
@@ -18,6 +18,32 @@ fn parses_node_controller_config_block() {
 fn defaults_node_config_when_block_missing() {
     let parsed: LabConfig = toml::from_str("").unwrap();
     assert!(parsed.node.is_none());
+}
+
+#[test]
+fn parses_node_role_controller() {
+    let config: LabConfig = toml::from_str(
+        r#"
+        [node]
+        role = "controller"
+        controller = "dookie"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(config.node.unwrap().role, Some(NodeRuntimeRole::Controller));
+}
+
+#[test]
+fn parses_node_role_node() {
+    let config: LabConfig = toml::from_str(
+        r#"
+        [node]
+        role = "node"
+        controller = "dookie"
+    "#,
+    )
+    .unwrap();
+    assert_eq!(config.node.unwrap().role, Some(NodeRuntimeRole::Node));
 }
 
 #[test]

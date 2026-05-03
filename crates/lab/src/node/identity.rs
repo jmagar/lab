@@ -3,7 +3,7 @@ use std::net::IpAddr;
 
 use anyhow::Result;
 
-use crate::config::{NodeRole, ResolvedNodeRuntime};
+use crate::config::{LabConfig, NodeRole, NodeRuntimeRole, ResolvedNodeRuntime};
 
 const HOST_HOSTNAME_PATH: &str = "/run/host/hostname";
 
@@ -149,6 +149,51 @@ pub fn resolve_runtime_role(
         master_host,
         role,
     })
+}
+
+/// Resolve the node runtime role using the unified resolution order:
+///
+/// 1. CLI `--role` override (`override_role`)
+/// 2. `[node].role` in config.toml
+/// 3. Hostname comparison against `config.controller_host()` (legacy path)
+///
+/// If the resolved role is `Node`, a controller host **must** be configured;
+/// the function returns an error before startup if one is absent.
+///
+/// Maps `NodeRuntimeRole::Controller → NodeRole::Master`
+/// and `NodeRuntimeRole::Node → NodeRole::NonMaster`.
+pub fn resolve_runtime_role_from_config(
+    local_host: &str,
+    config: &LabConfig,
+    override_role: Option<NodeRuntimeRole>,
+) -> Result<ResolvedNodeRuntime> {
+    // Resolution order: CLI override → config [node].role → hostname inference.
+    let explicit_role = override_role.or_else(|| config.node.as_ref().and_then(|n| n.role));
+
+    match explicit_role {
+        Some(NodeRuntimeRole::Node) => {
+            // A node role requires a controller host to be known.
+            let controller = config.controller_host().ok_or_else(|| {
+                let source = if override_role.is_some() {
+                    "--role node requires a controller host; set [node].controller in config.toml"
+                } else {
+                    "[node].role = \"node\" requires a controller host; set [node].controller in config.toml"
+                };
+                anyhow::anyhow!("{source}")
+            })?;
+            resolve_runtime_role(local_host, Some(controller))
+        }
+        Some(NodeRuntimeRole::Controller) => {
+            // Explicit controller role: use local host as the master host.
+            let normalized =
+                normalize_host_identifier(local_host).unwrap_or_else(|| "localhost".to_string());
+            resolve_runtime_role(local_host, Some(&normalized))
+        }
+        None => {
+            // Legacy hostname-comparison path.
+            resolve_runtime_role(local_host, config.controller_host())
+        }
+    }
 }
 
 fn normalize_host_identifier(value: &str) -> Option<String> {
