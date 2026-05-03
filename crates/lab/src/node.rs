@@ -1,6 +1,7 @@
 pub mod checkin;
 pub mod config_scan;
 pub mod enrollment;
+pub mod health;
 pub mod identity;
 pub mod install;
 pub mod log_collect;

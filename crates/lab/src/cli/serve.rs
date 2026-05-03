@@ -179,14 +179,8 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "starting lab serve bootstrap"
     );
 
-    let registry = build_default_registry();
-    let registry = filter_registry(registry, &args.services)?;
-    tracing::info!(
-        subsystem = "startup",
-        phase = "bootstrap.registry",
-        selected_service_count = registry.services().len(),
-        "service registry ready"
-    );
+    // ── Role resolution ── must happen BEFORE build_default_registry() so that
+    // node-mode processes exit early without building the full controller registry.
     let local_host = resolve_local_hostname().context("resolve local hostname")?;
     let resolved_runtime =
         resolve_runtime_role_from_config(&local_host, config, args.role.map(Into::into))
@@ -200,6 +194,22 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         "node runtime resolved"
     );
     let node_runtime = NodeRuntime::from_config(resolved_runtime, config, Some(port))?;
+    let node_role = node_runtime.role();
+
+    // Early return for node (non-controller) processes: skip the full
+    // controller startup (registry build, OAuth, gateway, logs system, web UI, etc.).
+    if matches!(node_role, crate::config::NodeRole::NonMaster) {
+        return run_node_mode(transport, args.command.as_ref(), config, node_runtime, port).await;
+    }
+
+    let registry = build_default_registry();
+    let registry = filter_registry(registry, &args.services)?;
+    tracing::info!(
+        subsystem = "startup",
+        phase = "bootstrap.registry",
+        selected_service_count = registry.services().len(),
+        "service registry ready"
+    );
     let log_retention_days = config
         .node
         .as_ref()
@@ -234,7 +244,6 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
             .await
             .context("open node enrollment store")?,
     );
-    let node_role = node_runtime.role();
 
     let stdio_mode = should_run_stdio(transport, args.command.as_ref());
     let gateway_runtime = GatewayRuntimeHandle::default();
@@ -604,15 +613,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
 
     let startup_runtime = node_runtime.clone();
     tokio::spawn(async move {
-        if let Err(error) = startup_runtime.upload_initial_metadata().await {
-            tracing::warn!(error = %error, "initial node metadata upload failed");
-        }
-        if let Err(error) = startup_runtime.collect_and_queue_bootstrap_logs().await {
-            tracing::warn!(error = %error, "initial device bootstrap log queueing failed");
-        }
-        if let Err(error) = startup_runtime.spawn_ws_flush_loop().await {
-            tracing::warn!(error = %error, "device ws flush loop failed to start");
-        }
+        startup_runtime.start_background_tasks().await;
     });
 
     run_http(
@@ -1040,6 +1041,42 @@ fn build_http_router(
         mcp_router,
         config_cors_origins,
     ))
+}
+
+/// Run the minimal node-mode startup path.
+///
+/// Called when role resolution determines the process is a non-controller node.
+/// Skips the full controller startup (registry build, OAuth, gateway, logs system,
+/// web UI, marketplace sync, EnrollmentStore, etc.) and runs only what a node needs:
+/// background tasks (metadata upload, bootstrap logs, WebSocket flush) and a
+/// loopback health server to keep the process alive and signal systemd readiness.
+async fn run_node_mode(
+    transport: Transport,
+    command: Option<&ServeCommand>,
+    config: &LabConfig,
+    node_runtime: NodeRuntime,
+    port: u16,
+) -> Result<ExitCode> {
+    // Stdio mode is not designed for node-mode operation.
+    if should_run_stdio(transport, command) {
+        anyhow::bail!("lab serve mcp --stdio is not supported in node mode");
+    }
+
+    tracing::info!(
+        subsystem = "startup",
+        phase = "node_mode.start",
+        node_id = %node_runtime.local_host(),
+        controller_host = %config.node.as_ref().and_then(|n| n.controller.as_deref()).unwrap_or("<none>"),
+        "starting node runtime (non-controller mode)"
+    );
+
+    // Start background tasks: metadata upload, bootstrap log collection, WebSocket flush.
+    // These are awaited directly here (not fire-and-forget) because the health server
+    // loop below is what keeps the process alive, not an HTTP serve loop.
+    node_runtime.start_background_tasks().await;
+
+    // Run the loopback health server as the process keep-alive.
+    crate::node::health::run_loopback_health_server(port).await
 }
 
 async fn run_stdio(

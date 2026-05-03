@@ -149,6 +149,47 @@ impl NodeRuntime {
     pub fn home_dir(&self) -> &Path {
         &self.home_dir
     }
+
+    /// Returns the local host identifier for this node.
+    #[must_use]
+    pub fn local_host(&self) -> &str {
+        &self.resolved.local_host
+    }
+
+    /// Start all background tasks for a running node runtime.
+    ///
+    /// Runs metadata upload, bootstrap log collection, and WebSocket flush
+    /// loop startup sequentially. All failures are logged as warnings — none
+    /// are fatal because the node can still operate without them.
+    pub async fn start_background_tasks(&self) {
+        if let Err(error) = self.upload_initial_metadata().await {
+            tracing::warn!(
+                surface = "node",
+                service = "runtime",
+                action = "metadata.upload_failed",
+                error = %error,
+                "initial metadata upload failed"
+            );
+        }
+        if let Err(error) = self.collect_and_queue_bootstrap_logs().await {
+            tracing::warn!(
+                surface = "node",
+                service = "runtime",
+                action = "bootstrap_logs.failed",
+                error = %error,
+                "bootstrap log collection failed"
+            );
+        }
+        if let Err(error) = self.spawn_ws_flush_loop().await {
+            tracing::warn!(
+                surface = "node",
+                service = "runtime",
+                action = "ws_flush.start_failed",
+                error = %error,
+                "ws flush loop spawn failed"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
