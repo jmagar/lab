@@ -149,12 +149,14 @@ pub async fn run_update(
                 .get(&ArtifactRole::Controller)
                 .expect("controller artifact was built above"),
         );
+        let health_port = config.mcp.port.unwrap_or(8765);
         results.push(
             run_local_controller(
                 local_target.identity,
                 controller_host,
                 target_config,
                 artifact,
+                health_port,
             )
             .await,
         );
@@ -674,6 +676,7 @@ async fn run_local_controller(
     _controller_host: String,
     target_config: EffectiveTargetConfig,
     artifact: Arc<BuildOutcome>,
+    health_port: u16,
 ) -> UpdateTargetResult {
     let mut stages_ms = BTreeMap::new();
     let install_path = PathBuf::from(&target_config.install_path);
@@ -724,7 +727,7 @@ async fn run_local_controller(
     stages_ms.insert("restart".into(), restart_started.elapsed().as_millis());
 
     let health_started = Instant::now();
-    if let Err(error) = verify_local_health().await {
+    if let Err(error) = verify_local_health(health_port).await {
         stages_ms.insert("health".into(), health_started.elapsed().as_millis());
         return failed_result(
             identity.clone(),
@@ -1007,8 +1010,8 @@ async fn install_local_artifact_with_sudo(source: &Path, target: &Path) -> Resul
     run_local_command_vec(&["sudo".into(), "-n".into(), "sh".into(), "-c".into(), script]).await
 }
 
-async fn check_local_endpoint(path: &str) -> Result<()> {
-    let mut stream = tokio::net::TcpStream::connect("127.0.0.1:8765")
+async fn check_local_endpoint(path: &str, port: u16) -> Result<()> {
+    let mut stream = tokio::net::TcpStream::connect(format!("127.0.0.1:{port}"))
         .await
         .with_context(|| format!("connect to local controller endpoint {path}"))?;
     let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
@@ -1028,11 +1031,11 @@ async fn check_local_endpoint(path: &str) -> Result<()> {
     Ok(())
 }
 
-async fn verify_local_health() -> Result<()> {
-    check_local_endpoint("/health")
+async fn verify_local_health(port: u16) -> Result<()> {
+    check_local_endpoint("/health", port)
         .await
         .context("local controller /health check")?;
-    check_local_endpoint("/ready")
+    check_local_endpoint("/ready", port)
         .await
         .context("local controller /ready check")?;
     Ok(())
