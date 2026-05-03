@@ -362,17 +362,109 @@ fn oauth_relay_start_request(body: &str) -> Request<Body> {
         .unwrap()
 }
 
-// Test that node_connected returns true only for actively connected nodes.
-// This is a unit test against the logic, since integration tests require a running controller.
-#[test]
-fn node_connected_distinguishes_inventory_from_live_session() {
-    // Verify the MasterClient API: node_connected is a separate method from fetch_device.
-    // This verifies the method exists and the semantics are documented correctly.
-    // Full integration test would require a live controller.
+// Behavior tests for MasterClient::node_connected using wiremock.
+//
+// The key semantic: 404 (node not in inventory) must return Ok(false),
+// not Err, because absence from inventory ≠ transport failure.
+
+mod node_connected {
     use lab::node::master_client::MasterClient;
-    // MasterClient::node_connected should be a distinct async method that extracts
-    // the `connected` field rather than just checking inventory presence.
-    // Naming it (without calling it) proves the method exists at compile time.
-    let _ = MasterClient::node_connected;
-    // If this compiles, the method exists with the right shape.
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn make_client(base_url: &str) -> MasterClient {
+        MasterClient::new(base_url).expect("MasterClient construction should succeed")
+    }
+
+    // -----------------------------------------------------------------------
+    // 1. {"connected": true} → Ok(true)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn node_connected_returns_true_when_api_reports_connected() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/tootie"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "node_id": "tootie",
+                "connected": true,
+                "role": "non-master",
+                "version": "1.0.0"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        assert!(
+            client.node_connected("tootie").await.unwrap(),
+            "connected:true should return Ok(true)"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // 2. {"connected": false} → Ok(false)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn node_connected_returns_false_when_api_reports_not_connected() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/tootie"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "node_id": "tootie",
+                "connected": false,
+                "role": "non-master",
+                "version": "1.0.0"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        assert!(
+            !client.node_connected("tootie").await.unwrap(),
+            "connected:false should return Ok(false)"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. 404 → Ok(false)  [the key semantic: inventory absence ≠ error]
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn node_connected_returns_false_on_404() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/unknown"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.node_connected("unknown").await;
+        assert!(
+            matches!(result, Ok(false)),
+            "404 (node not in inventory) should return Ok(false), got {result:?}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // 4. 500 → Err  [real transport/server errors must not be swallowed]
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn node_connected_returns_err_on_server_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/nodes/tootie"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("internal server error"))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client.node_connected("tootie").await;
+        assert!(
+            result.is_err(),
+            "500 server error should propagate as Err, got {result:?}"
+        );
+    }
 }
