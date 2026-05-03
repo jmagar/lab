@@ -317,6 +317,18 @@ impl DefaultRunner {
         let (canary, rest) = self.partition_canary(&req.targets);
         let canary_jobs = self.build_jobs(&canary);
         let rest_jobs = self.build_jobs(&rest);
+        // Collect the set of artifact roles needed across all jobs (sync, before async block).
+        let needed_roles: std::collections::HashSet<crate::config::ArtifactRole> = canary_jobs
+            .iter()
+            .chain(rest_jobs.iter())
+            .map(|j| j.artifact_role)
+            .collect();
+        // Extract build timeout from config (sync, before async block).
+        let build_timeout_secs = self
+            .config
+            .defaults
+            .as_ref()
+            .and_then(|d| d.build_timeout_secs);
         let locks = self.locks.clone();
         let run_id = uuid::Uuid::new_v4().to_string();
         let span = tracing::info_span!(
@@ -340,34 +352,56 @@ impl DefaultRunner {
                     canary_count = canary_jobs.len(),
                     "deploy runner startup",
                 );
-                let build_outcome = match build::build_release().await {
-                    Ok(outcome) => Arc::new(outcome),
-                    Err(err) => {
-                        tracing::warn!(
-                            surface = "dispatch",
-                            service = "deploy",
-                            action = "runner.shutdown",
-                            operation = "run",
-                            elapsed_ms = runner_started.elapsed().as_millis(),
-                            kind = err.kind(),
-                            ok = false,
-                            "deploy runner shutdown",
-                        );
-                        return Err(err.into());
+
+                // Build each required role exactly once.
+                let mut artifact_map: std::collections::HashMap<
+                    crate::config::ArtifactRole,
+                    Arc<BuildOutcome>,
+                > = std::collections::HashMap::new();
+                for role in &needed_roles {
+                    let mut profile = match role {
+                        crate::config::ArtifactRole::Controller => {
+                            build::ArtifactProfile::controller()
+                        }
+                        crate::config::ArtifactRole::Node => build::ArtifactProfile::node(),
+                    };
+                    if let Some(secs) = build_timeout_secs {
+                        profile.build_timeout_secs = Some(secs);
                     }
-                };
-                tracing::info!(
-                    artifact_sha256 = %build_outcome.sha256,
-                    size_bytes = build_outcome.size_bytes,
-                    "deploy.build.ok"
-                );
+                    let outcome = match build::build_artifact(&profile).await {
+                        Ok(o) => o,
+                        Err(err) => {
+                            tracing::warn!(
+                                surface = "dispatch",
+                                service = "deploy",
+                                action = "runner.shutdown",
+                                operation = "run",
+                                elapsed_ms = runner_started.elapsed().as_millis(),
+                                kind = err.kind(),
+                                ok = false,
+                                "deploy runner shutdown",
+                            );
+                            return Err(err.into());
+                        }
+                    };
+                    tracing::info!(
+                        artifact_sha256 = %outcome.sha256,
+                        size_bytes = outcome.size_bytes,
+                        role = ?role,
+                        "deploy.build.ok"
+                    );
+                    artifact_map.insert(*role, Arc::new(outcome));
+                }
+
+                // Pick a representative sha256 for the summary (controller preferred,
+                // then node, then empty — matches the single-binary common case).
+                let summary_sha256 = artifact_map
+                    .get(&crate::config::ArtifactRole::Controller)
+                    .or_else(|| artifact_map.get(&crate::config::ArtifactRole::Node))
+                    .map(|o| o.sha256.clone())
+                    .unwrap_or_default();
 
                 let mut all_results: Vec<DeployHostResult> = Vec::new();
-                let artifact_map = {
-                    let mut m = std::collections::HashMap::new();
-                    m.insert(build_outcome.role, build_outcome.clone());
-                    m
-                };
 
                 if !canary_jobs.is_empty() {
                     let canary_results = DefaultRunner::run_jobs(
@@ -385,7 +419,7 @@ impl DefaultRunner {
                         for host in &rest {
                             all_results.push(aborted_result(host));
                         }
-                        let summary = summarize(run_id, build_outcome.sha256.clone(), all_results);
+                        let summary = summarize(run_id, summary_sha256, all_results);
                         tracing::info!(
                             surface = "dispatch",
                             service = "deploy",
@@ -414,7 +448,7 @@ impl DefaultRunner {
                     all_results.extend(rest_results);
                 }
 
-                let summary = summarize(run_id, build_outcome.sha256.clone(), all_results);
+                let summary = summarize(run_id, summary_sha256, all_results);
                 tracing::info!(
                     surface = "dispatch",
                     service = "deploy",
