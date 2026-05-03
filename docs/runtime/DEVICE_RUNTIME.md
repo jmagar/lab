@@ -1,6 +1,6 @@
-# Device Runtime
+# Node Runtime
 
-`lab serve` is now the always-on node runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
+`lab serve` is the always-on node runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
 
 One machine is the configured controller. It owns the operator control plane:
 
@@ -40,11 +40,11 @@ On `tootie`, `lab serve` runs as the controller. On any other host, it runs as a
 
 ## Startup Behavior
 
-When `lab serve` starts, it resolves the local hostname and device role, creates the in-process node runtime, and then:
+When `lab serve` starts, it resolves the local hostname and node role, creates the in-process node runtime, and then:
 
 - on the controller:
   - creates the shared fleet state store
-  - creates the durable enrollment store at `~/.lab/device-enrollments.json`
+  - creates the durable enrollment store at `~/.lab/device-enrollments.json` (legacy path; controller-owned)
   - mounts the full operator control plane plus `/v1/nodes/*`
   - exposes the node websocket endpoint at `GET /v1/nodes/ws`
 - on a non-controller node:
@@ -52,17 +52,17 @@ When `lab serve` starts, it resolves the local hostname and device role, creates
   - disables the Web UI, MCP, gateway management, and the service REST surface
   - scans local MCP config inventory and queues metadata
   - collects bootstrap logs and queues them locally
-  - starts a long-lived websocket session to the master and drains metadata, status, and log envelopes over that connection
+  - starts a long-lived websocket session to the controller and drains metadata, status, and log envelopes over that connection
 
 ## Fleet Transport
 
 Non-controller nodes now use a websocket-first fleet transport:
 
-1. derive `ws://` or `wss://` from the configured master base URL
+1. derive `ws://` or `wss://` from the configured controller base URL
 2. connect to `GET /v1/nodes/ws`
 3. send `initialize` with:
-   - `lab.device_id`
-   - `lab.device_token`
+   - `lab.device_id` (wire field — do not rename)
+   - `lab.device_token` (wire field — do not rename)
    - `lab.tailnet_identity`
 4. wait for enrollment approval
 5. once approved, keep the socket open and send:
@@ -70,7 +70,7 @@ Non-controller nodes now use a websocket-first fleet transport:
    - `nodes/status.push`
    - `nodes/log.event`
 
-Unknown devices are rejected at `initialize` and recorded as pending enrollments on the master. Operators approve or deny them through the master API, CLI, or MCP surface.
+Unknown nodes are rejected at `initialize` and recorded as pending enrollments on the controller. Operators approve or deny them through the controller API, CLI, or MCP surface.
 
 ## Node API Namespace
 
@@ -82,18 +82,18 @@ Write-oriented routes:
 - `POST /v1/nodes/enrollments/{node_id}/approve`
 - `POST /v1/nodes/enrollments/{node_id}/deny`
 
-Read-oriented routes:
+Read-oriented routes (controller-only):
 
 - `GET /v1/nodes/enrollments`
-- `GET /v1/nodes/devices`
-- `GET /v1/nodes/devices/{node_id}`
+- `GET /v1/nodes`
+- `GET /v1/nodes/{node_id}`
 - `POST /v1/nodes/logs/search`
 
 Fleet read routes are controller-only. On a non-controller node they return a structured `not_found` error rather than exposing an empty or partial local view.
 
 ## Metadata Inventory
 
-Non-master devices scan the current home directory for MCP config inventory from:
+Non-controller nodes scan the current home directory for MCP config inventory from:
 
 - `~/.claude.json`
 - `~/.codex/config.toml`
@@ -111,7 +111,7 @@ This is inventory only. The controller stores the uploaded metadata in memory fo
 
 ## Log Buffering
 
-Device outbound delivery uses a durable local queue rooted at:
+Node outbound delivery uses a durable local queue rooted at:
 
 ```text
 ~/.lab/node-runtime-queue.jsonl
@@ -124,22 +124,22 @@ Rules:
 - failed uploads remain on disk for the next flush attempt
 - the controller stores ingested normalized log events in `~/.lab/node-logs.sqlite`
 
-The current bootstrap collector is intentionally minimal. It normalizes into the shared `DeviceLogEvent` shape and is expected to grow without changing the device API contract.
+The current bootstrap collector is intentionally minimal. It normalizes into the shared `DeviceLogEvent` shape (Rust type name — do not rename) and is expected to grow without changing the node API contract.
 
 ## Enrollment
 
-Enrollment is master-owned and durable.
+Enrollment is controller-owned and durable.
 
-- pending, approved, and denied enrollment records are stored in `~/.lab/device-enrollments.json`
-- approval pins an exact `(device_id, device_token)` pair
-- denied devices remain blocked until explicitly re-approved with a new pending record
+- pending, approved, and denied enrollment records are stored in `~/.lab/device-enrollments.json` (legacy path name; controller-owned)
+- approval pins an exact `(device_id, device_token)` pair (wire field names — do not rename)
+- denied nodes remain blocked until explicitly re-approved with a new pending record
 
 Operator surfaces:
 
 - CLI:
   - `lab nodes enrollments list`
-  - `lab nodes enrollments approve <device_id> [--note ...]`
-  - `lab nodes enrollments deny <device_id> [--reason ...]`
+  - `lab nodes enrollments approve <node_id> [--note ...]`
+  - `lab nodes enrollments deny <node_id> [--reason ...]`
 - HTTP:
   - `GET /v1/nodes/enrollments`
   - `POST /v1/nodes/enrollments/{node_id}/approve`
@@ -174,6 +174,6 @@ This starts the same local loopback forwarder used by `lab oauth relay-local`, b
 
 When `LAB_MCP_HTTP_TOKEN` is configured, the controller still protects operator `/v1/*` routes and controller-routed CLI traffic with that bearer token.
 
-Device-to-master fleet delivery itself does not depend on bearer auth anymore. It is authenticated inside websocket `initialize` using the device token pinned in the enrollment store.
+Node-to-controller fleet delivery does not depend on bearer auth. It is authenticated inside websocket `initialize` using the node token (`device_token` wire field) pinned in the enrollment store.
 
-OAuth mode still protects the public operator surface. Device node sessions do not mint or refresh OAuth credentials on their own.
+OAuth mode still protects the public operator surface. Node sessions do not mint or refresh OAuth credentials on their own.

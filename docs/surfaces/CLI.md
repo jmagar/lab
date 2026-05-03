@@ -185,14 +185,14 @@ It must expose normalized service health results using the shared `ServiceStatus
 
 ## `lab serve`
 
-`lab serve` is the device runtime entrypoint on every fleet machine.
+`lab serve` is the node runtime entrypoint on every fleet machine.
 
 Rules:
 
 - local hostname plus `[node].controller` decide whether the process is controller or non-controller
 - the controller exposes the Web UI, MCP, `/v1/{service}`, `/v1/gateway`, and `/v1/nodes/*`
 - a non-controller node exposes only `/health`, `/ready`, and `/v1/nodes/*`
-- non-master startup queues metadata and bootstrap logs, then opens a long-lived fleet websocket session to the master
+- non-controller startup queues metadata and bootstrap logs, then opens a long-lived fleet websocket session to the controller
 
 ## `lab nodes`
 
@@ -211,7 +211,7 @@ Commands:
 `lab logs` now has two additive paths:
 
 - fleet search routed to the configured controller
-- local-master log search and bounded follow-up queries against the embedded runtime store
+- controller-local log search and bounded follow-up queries against the embedded runtime store
 
 Commands:
 
@@ -224,7 +224,7 @@ Commands:
 Rules:
 
 - `lab logs search <node_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/nodes/logs/search`
-- `lab logs local *` is strictly local-master and uses the shared `dispatch::logs` contract
+- `lab logs local *` is strictly controller-local and uses the shared `dispatch::logs` contract
 - true live streaming is not a CLI capability in v1; operators should use `GET /v1/logs/stream` or the gateway-admin `/logs` page
 - CLI local log commands stay thin adapters; normalization, retention, search, and tail semantics are owned by `dispatch::logs`
 

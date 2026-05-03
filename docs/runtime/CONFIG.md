@@ -59,11 +59,11 @@ Value precedence at point of use (highest wins):
 
 ### `[local_logs]`
 
-Local-master runtime log store preferences.
+Controller runtime log store preferences.
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `store_path` | `LAB_LOCAL_LOGS_STORE_PATH` | `~/.lab/logs.db` | Embedded SQLite store path for persisted local-master logs |
+| `store_path` | `LAB_LOCAL_LOGS_STORE_PATH` | `~/.lab/logs.db` | Embedded SQLite store path for persisted controller runtime logs |
 | `retention_days` | `LAB_LOCAL_LOGS_RETENTION_DAYS` | `7` | Time-based retention window in days |
 | `max_bytes` | `LAB_LOCAL_LOGS_MAX_BYTES` | `268435456` | Size-based retention limit in logical stored bytes |
 | `queue_capacity` | `LAB_LOCAL_LOGS_QUEUE_CAPACITY` | `1024` | Bounded ingest queue size for the long-lived runtime |
@@ -84,7 +84,7 @@ Rules:
 
 - retention is whichever limit hits first: age or size
 - oldest events are evicted first by the shared local log subsystem
-- these knobs affect the local-master runtime log store only; they do not change node log retention
+- these knobs affect the controller runtime log store only; they do not change node log retention
 - the browser log console and `lab logs local *` commands both read this same local store contract
 
 ### `[mcp]`
@@ -122,7 +122,7 @@ Rules:
 
 - when omitted, the local machine resolves itself as the controller
 - non-controller nodes use this hostname plus `mcp.port` to reach `http://<controller>:<port>`
-- the node runtime uses this for websocket node sessions, metadata/status/log delivery, and master-routed CLI commands such as `lab nodes list`
+- the node runtime uses this for websocket node sessions, metadata/status/log delivery, and controller-routed CLI commands such as `lab nodes list`
 - legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`
 - Docker/Compose deployments should expose the host hostname to the container.
   The bundled Compose file mounts `/etc/hostname` at `/run/host/hostname`, which
@@ -385,11 +385,11 @@ Environment variables override `[auth]` values field-by-field.
 
 `target_url` is the full callback base URL, not just a host.
 
-## Device Runtime Auth
+## Node Runtime Auth
 
-If the master protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, master-routed `lab nodes` / `lab logs` commands reuse that bearer token automatically.
+If the controller protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, controller-routed `lab nodes` / `lab logs` commands reuse that bearer token automatically.
 
-Fleet websocket sessions are separate from that bearer auth path. Device-to-master delivery is admitted through the enrollment store using the device token presented during websocket `initialize`.
+Fleet websocket sessions are separate from that bearer auth path. Node-to-controller delivery is admitted through the enrollment store using the node token (`device_token` wire field) presented during websocket `initialize`.
 
 There is not a separate `[node]` auth block in this implementation.
 

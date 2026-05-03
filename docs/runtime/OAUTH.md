@@ -115,9 +115,9 @@ Important constraints:
 - it does not mint tokens, store PKCE state, or complete the OAuth exchange itself
 - the real client listener must already be running and reachable before the callback arrives
 
-## Device Runtime Relay Start
+## Node Runtime Relay Start
 
-The same local relay can be started remotely on a fleet device through:
+The same local relay can be started remotely on a fleet node through:
 
 ```http
 POST /v1/nodes/oauth/relay/start
@@ -136,7 +136,7 @@ Example body:
 
 This reuses the existing local relay implementation. It does not change OAuth token issuance or PKCE handling.
 
-In the current v1 trust model, this endpoint is intended for master-orchestrated device runtime traffic on the tailnet. It is not exposed as a public operator surface on non-master devices; the master invokes it after authenticating to the target device with the same shared bearer/OAuth controls that protect the rest of `/v1/*`.
+In the current v1 trust model, this endpoint is intended for controller-orchestrated node runtime traffic on the tailnet. It is not exposed as a public operator surface on non-controller nodes; the controller invokes it after authenticating to the target node with the same shared bearer/OAuth controls that protect the rest of `/v1/*`.
 
 ### Using non-loopback redirect URIs
 
@@ -311,7 +311,7 @@ When both static bearer and OAuth are configured, auth is checked in this order:
 
 Static bearer tokens bypass all JWT validation. This allows operators to use a simple token for automation while also supporting OAuth for interactive or multi-tenant use.
 
-For device-runtime background traffic, the supported auth path in this implementation is the shared static bearer token when `LAB_MCP_HTTP_TOKEN` is configured.
+For node runtime background traffic, the supported auth path in this implementation is the shared static bearer token when `LAB_MCP_HTTP_TOKEN` is configured.
 
 ## Safety Gate
 

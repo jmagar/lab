@@ -23,7 +23,7 @@ This keeps fleet log ingestion independent from the raw source format.
 4. the controller stores the normalized events in the durable SQLite node log store
 5. the local queue entry is acknowledged only after a successful websocket response
 
-The queue exists to make early-runtime log upload resilient to temporary master outages.
+The queue exists to make early-runtime log upload resilient to temporary controller outages.
 
 ## Query Surfaces
 
@@ -48,16 +48,16 @@ POST /v1/nodes/logs/search
 
 The current implementation performs a case-insensitive substring match against `message`.
 
-## Fleet Device Queries
+## Fleet Node Queries
 
 The controller also exposes:
 
 - `lab nodes list`
 - `lab nodes get <node_id>`
-- `GET /v1/nodes/devices`
-- `GET /v1/nodes/devices/{node_id}`
+- `GET /v1/nodes`
+- `GET /v1/nodes/{node_id}`
 
-Those responses include per-device log counts so operators can quickly see whether a device is checking in and sending data.
+Those responses include per-node log counts so operators can quickly see whether a node is checking in and sending data.
 
 ## Current Limits
 

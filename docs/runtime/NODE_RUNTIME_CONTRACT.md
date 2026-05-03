@@ -23,7 +23,7 @@ Current implementation note:
 
 - `lab serve` does not yet have `--role`.
 - `[node].role` does not yet exist.
-- `serve` currently resolves role from local hostname compared with `[device].master`; if no master is configured, the local host resolves as `Master`.
+- `serve` currently resolves role from local hostname compared with `[device].master` (legacy config key); if no master is configured, the local host resolves as `DeviceRole::Master` (Rust enum variant).
 - `[node].controller` exists for newer node/deploy paths, but it is not yet the `serve` role selector.
 
 ## Controller Contract
@@ -118,7 +118,7 @@ Current implementation note:
 
 - Non-controller HTTP is not health-only today.
 - `/v1/nodes/*` is mounted in the shared router and includes compatibility routes such as `/v1/nodes/hello`, `/v1/nodes/status`, `/v1/nodes/metadata`, `/v1/nodes/syslog/batch`, and `/v1/nodes/oauth/relay/start`.
-- Some master-only routes fail closed on non-controller nodes, but the routes still exist.
+- Some controller-only routes fail closed on non-controller nodes, but the routes still exist.
 - Node health uses the shared `lab serve` host binding today; it is not forced to `127.0.0.1` yet.
 
 ## Build Artifacts

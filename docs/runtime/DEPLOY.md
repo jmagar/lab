@@ -28,12 +28,13 @@ Non-controller nodes host:
 
 They do not expose the operator control plane.
 
-## Master Setup
+## Controller Setup
 
-1. choose a stable hostname for the master
-2. set `[device].master` to that hostname on every non-master machine
-3. start `lab serve` on the master
-4. if the master binds beyond loopback, configure auth before startup
+1. Choose a stable hostname for the controller host.
+2. Set `[node].controller` to that hostname in `config.toml` on every non-controller machine.
+   Legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`.
+3. Start `lab serve` on the controller host.
+4. If the controller binds beyond loopback, configure auth before startup.
 
 Example:
 
@@ -45,13 +46,13 @@ LAB_MCP_HTTP_TOKEN=replace-me
 lab serve
 ```
 
-## Non-Master Setup
+## Node Setup
 
-Each non-master device needs:
+Each non-controller node needs:
 
-- the same `[device].master` value
-- HTTP reachability to `http://<master>:<port>`
-- node websocket reachability to `ws://<master>:<port>/v1/nodes/ws` or `wss://...`
+- `[node].controller` set to the controller hostname
+- HTTP reachability to `http://<controller>:<port>`
+- WebSocket reachability to `ws://<controller>:<port>/v1/nodes/ws` or `wss://...`
 
 Example `config.toml`:
 
@@ -69,17 +70,17 @@ Then start:
 lab serve
 ```
 
-The non-master runtime will queue metadata and bootstrap logs locally, open its node websocket session automatically, and keep retrying until the master admits the node.
+The node runtime will queue metadata and bootstrap logs locally, open its WebSocket session automatically, and keep retrying until the controller admits the node.
 
 ## Enrollment Rollout
 
-New or rotated devices are not admitted automatically.
+New or rotated nodes are not admitted automatically.
 
 Expected rollout:
 
-1. deploy the master first
+1. deploy the controller first
 2. start or restart non-controller nodes
-3. list pending enrollments on the master
+3. list pending enrollments on the controller
 4. approve or deny nodes explicitly
 
 Examples:
@@ -92,23 +93,23 @@ lab nodes enrollments deny steamy-wsl --reason "unexpected token"
 
 ## Operational Notes
 
-- if `[device].master` is omitted, the local machine resolves as `master`
+- if `[node].controller` (and the legacy `[device].master`) is omitted, the local machine resolves as the controller
 - fleet node identity is pinned by the enrollment store, not by the shared bearer token
-- node inventory and logs are stored in memory on the master in this implementation
-- enrollment records survive master restarts
-- Web UI requests to a non-master return `403` with a clear disabled message
+- node inventory and logs are stored in memory on the controller in this implementation
+- enrollment records survive controller restarts
+- Web UI requests to a non-controller node return `403` with a clear disabled message
 
 ## Verification
 
 Useful checks after deployment:
 
 ```bash
-curl http://<device>:8765/health
-curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/devices
+curl http://<node>:8765/health
+curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes
 curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/enrollments
 lab nodes list
 lab nodes enrollments list
-lab logs search <device> <query>
+lab logs search <node_id> <query>
 ```
 
 ## Readiness Verification Model

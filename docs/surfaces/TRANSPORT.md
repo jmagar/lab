@@ -202,4 +202,4 @@ curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" \
 - [CONFIG.md](../runtime/CONFIG.md) — env var and config.toml loading
 - [MCP.md](./MCP.md) — MCP protocol surface
 - [RMCP.md](./RMCP.md) — RMCP SDK integration contract
-- [DEVICE_RUNTIME.md](../runtime/DEVICE_RUNTIME.md) — master/non-master runtime model
+- [DEVICE_RUNTIME.md](../runtime/DEVICE_RUNTIME.md) — controller/node runtime model
