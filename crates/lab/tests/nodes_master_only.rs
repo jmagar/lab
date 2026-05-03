@@ -263,3 +263,60 @@ fn no_node_config_defaults_to_master() {
         resolved.role
     );
 }
+
+#[test]
+fn role_node_without_controller_host_returns_error() {
+    // --role node with no [node].controller configured must fail
+    let config = LabConfig::default();
+    let result = resolve_runtime_role_from_config("somehost", &config, Some(NodeRuntimeRole::Node));
+    assert!(
+        result.is_err(),
+        "expected error when --role node has no controller host"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("controller host") || msg.contains("[node].controller"),
+        "error message should mention controller host config, got: {msg}"
+    );
+}
+
+#[test]
+fn config_role_node_without_controller_host_returns_error() {
+    // [node].role = "node" but no [node].controller configured must fail
+    let config = LabConfig {
+        node: Some(NodePreferences {
+            role: Some(NodeRuntimeRole::Node),
+            controller: None,
+            log_retention_days: None,
+        }),
+        ..LabConfig::default()
+    };
+    let result = resolve_runtime_role_from_config("somehost", &config, None);
+    assert!(
+        result.is_err(),
+        "expected error when [node].role=node but no controller host"
+    );
+    let msg = result.unwrap_err().to_string();
+    assert!(
+        msg.contains("controller host") || msg.contains("[node].controller"),
+        "error message should mention controller host config, got: {msg}"
+    );
+}
+
+#[test]
+fn role_node_with_controller_host_succeeds() {
+    // Success case: verifies the error is ONLY about missing host, not the role itself
+    let config = LabConfig {
+        node: Some(NodePreferences {
+            role: None,
+            controller: Some("dookie".to_string()),
+            log_retention_days: None,
+        }),
+        ..LabConfig::default()
+    };
+    let result = resolve_runtime_role_from_config("somehost", &config, Some(NodeRuntimeRole::Node));
+    assert!(
+        result.is_ok(),
+        "should succeed when controller host is configured: {result:?}"
+    );
+}
