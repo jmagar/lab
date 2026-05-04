@@ -81,8 +81,8 @@ export function MessageThread({ run, messages, connectionState }: MessageThreadP
   }
 
   return (
-    <ScrollArea className="min-h-0 flex-1 overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[860px] flex-col gap-4 px-4 py-4 sm:gap-5 sm:px-6 sm:py-6">
+    <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div className="mx-auto flex w-full max-w-[860px] min-w-0 flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-6">
         <SessionStatusNotice run={run} connectionState={connectionState} />
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />

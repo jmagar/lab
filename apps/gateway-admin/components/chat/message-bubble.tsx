@@ -62,7 +62,7 @@ function StreamingCursor() {
 }
 
 const SAFE_MARKDOWN_IMAGE_ELEMENTS = ['img'] as const
-const NO_REHYPE_PLUGINS = []
+const NO_REHYPE_PLUGINS: never[] = []
 const DISABLED_LINK_SAFETY = { enabled: false } as const
 
 function isAllowedMarkdownUrl(url: string) {
@@ -99,7 +99,7 @@ function AssistantMarkdown({
   isStreaming: boolean
 }) {
   return (
-    <div className="min-w-0 pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [&_a]:break-words [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:max-w-full [&_table]:overflow-x-auto">
+    <div className="min-w-0 max-w-full overflow-hidden pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere] [&_a]:break-words [&_code]:break-words [&_li]:min-w-0 [&_ol]:min-w-0 [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:[overflow-wrap:normal] [&_pre]:whitespace-pre [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_ul]:min-w-0">
       <Streamdown
         mode={isStreaming ? 'streaming' : 'static'}
         skipHtml
@@ -177,7 +177,7 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
   const hasActions = !isUser && message.toolCalls.length > 0
 
   return (
-    <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
+    <div className={cn('group/bubble flex min-w-0 gap-3', isUser && 'flex-row-reverse')}>
       <div
         className={cn(
           'mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border',
@@ -193,7 +193,7 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
         )}
       </div>
 
-      <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
+      <div className={cn('flex min-w-0 max-w-[calc(100%-2.25rem)] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
         {hasReasoning && (
           <div className="w-full overflow-hidden rounded-aurora-3 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]">
             <ChainOfThought
@@ -241,7 +241,7 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
         {message.text && (
           <div
             className={cn(
-              'relative overflow-hidden rounded-aurora-2 px-4 py-3',
+              'relative max-w-full overflow-hidden rounded-aurora-2 px-4 py-3',
               isUser
                 ? 'border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
                 : 'border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
@@ -254,7 +254,7 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
               />
             )}
             {isUser ? (
-              <p className="whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary">
+              <p className="min-w-0 whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere]">
                 {message.text}
                 {message.isStreaming ? <StreamingCursor /> : null}
               </p>
