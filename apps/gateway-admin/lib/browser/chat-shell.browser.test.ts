@@ -326,7 +326,7 @@ test('chat shell recovers from a failed session stream after switching sessions 
   })
 
   const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
-  const sessions: BrowserSession[] = []
+  const sessions: BrowserSession[] = [session('session-1', 'Flaky session')]
   const streamSince = new Map<string, string[]>()
   let sessionOneAttempts = 0
 
@@ -363,10 +363,7 @@ test('chat shell recovers from a failed session stream after switching sessions 
     }
 
     if (url.pathname === '/v1/acp/sessions' && request.method() === 'POST') {
-      const created =
-        sessions.length === 0
-          ? session('session-1', 'Flaky session')
-          : session('session-2', 'Healthy session')
+      const created = session('session-2', 'Healthy session')
       sessions.unshift(created)
 
       await route.fulfill({
