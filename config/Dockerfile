@@ -50,17 +50,15 @@ RUN mkdir -p \
       crates/lab-apis/tests/openacp_client.rs \
       crates/lab-apis/tests/jellyfin_client.rs \
       crates/lab-auth/src/lib.rs \
- && cargo build --release -p labby --all-features \
+ && cargo build --workspace --all-features --release \
+ && cargo clean -p labby \
+ && cargo clean -p lab-apis \
+ && cargo clean -p lab-auth \
  && rm -rf \
       crates/*/src \
       crates/lab-apis/tests \
       apps/gateway-admin/out \
-      target/release/labby \
-      target/release/liblab_apis* \
-      target/release/liblab_auth* \
-      "target/release/.fingerprint/labby-"* \
-      "target/release/.fingerprint/lab_apis-"* \
-      "target/release/.fingerprint/lab_auth-"*
+      target/release/labby
 
 # ── Real source + frontend assets ─────────────────────────────────────────────
 # The include_dir!() macro in crates/lab/src/api/web.rs embeds the Next.js
@@ -69,7 +67,7 @@ RUN mkdir -p \
 # apps/gateway-admin/out is sent in the build context.)
 COPY apps/gateway-admin/out apps/gateway-admin/out
 COPY crates/ crates/
-RUN cargo build --release -p labby --all-features
+RUN cargo build --workspace --all-features --release
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
