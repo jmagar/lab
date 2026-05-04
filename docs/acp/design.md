@@ -262,7 +262,7 @@ not the Labby design authority.
 They may be adapted, restyled, split, recomposed, or replaced as needed to fit:
 
 - the ACP rendering contract in this document
-- the Labby design system contract in `docs/design-system-contract.md`
+- the Labby design system contract in `docs/design/design-system-contract.md`
 - Aurora semantic tokens and shared primitives
 
 Initial reference component set:
@@ -305,7 +305,7 @@ system rather than upstream shadcn defaults.
   tokens
 - `bg-card`, `bg-background`, `bg-muted`, `text-foreground`,
   `text-muted-foreground`, and `border-border` must be remapped to the Aurora
-  equivalents defined in `docs/design-system-contract.md`
+  equivalents defined in `docs/design/design-system-contract.md`
 - no raw hex, rgba, or hsl values may be introduced in ACP product rendering
 - status styling must use muted Aurora status colors rather than saturated
   warning/error fills

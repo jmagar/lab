@@ -1,10 +1,10 @@
 ---
 name: aurora-checklist
-description: Authoritative checklist for reviewing apps/web/ changes — fully aligned with docs/design-docs/design-system-contract.md. Covers Aurora tokens, typography ramp, elevation, radius, scrollbar, import rules, shadcn bans, TanStack Query v5, logging, and auth. Preloaded by aurora-reviewer.
+description: Authoritative checklist for reviewing apps/web/ changes — fully aligned with docs/design/design-system-contract.md. Covers Aurora tokens, typography ramp, elevation, radius, scrollbar, import rules, shadcn bans, TanStack Query v5, logging, and auth. Preloaded by aurora-reviewer.
 user-invocable: false
 ---
 
-Source of truth: `docs/design-docs/design-system-contract.md`. When in doubt, that file wins.
+Source of truth: `docs/design/design-system-contract.md`. When in doubt, that file wins.
 
 ---
 

@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import tseslint from 'typescript-eslint'
 
 // Banned shadcn-generic tokens in product code. Aurora tokens are the source of
-// truth — see docs/design-system-contract.md. Primitives in components/ui/**
+// truth — see docs/design/design-system-contract.md. Primitives in components/ui/**
 // are the sanctioned escape hatch and are exempted below.
 const BANNED_TOKENS_PATTERN =
   String.raw`\b(text-muted-foreground|text-foreground|bg-card|bg-background|bg-muted|border-border)\b`
@@ -18,32 +18,32 @@ const bannedTokenRules = {
     {
       selector: `JSXAttribute[name.name='className'] Literal[value=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design/design-system-contract.md.',
     },
     {
       selector: `JSXAttribute[name.name='className'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes (text-aurora-text-muted, bg-aurora-panel-medium, border-aurora-border-strong, etc). See docs/design/design-system-contract.md.',
     },
     {
       selector: `VariableDeclarator[init.type='Literal'][init.value=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design/design-system-contract.md.',
     },
     {
       selector: `VariableDeclarator[init.type='TemplateLiteral'] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes in shared class constants. See docs/design/design-system-contract.md.',
     },
     {
       selector: `CallExpression[callee.name=/^(cn|clsx|cva|tw)$/] Literal[value=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design/design-system-contract.md.',
     },
     {
       selector: `CallExpression[callee.name=/^(cn|clsx|cva|tw)$/] TemplateElement[value.raw=/${BANNED_TOKENS_PATTERN}/]`,
       message:
-        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design-system-contract.md.',
+        'Use Aurora tokens instead of shadcn-generic classes inside cn/clsx/cva calls. See docs/design/design-system-contract.md.',
     },
   ],
 }

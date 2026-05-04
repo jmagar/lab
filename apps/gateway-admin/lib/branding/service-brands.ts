@@ -3,7 +3,7 @@
  *
  * These are the only sanctioned raw hex values in the UI tree — they encode
  * third-party brand identity (Plex orange, Sonarr cyan, Radarr yellow, etc.)
- * rather than Aurora UI tone. See docs/design-system-contract.md
+ * rather than Aurora UI tone. See docs/design/design-system-contract.md
  * "Service Brand Identity" for the carve-out.
  */
 

@@ -5,7 +5,7 @@ import type { LogLevel } from '@/lib/types/logs'
  *
  * Source of truth for token naming:
  *   - CSS vars:    app/globals.css
- *   - Semantics:   docs/design-system-contract.md
+ *   - Semantics:   docs/design/design-system-contract.md
  *
  * One-way dependency rule:
  *   components/aurora/** must NOT import from components/ui/**
