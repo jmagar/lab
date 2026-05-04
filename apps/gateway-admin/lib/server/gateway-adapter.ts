@@ -67,6 +67,8 @@ export interface BackendGatewayConfigView {
   proxy_resources?: boolean
   proxy_prompts?: boolean
   expose_tools?: string[] | null
+  expose_resources?: string[] | null
+  expose_prompts?: string[] | null
 }
 
 export interface BackendGatewayRuntimeView {
@@ -129,8 +131,13 @@ export interface BackendGatewayToolRow {
 
 export interface GatewayDiscoverySnapshot {
   tools: Array<string | BackendGatewayToolRow>
-  resources: string[]
-  prompts: string[]
+  resources: Array<string | { name?: string | null; uri: string; description?: string | null; exposed?: boolean | null }>
+  prompts: Array<string | {
+    name: string
+    description?: string | null
+    exposed?: boolean | null
+    arguments?: Array<{ name: string; description?: string; required?: boolean }>
+  }>
 }
 
 const NOW = () => new Date().toISOString()
@@ -202,6 +209,18 @@ function matchTool(toolName: string, patterns?: string[] | null): string | null 
   }
 
   return null
+}
+
+function primitiveExposed(name: string, patterns: string[] | null | undefined, proxyEnabled: boolean): boolean {
+  if (!proxyEnabled) {
+    return false
+  }
+
+  if (!patterns || patterns.length === 0) {
+    return true
+  }
+
+  return patterns.includes(name)
 }
 
 function matchVirtualServerAction(
@@ -513,6 +532,8 @@ export function normalizeGateway(
       proxy_resources: config.proxy_resources ?? false,
       proxy_prompts: config.proxy_prompts ?? true,
       expose_tools: exposePatterns ?? undefined,
+      expose_resources: config.expose_resources ?? undefined,
+      expose_prompts: config.expose_prompts ?? undefined,
     },
     status: {
       healthy: (config.enabled ?? true) && probe.healthy,
@@ -544,13 +565,29 @@ export function normalizeGateway(
     },
     discovery: {
       tools,
-      resources: discovery.resources.map((uri) => ({
-        name: uri,
-        uri,
-      })),
-      prompts: discovery.prompts.map((name) => ({
-        name,
-      })),
+      resources: discovery.resources.map((resource) => {
+        const uri = typeof resource === 'string' ? resource : resource.uri
+        const name = typeof resource === 'string' ? resource : resource.name ?? resource.uri
+        return {
+          name,
+          uri,
+          ...(typeof resource !== 'string' && resource.description ? { description: resource.description } : {}),
+          exposed: typeof resource === 'string'
+            ? primitiveExposed(name, config.expose_resources, config.proxy_resources ?? false)
+            : resource.exposed ?? primitiveExposed(name, config.expose_resources, config.proxy_resources ?? false),
+        }
+      }),
+      prompts: discovery.prompts.map((prompt) => {
+        const name = typeof prompt === 'string' ? prompt : prompt.name
+        return {
+          name,
+          ...(typeof prompt !== 'string' && prompt.description ? { description: prompt.description } : {}),
+          exposed: typeof prompt === 'string'
+            ? primitiveExposed(name, config.expose_prompts, config.proxy_prompts ?? true)
+            : prompt.exposed ?? primitiveExposed(name, config.expose_prompts, config.proxy_prompts ?? true),
+          ...(typeof prompt !== 'string' && prompt.arguments ? { arguments: prompt.arguments } : {}),
+        }
+      }),
     },
     warnings: buildWarnings({
       ...probe,
@@ -593,6 +630,8 @@ export function gatewayInputToSpec(input: CreateGatewayInput) {
     proxy_resources: input.config.proxy_resources ?? false,
     proxy_prompts: input.config.proxy_prompts ?? true,
     expose_tools: input.config.expose_tools ?? null,
+    expose_resources: input.config.expose_resources ?? null,
+    expose_prompts: input.config.expose_prompts ?? null,
   }
   if (input.config.oauth) {
     spec.oauth = {
@@ -661,6 +700,14 @@ export function buildGatewayPatch(input: UpdateGatewayInput & { name?: string; t
 
   if (config.expose_tools !== undefined) {
     patch.expose_tools = config.expose_tools
+  }
+
+  if (config.expose_resources !== undefined) {
+    patch.expose_resources = config.expose_resources
+  }
+
+  if (config.expose_prompts !== undefined) {
+    patch.expose_prompts = config.expose_prompts
   }
 
   if (config.oauth !== undefined) {

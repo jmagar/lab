@@ -4,6 +4,7 @@ import assert from 'node:assert/strict'
 import type { BridgeEvent } from '@/lib/acp/types'
 import {
   appendSessionEvent,
+  bridgeEventFromAcpEvent,
   deriveTranscriptAndActivity,
   MAX_SESSION_EVENTS,
   resolveLastSessionEventSeq,
@@ -60,6 +61,21 @@ test('resolveSessionStatusFromEvents returns the latest typed status event', () 
     ]),
     'closed',
   )
+})
+
+test('bridgeEventFromAcpEvent marks idle completion as a terminal pause event', () => {
+  const bridgeEvent = bridgeEventFromAcpEvent({
+    id: 'evt-idle',
+    seq: 10,
+    session_id: 'session-1',
+    created_at: '2026-04-23T00:00:00Z',
+    kind: 'provider_info',
+    provider: 'codex',
+    raw: { type: 'idle_completion' },
+  })
+
+  assert.equal(bridgeEvent.kind, 'idle_completion')
+  assert.equal(bridgeEvent.status, 'completed')
 })
 
 test('deriveTranscriptAndActivity appends streaming chunks when provider message ids churn', () => {

@@ -13,7 +13,7 @@ services:
       dockerfile: config/Dockerfile
 
     # Bind only to loopback on the dev machine — no accidental LAN exposure.
-    ports:
+    ports: !override
       - "127.0.0.1:8765:8765"
 
     # Relax resource limits for profiling / debugging.

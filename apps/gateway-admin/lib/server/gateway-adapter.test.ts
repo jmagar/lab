@@ -61,9 +61,10 @@ test('normalizeGateway maps backend views into UI gateway shape', () => {
     {
       name: 'resource://one',
       uri: 'resource://one',
+      exposed: true,
     },
   ])
-  assert.deepEqual(gateway.discovery.prompts, [{ name: 'prompt-one' }])
+  assert.deepEqual(gateway.discovery.prompts, [{ name: 'prompt-one', exposed: true }])
 })
 
 test('buildGatewayCreatePayload generates an auth env var when a bearer token is pasted', () => {
@@ -86,6 +87,8 @@ test('buildGatewayCreatePayload generates an auth env var when a bearer token is
       proxy_resources: false,
       proxy_prompts: true,
       expose_tools: null,
+      expose_resources: null,
+      expose_prompts: null,
     },
     bearer_token_value: 'ghp_secret',
   })
@@ -432,6 +435,8 @@ test('gatewayInputToSpec converts UI input into backend spec payload', () => {
     proxy_resources: true,
     proxy_prompts: true,
     expose_tools: ['alpha.*'],
+    expose_resources: null,
+    expose_prompts: null,
   })
 })
 
@@ -454,6 +459,20 @@ test('buildGatewayPatch clears the opposite transport fields when switching to s
     args: ['-y', 'server'],
     bearer_token_env: null,
     proxy_resources: false,
+  })
+})
+
+test('buildGatewayPatch preserves resource and prompt exposure edits', () => {
+  const patch = buildGatewayPatch({
+    config: {
+      expose_resources: ['resource://one'],
+      expose_prompts: ['prompt-one'],
+    },
+  })
+
+  assert.deepEqual(patch, {
+    expose_resources: ['resource://one'],
+    expose_prompts: ['prompt-one'],
   })
 })
 

@@ -40,6 +40,12 @@ export function matchesLogFilters(event: LogEvent, filters: LogFilterState): boo
   if (filters.levels.length > 0 && !filters.levels.includes(event.level)) {
     return false
   }
+  if (
+    filters.source_node_ids?.length
+    && (event.source_node_id == null || !filters.source_node_ids.includes(event.source_node_id))
+  ) {
+    return false
+  }
 
   return true
 }

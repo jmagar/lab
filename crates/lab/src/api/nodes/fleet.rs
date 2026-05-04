@@ -264,6 +264,7 @@ async fn handle_websocket(
     });
 
     // Security gate: require `initialize` within INITIALIZE_TIMEOUT (10s).
+    let init_started = Instant::now();
     let first_msg_result = tokio::time::timeout(INITIALIZE_TIMEOUT, stream.next()).await;
     let first_message = match first_msg_result {
         Err(_timeout) => {
@@ -343,7 +344,40 @@ async fn handle_websocket(
     }
 
     // Main read loop.
-    while let Some(message) = stream.next().await {
+    loop {
+        let message = if session_node_id.is_none() {
+            let elapsed = init_started.elapsed();
+            let Some(remaining) = INITIALIZE_TIMEOUT.checked_sub(elapsed) else {
+                tracing::warn!(
+                    surface = "api",
+                    service = "nodes",
+                    action = "ws.initialize",
+                    kind = "timeout",
+                    "nodes websocket: initialize timeout — closing connection"
+                );
+                break;
+            };
+            match tokio::time::timeout(remaining, stream.next()).await {
+                Ok(message) => message,
+                Err(_timeout) => {
+                    tracing::warn!(
+                        surface = "api",
+                        service = "nodes",
+                        action = "ws.initialize",
+                        kind = "timeout",
+                        "nodes websocket: initialize timeout — closing connection"
+                    );
+                    break;
+                }
+            }
+        } else {
+            stream.next().await
+        };
+
+        let Some(message) = message else {
+            break;
+        };
+
         match message? {
             Message::Text(text) => {
                 // Sweep sentinel — GC stale commands.

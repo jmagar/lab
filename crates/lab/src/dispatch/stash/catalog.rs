@@ -293,8 +293,8 @@ pub const ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "target.add",
-        description: "Register a new deploy target [destructive] — configures where future component.deploy writes files",
-        destructive: true,
+        description: "Register a new deploy target for future component.deploy writes",
+        destructive: false,
         returns: "Target",
         params: &[
             ParamSpec {

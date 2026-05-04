@@ -43,9 +43,10 @@ export default function SetupLayout({
           router.replace('/settings/')
           return
         }
-        if (snapshot.last_completed_step > 0) {
-          const step = WIZARD_STEPS[snapshot.last_completed_step]
-          if (step) router.replace(`/setup/${step.slug}/`)
+        const lastCompletedStep = Math.max(0, Math.min(snapshot.last_completed_step, WIZARD_STEPS.length - 1))
+        if (lastCompletedStep > 0) {
+          const step = WIZARD_STEPS[lastCompletedStep]
+          router.replace(`/setup/${step.slug}/`)
           return
         }
         router.replace('/setup/welcome/')

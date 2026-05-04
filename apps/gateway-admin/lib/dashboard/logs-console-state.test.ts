@@ -109,6 +109,20 @@ test('matchesLogFilters can match request identifiers and structured fields', ()
   )
 })
 
+test('matchesLogFilters applies source node filters to local events', () => {
+  const filters: LogFilterState = {
+    text: '',
+    subsystems: [],
+    levels: [],
+    source_node_ids: ['node-a'],
+    limit: 100,
+  }
+
+  assert.equal(matchesLogFilters(eventWith({ source_node_id: 'node-a' }), filters), true)
+  assert.equal(matchesLogFilters(eventWith({ source_node_id: 'node-b' }), filters), false)
+  assert.equal(matchesLogFilters(eventWith({ source_node_id: null }), filters), false)
+})
+
 test('matchesVisibleLogEvent applies the same filter contract plus the active time window', () => {
   const filters: LogFilterState = {
     text: 'timeout',

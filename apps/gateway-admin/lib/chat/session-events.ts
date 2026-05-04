@@ -397,6 +397,7 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
               isRecord(event.raw) && typeof event.raw.title === 'string'
                 ? event.raw.title
                 : 'Session paused – provider idle timeout',
+            status: 'completed',
             raw: event.raw,
           }
         case 'subscriber_backpressure':
