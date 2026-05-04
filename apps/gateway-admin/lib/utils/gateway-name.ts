@@ -29,4 +29,5 @@ export function deriveGatewayName(serverName: string): string {
     .normalize('NFC')
     .replace(BIDI_STRIP_RE, '')
     .replace(INVALID_CHARS_RE, '')
+    .slice(0, 64)
 }

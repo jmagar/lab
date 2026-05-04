@@ -48,6 +48,9 @@ changes rather than internal refactors.
   auth model, gateway exposure controls, and refresh-token behavior.
 - Changed config handling so non-secret auth and MCP runtime settings can live
   in `config.toml` instead of only in `.env`.
+- Changed the default generated gateway bearer-token env var name to
+  `LAB_GW_{NAME}_AUTH_HEADER`. Existing gateway configs keep using their stored
+  env var name; the new default applies when creating new gateway entries.
 
 ### Fixed
 - Fixed OAuth code, request-state, and refresh-token expiry enforcement.

@@ -127,6 +127,8 @@ test('gatewayApi.create sends pasted bearer tokens as a separate payload field',
           proxy_resources: false,
           proxy_prompts: true,
           expose_tools: null,
+          expose_resources: null,
+          expose_prompts: null,
         },
       )
       assert.equal(

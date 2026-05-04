@@ -12,7 +12,7 @@ authors = ["jmagar"]
 
 [workspace.dependencies]
 # runtime
-tokio = { version = "1.51", features = [
+tokio = { version = "1.52", features = [
   "rt-multi-thread",
   "macros",
   "signal",
@@ -23,7 +23,7 @@ tokio = { version = "1.51", features = [
   "net",
 ] }
 futures = "0.3"
-tempfile = "3.20"
+tempfile = "3.27"
 
 # http / serde / errors
 reqwest = { version = "0.13", default-features = false, features = [
@@ -73,7 +73,7 @@ ratatui = "0.30.0"
 crossterm = "0.29"
 
 # mcp
-rmcp = { version = "1.4", features = [
+rmcp = { version = "1.6", features = [
   "server",
   "macros",
   "transport-io",
@@ -88,11 +88,11 @@ rmcp = { version = "1.4", features = [
 
 # oauth / jwt
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
-rsa = "0.10.0-rc.17"
-rand = "0.9"
+rsa = "0.10.0-rc.16"
+rand = "0.10"
 rusqlite = { version = "0.39", features = ["bundled"] }
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
 percent-encoding = "2.3"
 uuid = { version = "1", features = ["v4", "serde"] }
 
@@ -119,10 +119,10 @@ utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-scalar = { version = "0.3", features = ["axum"] }
 
 # extract (always compiled — synthetic service)
-russh = "0.60.0"
-russh-sftp = "2.1.1"
+russh = "0.60.2"
+russh-sftp = "2.1.2"
 russh-config = "0.58.0"
-quick-xml = { version = "0.39.2", features = ["serialize"] }
+quick-xml = { version = "0.39.3", features = ["serialize"] }
 
 # tests
 wiremock = "0.6"

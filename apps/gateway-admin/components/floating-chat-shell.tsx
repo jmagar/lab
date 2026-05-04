@@ -3,14 +3,14 @@
 /**
  * FloatingChatShell — Wires all /chat features into the floating chat popover.
  *
- * Lazy-mounts on first FAB click, stays mounted permanently.
+ * Mounted by the popover host after the floating chat is first opened.
  * Consumes the 4 ChatSession contexts provided by ChatSessionProvider.
  *
  * Lifecycle:
- * - Provider starts SSE on first FAB click (streamEnabled = true)
- * - This shell mounts when the provider signals first-open
- * - Visibility is controlled by the popover (CSS visibility:hidden when closed)
- * - Dual-stream impossible: FAB hidden on /chat, FloatingChatShell never mounts there
+ * - Provider starts SSE when floating chat is enabled.
+ * - This shell stays mounted after the first open so chat state persists.
+ * - Visibility is controlled by the popover host when closed.
+ * - The host suppresses floating chat on /chat to avoid a duplicate stream.
  *
  * pageContext:
  * - Reads sendPageContext from config prop

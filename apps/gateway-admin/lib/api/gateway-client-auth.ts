@@ -2,6 +2,8 @@ import { hasApiTokenAuth } from '../auth/auth-mode.ts'
 import { getSessionCsrfToken, loadBrowserSession } from '../auth/session-store.ts'
 import { GatewayApiError, gatewayActionCore } from './gateway-client-core.ts'
 
+const SESSION_REFRESH_STATUSES = new Set([401, 403, 422])
+
 // Trigger a silent browser-session refresh only when the backend signals an
 // authentication/CSRF problem. `validation_failed` is reused on the backend
 // for CSRF rejection (see `crates/lab/src/api/router.rs::csrf_error_response`)
@@ -24,8 +26,7 @@ function shouldRefreshBrowserSession(
     return false
   }
 
-  const isAuthStatus =
-    error.status === 401 || error.status === 403 || error.status === 422
+  const isAuthStatus = SESSION_REFRESH_STATUSES.has(error.status)
   const isCsrfMessage = error.message.toLowerCase().includes('csrf')
   return isAuthStatus && isCsrfMessage
 }

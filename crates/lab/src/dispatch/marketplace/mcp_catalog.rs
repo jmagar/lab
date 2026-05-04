@@ -113,7 +113,7 @@ pub const MCP_ACTIONS: &[ActionSpec] = &[
     },
     ActionSpec {
         name: "mcp.validate",
-        description: "Validate a ServerJSON document against the registry schema without publishing",
+        description: "Validate a ServerJSON document against the registry schema. Returns a ValidationResult with a boolean valid field and an errors array. Call before mcp.install to surface schema problems without creating a gateway.",
         destructive: false,
         returns: "ValidationResult",
         params: &[ParamSpec {

@@ -47,7 +47,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{Connection, OpenFlags, params};

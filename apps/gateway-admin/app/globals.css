@@ -304,8 +304,7 @@
 }
 
 @layer utilities {
-  /* Aurora scrollbar — thin, token-backed. Use on any overflow-auto/scroll container.
-     Covers: webkit (Chrome/Edge/Safari) + standard scrollbar-color (Firefox). */
+  /* Gateway table row tones. */
   .gateway-row-tone-a {
     background: color-mix(
       in srgb,
@@ -322,6 +321,8 @@
     );
   }
 
+  /* Aurora scrollbar — thin, token-backed. Use on any overflow-auto/scroll container.
+     Covers: webkit (Chrome/Edge/Safari) + standard scrollbar-color (Firefox). */
   .aurora-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: var(--aurora-border-strong) transparent;

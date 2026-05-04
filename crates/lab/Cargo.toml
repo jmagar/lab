@@ -24,7 +24,7 @@ process-wrap = { version = "9.1.0", default-features = false, features = [
   "tokio1",
   "process-group",
 ] }
-nix = { version = "0.29", default-features = false, features = [
+nix = { version = "0.31", default-features = false, features = [
   "signal",
   "process",
 ] }
@@ -64,11 +64,11 @@ crossterm.workspace = true
 base64.workspace = true
 fd-lock = "4"
 fs4 = "1"
-tempfile = "3.10"
+tempfile = "3.27"
 subtle = "2"
 indexmap = { version = "2", features = ["serde"] }
-secrecy = "0.8"
-sha2 = "0.10"
+secrecy = "0.10"
+sha2 = "0.11"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 hmac.workspace = true
 chacha20poly1305 = "0.10"
@@ -110,7 +110,7 @@ unicode-normalization = { version = "0.1", optional = true }
 rustix = { version = "1", features = ["fs"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
-sd-notify = { version = "0.4", optional = true }
+sd-notify = { version = "0.5", optional = true }
 
 [dev-dependencies]
 wiremock.workspace = true

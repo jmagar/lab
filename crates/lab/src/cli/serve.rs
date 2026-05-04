@@ -938,7 +938,7 @@ async fn run_http(
     #[cfg(all(feature = "systemd", unix))]
     {
         if std::env::var_os("NOTIFY_SOCKET").is_some() {
-            if let Err(e) = sd_notify::notify(false, &[sd_notify::NotifyState::Ready]) {
+            if let Err(e) = sd_notify::notify(&[sd_notify::NotifyState::Ready]) {
                 tracing::warn!(
                     surface = "api", service = "http", action = "sd_notify.error",
                     error = %e, "sd_notify failed"

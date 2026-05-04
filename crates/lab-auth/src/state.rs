@@ -11,6 +11,8 @@ use crate::google::GoogleProvider;
 use crate::jwt::SigningKeys;
 use crate::sqlite::SqliteStore;
 
+const RATE_LIMIT_RETRY_AFTER_MS: u64 = 60_000;
+
 /// Simple token-bucket rate limiter (shared across clones via Arc).
 #[derive(Clone)]
 struct RateLimiter {
@@ -20,7 +22,7 @@ struct RateLimiter {
 struct RateLimiterInner {
     /// Tokens available in the bucket.
     tokens: f64,
-    /// Maximum tokens (burst size = 1 per-request burst means max = 1).
+    /// Maximum tokens, equal to the full per-minute burst allowance.
     max_tokens: f64,
     /// Refill rate in tokens per second.
     refill_rate: f64,
@@ -119,7 +121,7 @@ impl AuthState {
         } else {
             Err(AuthError::RateLimited {
                 message: "authorize rate limit exceeded".to_string(),
-                retry_after_ms: 60_000,
+                retry_after_ms: RATE_LIMIT_RETRY_AFTER_MS,
             })
         }
     }
@@ -131,7 +133,7 @@ impl AuthState {
         } else {
             Err(AuthError::RateLimited {
                 message: "register rate limit exceeded".to_string(),
-                retry_after_ms: 60_000,
+                retry_after_ms: RATE_LIMIT_RETRY_AFTER_MS,
             })
         }
     }

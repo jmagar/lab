@@ -78,11 +78,8 @@ export function FloatingChatFab({
   }, [onToggle, open, openModals])
 
   // Connection indicator classes
-  const connectionRingClass = connectionState === 'connecting'
-    ? 'ring-2 ring-aurora-accent-primary/40 animate-pulse'
-    : connectionState === 'error'
-    ? ''
-    : ''
+  const connectionRingClass =
+    connectionState === 'connecting' ? 'ring-2 ring-aurora-accent-primary/40 animate-pulse' : ''
 
   const isStreamingPulse = isStreaming && connectionState === 'open'
 
@@ -93,6 +90,7 @@ export function FloatingChatFab({
         // CSS-hidden (not unmounted) when on /chat route
         isOnChatPage && 'invisible pointer-events-none',
       )}
+      aria-hidden={isOnChatPage}
     >
       <button
         type="button"
@@ -100,6 +98,7 @@ export function FloatingChatFab({
         aria-expanded={open}
         aria-controls="floating-chat-panel"
         aria-label={open ? 'Close chat' : 'Open chat'}
+        tabIndex={isOnChatPage ? -1 : undefined}
         className={cn(
           'relative flex items-center gap-2 rounded-full border border-aurora-border-strong',
           'bg-aurora-panel-strong text-aurora-text-muted',

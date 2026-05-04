@@ -107,7 +107,7 @@ fn build_discovered_file(
         .with_context(|| format!("unix timestamp {}", path.display()))?
         .as_secs();
 
-    let content_hash = format!("{:x}", Sha256::digest(raw));
+    let content_hash = hex::encode(Sha256::digest(raw));
 
     Ok(DiscoveredMcpConfigFile {
         source: source.to_string(),
@@ -129,8 +129,8 @@ fn redacted_path(path: &Path) -> PathBuf {
 fn summarize_server_value(value: &serde_json::Value) -> DiscoveredMcpServerSummary {
     let transport = infer_transport(value);
     let fingerprint = serde_json::to_vec(value)
-        .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
-        .unwrap_or_else(|_| format!("{:x}", Sha256::digest(b"invalid")));
+        .map(|bytes| hex::encode(Sha256::digest(bytes)))
+        .unwrap_or_else(|_| hex::encode(Sha256::digest(b"invalid")));
     DiscoveredMcpServerSummary {
         transport,
         fingerprint,

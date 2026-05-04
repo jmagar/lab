@@ -1758,7 +1758,7 @@ fn inject_gateway_origin_param(params: Value, subject: Option<&str>) -> Value {
 
 fn redact_subject_for_logging(subject: &str) -> String {
     let digest = Sha256::digest(subject.as_bytes());
-    format!("sub:{:x}", digest)[..16].to_string()
+    format!("sub:{}", hex::encode(digest))[..16].to_string()
 }
 
 impl LabMcpServer {
@@ -1904,7 +1904,7 @@ fn tool_invoke_scope_allowed(auth: Option<&crate::api::oauth::AuthContext>) -> b
 
 fn hash_arguments(arguments: &Value) -> String {
     let bytes = serde_json::to_vec(arguments).unwrap_or_default();
-    format!("{:x}", Sha256::digest(bytes))
+    hex::encode(Sha256::digest(bytes))
 }
 
 /// Format the result of a dispatch operation into an MCP `CallToolResult`.

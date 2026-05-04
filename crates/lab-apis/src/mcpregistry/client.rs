@@ -58,17 +58,22 @@ impl McpRegistryClient {
         })
     }
 
-    fn encode_name(name: &str) -> String {
-        utf8_percent_encode(name, &PATH_SEGMENT).to_string()
-    }
-
-    fn validate_name(name: &str) -> Result<(), RegistryError> {
+    fn prepare_name(name: &str) -> Result<String, RegistryError> {
         if name.trim().is_empty() {
             return Err(RegistryError::InvalidInput {
                 message: "server name must not be empty".to_string(),
             });
         }
-        Ok(())
+        Ok(utf8_percent_encode(name, &PATH_SEGMENT).to_string())
+    }
+
+    fn prepare_version(version: &str) -> Result<String, RegistryError> {
+        if version.trim().is_empty() {
+            return Err(RegistryError::InvalidInput {
+                message: "server version must not be empty".to_string(),
+            });
+        }
+        Ok(utf8_percent_encode(version, &PATH_SEGMENT).to_string())
     }
 
     /// List MCP servers from the registry with optional filtering and pagination.
@@ -98,9 +103,9 @@ impl McpRegistryClient {
         name: &str,
         version: &str,
     ) -> Result<ServerResponse, RegistryError> {
-        Self::validate_name(name)?;
-        let encoded = Self::encode_name(name);
-        let path = format!("/v0.1/servers/{encoded}/versions/{version}");
+        let encoded = Self::prepare_name(name)?;
+        let encoded_version = Self::prepare_version(version)?;
+        let path = format!("/v0.1/servers/{encoded}/versions/{encoded_version}");
         Ok(self.http.get_json(&path).await?)
     }
 
@@ -112,8 +117,7 @@ impl McpRegistryClient {
     /// Returns [`RegistryError::InvalidInput`] if `name` is empty.
     /// Returns [`RegistryError::Api`] on HTTP or decode failure.
     pub async fn list_versions(&self, name: &str) -> Result<ServerListResponse, RegistryError> {
-        Self::validate_name(name)?;
-        let encoded = Self::encode_name(name);
+        let encoded = Self::prepare_name(name)?;
         let path = format!("/v0.1/servers/{encoded}/versions");
         Ok(self.http.get_json(&path).await?)
     }
@@ -254,6 +258,17 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_get_server_empty_version_returns_error() {
+        let server = MockServer::start().await;
+        let client = make_client(&server.uri());
+        let result = client.get_server("io.github.user/weather", "").await;
+        assert!(
+            matches!(result, Err(RegistryError::InvalidInput { .. })),
+            "expected InvalidInput error, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn test_get_server_whitespace_only_name_returns_error() {
         let server = MockServer::start().await;
         let client = make_client(&server.uri());
@@ -262,6 +277,30 @@ mod tests {
             matches!(result, Err(RegistryError::InvalidInput { .. })),
             "expected InvalidInput error, got: {result:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn test_get_server_encodes_version_in_path() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v0.1/servers/io.github.user%2Fweather/versions/latest%20candidate"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "server": {
+                    "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+                    "name": "io.github.user/weather",
+                    "description": "Weather MCP server",
+                    "version": "latest candidate"
+                },
+                "_meta": {}
+            })))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server.uri());
+        let result = client
+            .get_server("io.github.user/weather", "latest candidate")
+            .await;
+        assert!(result.is_ok(), "expected Ok, got: {result:?}");
     }
 
     #[tokio::test]

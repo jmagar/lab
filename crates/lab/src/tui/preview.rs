@@ -207,7 +207,7 @@ const CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 fn cache_path(url: &str) -> PathBuf {
     let mut hasher = Sha256::new();
     hasher.update(url.as_bytes());
-    let digest = format!("{:x}", hasher.finalize());
+    let digest = hex::encode(hasher.finalize());
     let mut p = dirs_cache_root();
     p.push(format!("{digest}.json"));
     p

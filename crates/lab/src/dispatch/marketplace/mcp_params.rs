@@ -427,7 +427,7 @@ fn check_ip_not_private(ip: IpAddr, url: &str) -> Result<(), ToolError> {
         return Err(ToolError::Sdk {
             sdk_kind: "ssrf_blocked".to_string(),
             message: format!(
-                "registry URL resolves to a private/loopback address — blocked to prevent SSRF: {url}"
+                "registry URL {url} resolves to private/loopback address {ip} — blocked to prevent SSRF"
             ),
         });
     }

@@ -735,7 +735,7 @@ async fn download_archive(url: &str, dest: &std::path::Path) -> Result<String, T
         .await
         .map_err(|e| ToolError::internal_message(format!("fsync {}: {e}", dest.display())))?;
 
-    Ok(format!("{:x}", hasher.finalize()))
+    Ok(hex::encode(hasher.finalize()))
 }
 
 /// Extract `archive` into `dest_dir` using system `tar` or `unzip`.

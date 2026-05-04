@@ -196,7 +196,7 @@ mode = "bearer"
 ```
 
 Use [config.example.toml](./config/config.example.toml), [.env.example](./.env.example),
-[docs/CONFIG.md](./docs/CONFIG.md), and [docs/ENV.md](./docs/ENV.md) for the full
+[docs/CONFIG.md](./docs/runtime/CONFIG.md), and [docs/ENV.md](./docs/runtime/ENV.md) for the full
 configuration contract.
 
 ## Runtime Commands
@@ -278,8 +278,8 @@ The same local relay can be started through the node runtime with
 do not mint tokens, store PKCE state, or complete the OAuth exchange.
 
 When binding HTTP to a non-loopback host, configure bearer or OAuth auth. The server warns
-and refuses unsafe exposed configurations. See [docs/OAUTH.md](./docs/OAUTH.md),
-[docs/TRANSPORT.md](./docs/TRANSPORT.md), and [docs/GATEWAY.md](./docs/GATEWAY.md) for
+and refuses unsafe exposed configurations. See [docs/OAUTH.md](./docs/runtime/OAUTH.md),
+[docs/TRANSPORT.md](./docs/surfaces/TRANSPORT.md), and [docs/GATEWAY.md](./docs/services/GATEWAY.md) for
 the full auth contract.
 
 ## CLI
@@ -310,7 +310,7 @@ Feature-gated services also expose CLI subcommands such as `lab radarr`, `lab un
 `lab qdrant`, and `labby deploy`.
 
 CLI output is human-readable by default. Use global `--json` for machine-readable output
-and `--color auto|always|never` for human output styling. See [docs/CLI.md](./docs/CLI.md)
+and `--color auto|always|never` for human output styling. See [docs/CLI.md](./docs/surfaces/CLI.md)
 and [docs/design/CLI_DESIGN_SYSTEM.md](./docs/design/CLI_DESIGN_SYSTEM.md).
 
 Destructive CLI operations require confirmation. Non-interactive callers use `-y` or
@@ -344,8 +344,8 @@ proxying is configured.
 Destructive MCP actions use elicitation when the client supports it. Headless clients pass
 `"confirm": true` inside `params`; otherwise the tool returns `confirmation_required`.
 
-See [docs/MCP.md](./docs/MCP.md), [docs/RMCP.md](./docs/RMCP.md), and
-[docs/TRANSPORT.md](./docs/TRANSPORT.md).
+See [docs/MCP.md](./docs/surfaces/MCP.md), [docs/RMCP.md](./docs/surfaces/RMCP.md), and
+[docs/TRANSPORT.md](./docs/surfaces/TRANSPORT.md).
 
 ## HTTP API
 
@@ -386,14 +386,14 @@ curl -s -X POST http://127.0.0.1:8765/v1/radarr \
 
 Destructive HTTP actions require `"confirm": true` in `params`. Missing confirmation
 returns `422` with `kind: "confirmation_required"`. Error responses use the shared
-structured envelope and stable `kind` vocabulary from [docs/ERRORS.md](./docs/ERRORS.md).
+structured envelope and stable `kind` vocabulary from [docs/ERRORS.md](./docs/dev/ERRORS.md).
 
 Middleware order is request id, tracing, request-id propagation, timeout, compression, and
 CORS. Loopback origins are allowed by default; add more origins with `LAB_CORS_ORIGINS` or
 `[api].cors_origins`.
 
-See [docs/TRANSPORT.md](./docs/TRANSPORT.md), [docs/OAUTH.md](./docs/OAUTH.md),
-[docs/ERRORS.md](./docs/ERRORS.md), and [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md).
+See [docs/TRANSPORT.md](./docs/surfaces/TRANSPORT.md), [docs/OAUTH.md](./docs/runtime/OAUTH.md),
+[docs/ERRORS.md](./docs/dev/ERRORS.md), and [docs/OBSERVABILITY.md](./docs/dev/OBSERVABILITY.md).
 
 ## Service Catalogs
 
@@ -536,7 +536,7 @@ cargo build --workspace --all-features
 ```
 
 Use `cargo test` only for narrow local slices or when a tool specifically requires it.
-The repo-level test contract is [docs/TESTING.md](./docs/TESTING.md).
+The repo-level test contract is [docs/TESTING.md](./docs/dev/TESTING.md).
 
 ## Docs Map
 
@@ -547,44 +547,44 @@ Start at [docs/README.md](./docs/README.md). Topic ownership:
 | [docs/ARCH.md](./docs/ARCH.md) | Crate split, runtime surfaces, shared contracts, runtime flow |
 | [docs/TECH.md](./docs/TECH.md) | Stack choices, toolchain, feature posture, verification surfaces, release tooling |
 | [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) | Locked engineering rules, async style, HTTP, testing, docs, privacy |
-| [docs/SERVICES.md](./docs/SERVICES.md) | Service inventory, feature gates, metadata, multi-instance model |
-| [docs/SERVICE_ONBOARDING.md](./docs/SERVICE_ONBOARDING.md) | End-to-end checklist for adding a service |
-| [docs/SCAFFOLD_AND_AUDIT.md](./docs/SCAFFOLD_AND_AUDIT.md) | `labby scaffold service` and `labby audit onboarding` contract |
-| [docs/CLI.md](./docs/CLI.md) | CLI behavior, command rules, confirmations, operator commands |
+| [docs/SERVICES.md](./docs/dev/SERVICES.md) | Service inventory, feature gates, metadata, multi-instance model |
+| [docs/SERVICE_ONBOARDING.md](./docs/dev/SERVICE_ONBOARDING.md) | End-to-end checklist for adding a service |
+| [docs/SCAFFOLD_AND_AUDIT.md](./docs/dev/SCAFFOLD_AND_AUDIT.md) | `labby scaffold service` and `labby audit onboarding` contract |
+| [docs/CLI.md](./docs/surfaces/CLI.md) | CLI behavior, command rules, confirmations, operator commands |
 | [docs/design/CLI_DESIGN_SYSTEM.md](./docs/design/CLI_DESIGN_SYSTEM.md) | Human-readable CLI output language and color policy |
 | [docs/design/CLI_OUTPUT_THEME_API.md](./docs/design/CLI_OUTPUT_THEME_API.md) | Proposed Rust API for CLI semantic styling |
-| [docs/MCP.md](./docs/MCP.md) | MCP transport model, one-tool-per-service design, discovery, envelopes |
-| [docs/RMCP.md](./docs/RMCP.md) | RMCP SDK integration contract |
-| [docs/TRANSPORT.md](./docs/TRANSPORT.md) | Stdio and streamable HTTP transport, sessions, CORS, DNS rebinding |
-| [docs/OAUTH.md](./docs/OAUTH.md) | Bearer vs OAuth auth, Google flow, JWTs, JWKS, metadata, callback forwarding |
-| [docs/CONFIG.md](./docs/CONFIG.md) | Env/TOML ownership, load order, secrets, instance naming |
-| [docs/ENV.md](./docs/ENV.md) | Deployment-ready env examples and auth mode variables |
-| [docs/ERRORS.md](./docs/ERRORS.md) | Stable error taxonomy, envelopes, status mapping |
+| [docs/MCP.md](./docs/surfaces/MCP.md) | MCP transport model, one-tool-per-service design, discovery, envelopes |
+| [docs/RMCP.md](./docs/surfaces/RMCP.md) | RMCP SDK integration contract |
+| [docs/TRANSPORT.md](./docs/surfaces/TRANSPORT.md) | Stdio and streamable HTTP transport, sessions, CORS, DNS rebinding |
+| [docs/OAUTH.md](./docs/runtime/OAUTH.md) | Bearer vs OAuth auth, Google flow, JWTs, JWKS, metadata, callback forwarding |
+| [docs/CONFIG.md](./docs/runtime/CONFIG.md) | Env/TOML ownership, load order, secrets, instance naming |
+| [docs/ENV.md](./docs/runtime/ENV.md) | Deployment-ready env examples and auth mode variables |
+| [docs/ERRORS.md](./docs/dev/ERRORS.md) | Stable error taxonomy, envelopes, status mapping |
 | [docs/design/SERIALIZATION.md](./docs/design/SERIALIZATION.md) | Serde ownership, stable envelopes, output-boundary rules |
-| [docs/DISPATCH.md](./docs/DISPATCH.md) | Surface-neutral dispatch ownership and adapter direction |
-| [docs/SERVICE_LAYER_MIGRATION.md](./docs/SERVICE_LAYER_MIGRATION.md) | Migration phases for shared dispatch/service layer |
-| [docs/OBSERVABILITY.md](./docs/OBSERVABILITY.md) | Logging boundaries, required fields, correlation, redaction, verification |
+| [docs/DISPATCH.md](./docs/dev/DISPATCH.md) | Surface-neutral dispatch ownership and adapter direction |
+| [docs/SERVICE_LAYER_MIGRATION.md](./docs/dev/SERVICE_LAYER_MIGRATION.md) | Migration phases for shared dispatch/service layer |
+| [docs/OBSERVABILITY.md](./docs/dev/OBSERVABILITY.md) | Logging boundaries, required fields, correlation, redaction, verification |
 | [docs/OPERATIONS.md](./docs/OPERATIONS.md) | Repo helpers, doctor/health workflows, CI, releases, updates |
-| [docs/CICD.md](./docs/CICD.md) | GitHub Actions check matrix and release behavior |
-| [docs/TESTING.md](./docs/TESTING.md) | Test runner contract and verification expectations |
-| [docs/EXTRACT.md](./docs/EXTRACT.md) | Bootstrap credential extraction and `.env` merge semantics |
-| [docs/GATEWAY.md](./docs/GATEWAY.md) | Upstream MCP gateway CRUD, reload/test flows, exposure policy |
-| [docs/UPSTREAM.md](./docs/UPSTREAM.md) | Upstream MCP proxy setup, tool merging, circuit breaker, resources |
-| [docs/MARKETPLACE.md](./docs/MARKETPLACE.md) | Marketplace service, plugin workspace mirrors, save/deploy flows |
-| [docs/MCPREGISTRY_METADATA.md](./docs/MCPREGISTRY_METADATA.md) | Lab-owned metadata layered onto MCP Registry entries |
+| [docs/CICD.md](./docs/runtime/CICD.md) | GitHub Actions check matrix and release behavior |
+| [docs/TESTING.md](./docs/dev/TESTING.md) | Test runner contract and verification expectations |
+| [docs/EXTRACT.md](./docs/services/EXTRACT.md) | Bootstrap credential extraction and `.env` merge semantics |
+| [docs/GATEWAY.md](./docs/services/GATEWAY.md) | Upstream MCP gateway CRUD, reload/test flows, exposure policy |
+| [docs/UPSTREAM.md](./docs/services/UPSTREAM.md) | Upstream MCP proxy setup, tool merging, circuit breaker, resources |
+| [docs/MARKETPLACE.md](./docs/services/MARKETPLACE.md) | Marketplace service, plugin workspace mirrors, save/deploy flows |
+| [docs/MCPREGISTRY_METADATA.md](./docs/services/MCPREGISTRY_METADATA.md) | Lab-owned metadata layered onto MCP Registry entries |
 | [docs/acp/README.md](./docs/acp/README.md) | ACP service architecture and chat boundary |
 | [docs/acp/design.md](./docs/acp/design.md) | ACP design details |
 | [docs/acp/research-findings.md](./docs/acp/research-findings.md) | ACP research notes |
-| [docs/DEVICE_RUNTIME.md](./docs/DEVICE_RUNTIME.md) | Master/non-master runtime roles and device inventory |
-| [docs/NODES.md](./docs/NODES.md) | Node-facing CLI/API behavior |
-| [docs/NODE_RUNTIME_CONTRACT.md](./docs/NODE_RUNTIME_CONTRACT.md) | Controller/node split and node artifact rules |
-| [docs/FLEET_METHODS.md](./docs/FLEET_METHODS.md) | Fleet WebSocket JSON-RPC method contract |
-| [docs/FLEET_LOGS.md](./docs/FLEET_LOGS.md) | Fleet log ingestion, queueing, search, storage limits |
-| [docs/LOCAL_LOGS.md](./docs/LOCAL_LOGS.md) | Local-master runtime log store, `/v1/logs`, SSE streaming |
-| [docs/DEPLOY.md](./docs/DEPLOY.md) | Device-runtime deployment topology and rollout guidance |
-| [docs/DEPLOY_SERVICE.md](./docs/DEPLOY_SERVICE.md) | Deploy service action/API contract |
-| [docs/MONITORS.md](./docs/MONITORS.md) | Claude Code monitor definitions and `labby deploy monitor` |
-| [docs/TUI.md](./docs/TUI.md) | Ratatui plugin manager behavior and `.mcp.json` patching |
+| [docs/DEVICE_RUNTIME.md](./docs/runtime/DEVICE_RUNTIME.md) | Master/non-master runtime roles and device inventory |
+| [docs/NODES.md](./docs/runtime/NODES.md) | Node-facing CLI/API behavior |
+| [docs/NODE_RUNTIME_CONTRACT.md](./docs/runtime/NODE_RUNTIME_CONTRACT.md) | Controller/node split and node artifact rules |
+| [docs/FLEET_METHODS.md](./docs/runtime/FLEET_METHODS.md) | Fleet WebSocket JSON-RPC method contract |
+| [docs/FLEET_LOGS.md](./docs/runtime/FLEET_LOGS.md) | Fleet log ingestion, queueing, search, storage limits |
+| [docs/LOCAL_LOGS.md](./docs/services/LOCAL_LOGS.md) | Local-master runtime log store, `/v1/logs`, SSE streaming |
+| [docs/DEPLOY.md](./docs/runtime/DEPLOY.md) | Device-runtime deployment topology and rollout guidance |
+| [docs/DEPLOY_SERVICE.md](./docs/runtime/DEPLOY_SERVICE.md) | Deploy service action/API contract |
+| [docs/MONITORS.md](./docs/services/MONITORS.md) | Claude Code monitor definitions and `labby deploy monitor` |
+| [docs/TUI.md](./docs/surfaces/TUI.md) | Ratatui plugin manager behavior and `.mcp.json` patching |
 | [apps/gateway-admin/README.md](./apps/gateway-admin/README.md) | Labby frontend workflow and static export model |
 | [docs/design/component-development.md](./docs/design/component-development.md) | Labby component workflow and browser verification |
 | [docs/design/design-system-contract.md](./docs/design/design-system-contract.md) | Labby Aurora design-system contract |

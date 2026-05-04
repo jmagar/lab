@@ -526,7 +526,7 @@ fn render_env_var(
             let display = if ev.secret && !reveal {
                 // Keep the raw value in a SecretString; only expose at the
                 // single render callsite — here we show a mask instead.
-                let _secret = SecretString::new(v.clone());
+                let _secret = SecretString::new(v.clone().into());
                 "●●●●●●●●".to_string()
             } else {
                 sanitize_display(v, 60)

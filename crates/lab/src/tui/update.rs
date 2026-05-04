@@ -210,7 +210,7 @@ pub async fn perform_update(
         if let Some(expected) = expected_sha256 {
             let mut hasher = Sha256::new();
             hasher.update(&downloaded_bytes);
-            let actual = format!("{:x}", hasher.finalize());
+            let actual = hex::encode(hasher.finalize());
             if actual != expected {
                 bail!("SHA-256 mismatch: expected {expected}, got {actual}");
             }
@@ -423,7 +423,7 @@ mod tests {
         // Compute the real digest
         let mut hasher = Sha256::new();
         hasher.update(bytes);
-        let real = format!("{:x}", hasher.finalize());
+        let real = hex::encode(hasher.finalize());
 
         // Intentionally wrong expected digest
         let wrong_expected = "0".repeat(64);
@@ -433,7 +433,7 @@ mod tests {
         let result: anyhow::Result<()> = {
             let mut hasher2 = Sha256::new();
             hasher2.update(bytes);
-            let actual = format!("{:x}", hasher2.finalize());
+            let actual = hex::encode(hasher2.finalize());
             if actual != wrong_expected {
                 Err(anyhow::anyhow!("SHA-256 mismatch"))
             } else {

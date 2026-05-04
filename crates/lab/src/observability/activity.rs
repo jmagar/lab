@@ -8,7 +8,7 @@ use std::{path::Path, sync::Arc};
 
 use anyhow::{Context, Result, anyhow};
 use chacha20poly1305::aead::{OsRng, rand_core::RngCore};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
 use crate::config::{dotenv_path, write_env_pairs};

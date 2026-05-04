@@ -180,7 +180,7 @@ export function ServerFilters({
 
       {!isLoading && totalLoaded !== undefined && totalLoaded > 0 && (
         <p className="text-xs text-aurora-text-muted">
-          {totalLoaded} server{totalLoaded === 1 ? '' : 's'} loaded{hasMore ? ' — scroll for more' : ''}
+          {totalLoaded} matching server{totalLoaded === 1 ? '' : 's'}{hasMore ? ' — scroll for more' : ''}
         </p>
       )}
     </div>
