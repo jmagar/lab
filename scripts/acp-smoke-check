@@ -172,12 +172,19 @@ ticket_json="$(json_post "/sessions/$SESSION_ID/subscribe_ticket" '{}')"
 ticket="$(printf '%s\n' "$ticket_json" | json_field 'print(data["ticket"])')"
 
 events_url="$BASE/sessions/$SESSION_ID/events?since=0&ticket=$ticket"
-timeout "$TIMEOUT_SECONDS" curl -fsSN "${AUTH_ARGS[@]}" "$events_url" 2>/dev/null \
+set +e
+ACP_EXPECTED_CWD="$CWD_VALUE" timeout "$TIMEOUT_SECONDS" curl -fsSN "${AUTH_ARGS[@]}" "$events_url" 2>/dev/null \
     | python3 -c '
 import json
+import os
 import sys
 
 seen = 0
+message = ""
+provider_error = ""
+terminal_state = ""
+expected = os.environ.get("ACP_EXPECTED_CWD", "")
+
 for line in sys.stdin:
     if not line.startswith("data:"):
         continue
@@ -190,11 +197,43 @@ for line in sys.stdin:
         continue
     kind = event.get("kind") or event.get("type") or "event"
     text = event.get("text") or event.get("title") or event.get("status") or ""
+    raw = event.get("raw") if isinstance(event.get("raw"), dict) else {}
+    raw_type = raw.get("type") or ""
+    raw_text = raw.get("text") or raw.get("message") or raw.get("title") or ""
+    if kind == "message_chunk":
+        message += text
+    if kind == "provider_info" and raw_type in {"provider_error", "runtime_exit_without_stop_reason"}:
+        provider_error = raw_text or text or raw_type
+    if kind == "session_update":
+        terminal_state = event.get("state") or text
     seq = event.get("seq", "?")
     print(f"{seq}: {kind}: {text}")
     seen += 1
+    if expected and expected in message:
+        break
+    if provider_error or terminal_state in {"failed", "Failed"}:
+        break
     if kind in {"session_update", "message_chunk", "tool_call_update", "provider_info"} and seen >= 20:
         break
-' || true
 
-print_step "ACP smoke prompt submitted"
+if provider_error:
+    print(f"ACP smoke failed: provider error: {provider_error}", file=sys.stderr)
+    raise SystemExit(1)
+if expected and expected not in message:
+    print(
+        f"ACP smoke failed: expected assistant output containing {expected!r}; got {message!r}",
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
+'
+stream_statuses=("${PIPESTATUS[@]}")
+set -e
+if [ "${stream_statuses[1]}" -ne 0 ]; then
+    exit "${stream_statuses[1]}"
+fi
+if [ "${stream_statuses[0]}" -ne 0 ] && [ "${stream_statuses[0]}" -ne 124 ] && [ "${stream_statuses[0]}" -ne 141 ]; then
+    echo "ACP smoke failed: event stream exited with status ${stream_statuses[0]}" >&2
+    exit "${stream_statuses[0]}"
+fi
+
+print_step "ACP smoke prompt completed"
