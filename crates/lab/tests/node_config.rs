@@ -69,7 +69,7 @@ fn parses_deploy_restart_model_blocks() {
             .unwrap()
             .restart,
         Some(RestartModel::SystemService {
-            service: "lab".into()
+            service: "labby".into()
         })
     );
     assert_eq!(

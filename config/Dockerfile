@@ -50,7 +50,7 @@ RUN mkdir -p \
       crates/lab-apis/tests/openacp_client.rs \
       crates/lab-apis/tests/jellyfin_client.rs \
       crates/lab-auth/src/lib.rs \
- && cargo build --release -p labby \
+ && cargo build --release -p labby --all-features \
  && rm -rf \
       crates/*/src \
       crates/lab-apis/tests \
@@ -69,7 +69,7 @@ RUN mkdir -p \
 # apps/gateway-admin/out is sent in the build context.)
 COPY apps/gateway-admin/out apps/gateway-admin/out
 COPY crates/ crates/
-RUN cargo build --release -p labby
+RUN cargo build --release -p labby --all-features
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime

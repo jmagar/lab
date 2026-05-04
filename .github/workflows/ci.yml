@@ -154,16 +154,16 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           set -euo pipefail
-          test -x target/release/lab
-          target/release/lab --help >/dev/null
+          test -x target/release/labby
+          target/release/labby --help >/dev/null
       - name: Verify release binary
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          if (!(Test-Path target/release/lab.exe)) {
-            throw "target/release/lab.exe was not built"
+          if (!(Test-Path target/release/labby.exe)) {
+            throw "target/release/labby.exe was not built"
           }
-          target/release/lab.exe --help | Out-Null
+          target/release/labby.exe --help | Out-Null
 
   container:
     name: Container build

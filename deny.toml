@@ -51,27 +51,27 @@ wildcards = "allow"
 
 [[bans.deny]]
 name = "clap"
-wrappers = ["lab", "clap_complete"]
-reason = "Binary-only: lab-apis must stay pure. CLI parsing lives in `lab`."
+wrappers = ["labby", "clap_complete"]
+reason = "Binary-only: lab-apis must stay pure. CLI parsing lives in `labby`."
 
 [[bans.deny]]
 name = "rmcp"
-wrappers = ["lab", "agent-client-protocol"]
-reason = "Binary-only: lab-apis must stay pure. MCP server lives in `lab`."
+wrappers = ["labby", "agent-client-protocol"]
+reason = "Binary-only: lab-apis must stay pure. MCP server lives in `labby`."
 
 [[bans.deny]]
 name = "ratatui"
-wrappers = ["lab"]
-reason = "Binary-only: lab-apis must stay pure. TUI lives in `lab`."
+wrappers = ["labby"]
+reason = "Binary-only: lab-apis must stay pure. TUI lives in `labby`."
 
 [[bans.deny]]
 name = "anyhow"
-wrappers = ["lab", "agent-client-protocol", "agent-client-protocol-schema"]
+wrappers = ["labby", "agent-client-protocol", "agent-client-protocol-schema"]
 reason = "lab-apis uses `thiserror`. anyhow is for the binary only."
 
 [[bans.deny]]
 name = "tabled"
-wrappers = ["lab"]
+wrappers = ["labby"]
 reason = "Binary-only: table formatting happens in `lab/src/output.rs`, not lab-apis."
 
 [sources]
