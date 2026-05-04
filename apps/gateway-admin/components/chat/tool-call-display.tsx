@@ -16,9 +16,10 @@ import { getInlineArtifact, getToolPresentation, toDomainChip } from './tool-cal
 
 interface ToolCallDisplayProps {
   toolCall: TranscriptToolCall
+  isChild?: boolean
 }
 
-export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
+export function ToolCallDisplay({ toolCall, isChild = false }: ToolCallDisplayProps) {
   const [open, setOpen] = React.useState(false)
   const artifact = React.useMemo(() => getInlineArtifact(toolCall), [toolCall])
   const presentation = React.useMemo(() => getToolPresentation(toolCall, artifact), [artifact, toolCall])
@@ -45,7 +46,7 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
           type="button"
           className={cn(
             'group relative flex w-full items-start gap-3 py-2 text-left',
-            'before:absolute before:bottom-0 before:left-[8px] before:top-0 before:w-px before:bg-aurora-border-default/70',
+            !isChild && 'before:absolute before:bottom-0 before:left-[8px] before:top-0 before:w-px before:bg-aurora-border-default/70',
           )}
         >
           <span className="relative z-10 mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-full bg-aurora-page-bg">

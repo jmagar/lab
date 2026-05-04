@@ -375,6 +375,23 @@ function hasKeyword(value: string, words: string[]) {
   return words.some((word) => value.includes(word))
 }
 
+export function getToolCategory(toolCall: TranscriptToolCall): string {
+  const title = toolCall.title.toLowerCase()
+  const kind = toolCall.kind?.toLowerCase() ?? ''
+  const firstParsedType = getParsedCommands(toolCall)[0]?.type ?? ''
+  if (kind === 'permission' || hasKeyword(title, ['permission', 'approve'])) return 'permission'
+  if (hasKeyword(title, ['skill', 'guidance'])) return 'skill'
+  if (hasKeyword(title, ['plan', 'todo'])) return 'plan'
+  if (hasKeyword(title, ['diff', 'review'])) return 'review'
+  if (hasKeyword(title, ['image', 'photo']) || kind.includes('image')) return 'media'
+  if (hasKeyword(title, ['search']) || kind.includes('search') || firstParsedType === 'search') return 'search'
+  if (hasKeyword(title, ['profile', 'source', 'browse', 'web'])) return 'source'
+  if (hasKeyword(title, ['run', 'exec', 'command', 'shell']) || firstParsedType === 'command') return 'command'
+  if (hasKeyword(title, ['edit', 'write', 'patch']) || firstParsedType === 'write' || firstParsedType === 'edit') return 'edit'
+  if (hasKeyword(title, ['read', 'file']) || kind.includes('read') || firstParsedType === 'read') return 'read'
+  return 'tool'
+}
+
 export function getToolPresentation(toolCall: TranscriptToolCall, artifact: ToolArtifact): ToolPresentation {
   const title = toolCall.title.toLowerCase()
   const kind = toolCall.kind?.toLowerCase() ?? ''

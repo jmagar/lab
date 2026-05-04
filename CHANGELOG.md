@@ -8,6 +8,25 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.14.0] — 2026-05-04
+
+### Highlights
+
+- **ACP sessions**: prompt dispatch now replaces the default "New session" title with a bounded title derived from the user's prompt, and unfinished provider exits now preserve provider-error details instead of always emitting the generic no-stop-reason event.
+- **gateway-admin chat UI**: reasoning summaries and agent actions now render as separate panels; action traces keep grouped read/search/edit/command summaries, and a render test guards against folding actions back into reasoning.
+- **Vibin GitHub workflow consolidation**: GitHub review and CI skills move under the Vibin plugin, with marketplace and plugin metadata updated to describe the expanded workflow surface.
+
+| Commit | Change |
+|--------|--------|
+| *(this)* | feat: improve ACP session titles and separate chat reasoning from actions |
+
+### Version bumps
+
+- Rust workspace: `0.13.1 → 0.14.0`
+- Gateway admin package: `0.13.1 → 0.14.0`
+
+---
+
 ## [0.13.1] — 2026-05-04
 
 ### Highlights
@@ -17,7 +36,7 @@ All notable changes to this project will be documented in this file.
 | Commit | Change |
 |--------|--------|
 | `d62b33bf` | fix: validate acp smoke stream output |
-| *(this)* | fix(gateway-admin): compact agent action tool calls — collapse summary/preview by default, inline paths, extract skill name from label |
+| `5743e804` | fix(gateway-admin): compact agent action tool calls — collapse summary/preview by default, inline paths, extract skill name from label |
 
 ---
 

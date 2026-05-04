@@ -1561,36 +1561,6 @@ async fn run_codex_session(
         })
         .await;
 
-    if let Some(saw_assistant_output) = prompt_lifecycle.take_unfinished_prompt() {
-        let state = if saw_assistant_output {
-            lab_apis::acp::types::AcpSessionState::Completed
-        } else {
-            lab_apis::acp::types::AcpSessionState::Failed
-        };
-        let status = match state {
-            lab_apis::acp::types::AcpSessionState::Completed => "completed",
-            _ => "failed",
-        };
-        drop(
-            event_tx
-                .send(session_state_event(session_id.clone(), state))
-                .await,
-        );
-        drop(
-            event_tx
-                .send(provider_info_event(
-                    session_id.clone(),
-                    &provider_id,
-                    json!({
-                        "type": "runtime_exit_without_stop_reason",
-                        "title": "ACP provider exited before sending a prompt stop reason",
-                        "status": status,
-                    }),
-                ))
-                .await,
-        );
-    }
-
     let run_error = run_result.err();
 
     if let Some(ref error) = run_error {
@@ -1603,6 +1573,21 @@ async fn run_codex_session(
             error_debug = ?error,
             "ACP connect_with returned error — this is why the subprocess is being terminated",
         );
+    }
+
+    if let Some(saw_assistant_output) = prompt_lifecycle.take_unfinished_prompt() {
+        let (state, event) = unfinished_prompt_exit_event(
+            &session_id,
+            &provider_id,
+            saw_assistant_output,
+            &run_error,
+        );
+        drop(
+            event_tx
+                .send(session_state_event(session_id.clone(), state))
+                .await,
+        );
+        drop(event_tx.send(event).await);
     }
 
     terminate_codex_child(&mut child, child_process_group).await;
@@ -2037,6 +2022,50 @@ fn provider_info_event(session_id: String, provider: &str, raw: Value) -> AcpEve
         provider: provider.to_string(),
         raw,
     }
+}
+
+fn unfinished_prompt_exit_event(
+    session_id: &str,
+    provider_id: &str,
+    saw_assistant_output: bool,
+    run_error: &Option<agent_client_protocol::Error>,
+) -> (lab_apis::acp::types::AcpSessionState, AcpEvent) {
+    if let Some(error) = run_error {
+        return (
+            lab_apis::acp::types::AcpSessionState::Failed,
+            provider_info_event(
+                session_id.to_string(),
+                provider_id,
+                json!({
+                    "type": "provider_error",
+                    "title": "Provider error",
+                    "text": error.to_string(),
+                }),
+            ),
+        );
+    }
+
+    let state = if saw_assistant_output {
+        lab_apis::acp::types::AcpSessionState::Completed
+    } else {
+        lab_apis::acp::types::AcpSessionState::Failed
+    };
+    let status = match state {
+        lab_apis::acp::types::AcpSessionState::Completed => "completed",
+        _ => "failed",
+    };
+    (
+        state,
+        provider_info_event(
+            session_id.to_string(),
+            provider_id,
+            json!({
+                "type": "runtime_exit_without_stop_reason",
+                "title": "ACP provider exited before sending a prompt stop reason",
+                "status": status,
+            }),
+        ),
+    )
 }
 
 fn tool_call_update_output(update: agent_client_protocol::schema::ToolCallUpdate) -> Value {
@@ -2815,6 +2844,32 @@ mod tests {
         assert_eq!(line.chars().count(), MAX_PROVIDER_STDERR_CHARS);
         assert!(!line.contains("secret"));
         assert!(line.starts_with("RADARR_API_KEY=[redacted] "));
+    }
+
+    #[test]
+    fn unfinished_prompt_with_provider_error_fails_even_after_progress() {
+        let run_error = Some(acp_internal_error("usage_limit_exceeded"));
+        let (state, event) =
+            unfinished_prompt_exit_event("session-1", "codex-acp", true, &run_error);
+
+        assert_eq!(state, lab_apis::acp::types::AcpSessionState::Failed);
+        let AcpEvent::ProviderInfo { raw, .. } = event else {
+            panic!("expected provider_info event");
+        };
+        assert_eq!(raw["type"], "provider_error");
+        assert!(raw["text"].as_str().unwrap_or("").contains("usage_limit"));
+    }
+
+    #[test]
+    fn unfinished_prompt_without_provider_error_preserves_idle_completion_heuristic() {
+        let (state, event) = unfinished_prompt_exit_event("session-1", "codex-acp", true, &None);
+
+        assert_eq!(state, lab_apis::acp::types::AcpSessionState::Completed);
+        let AcpEvent::ProviderInfo { raw, .. } = event else {
+            panic!("expected provider_info event");
+        };
+        assert_eq!(raw["type"], "runtime_exit_without_stop_reason");
+        assert_eq!(raw["status"], "completed");
     }
 
     // -----------------------------------------------------------------------

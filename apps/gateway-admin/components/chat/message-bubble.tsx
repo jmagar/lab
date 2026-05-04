@@ -1,9 +1,10 @@
 'use client'
 
 import * as React from 'react'
-import { Bot, Copy, Check, UserRound } from 'lucide-react'
+import { Bot, Check, ChevronDown, Copy, ListChecks, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -11,8 +12,9 @@ import {
 } from '@/components/ai/chain-of-thought'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai/reasoning'
 import { ToolCallDisplay } from './tool-call-display'
+import { GroupedToolCallDisplay, groupConsecutiveToolCalls } from './grouped-tool-call-display'
+import { getToolCategory } from './tool-call-presentation'
 import type { ACPMessage } from './types'
-import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = React.useState(false)
@@ -49,18 +51,63 @@ function StreamingCursor() {
   )
 }
 
+function AgentActionsPanel({
+  open,
+  onOpenChange,
+  toolCalls,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  toolCalls: ACPMessage['toolCalls']
+}) {
+  return (
+    <div className="w-full overflow-hidden rounded-aurora-3 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]">
+      <Collapsible open={open} onOpenChange={onOpenChange}>
+        <CollapsibleTrigger
+          className="flex w-full items-center gap-2 px-4 py-3 text-[13px] font-medium text-aurora-text-muted transition-colors hover:text-aurora-text-primary"
+        >
+          <ListChecks className="size-4" />
+          <span className="flex-1 text-left">Agent Actions</span>
+          <span className="rounded-full border border-aurora-border-default bg-aurora-control-surface px-2 py-0.5 text-[10px] font-semibold text-aurora-text-muted">
+            {toolCalls.length}
+          </span>
+          <ChevronDown className={cn('size-4 transition-transform', open ? 'rotate-180' : 'rotate-0')} />
+        </CollapsibleTrigger>
+        <CollapsibleContent className="px-4 pb-3">
+          <div className="space-y-1">
+            {groupConsecutiveToolCalls(toolCalls, getToolCategory).map((entry) =>
+              entry.type === 'group' ? (
+                <GroupedToolCallDisplay
+                  key={`group-${entry.toolCalls[0]!.id}`}
+                  category={entry.category}
+                  toolCalls={entry.toolCalls}
+                />
+              ) : (
+                <ToolCallDisplay key={entry.toolCall.id} toolCall={entry.toolCall} />
+              ),
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  )
+}
+
 export function MessageBubble({ message }: { message: ACPMessage }) {
   const isUser = message.role === 'user'
   const [reasoningOpen, setReasoningOpen] = React.useState(Boolean(message.isStreaming))
   const [chainOpen, setChainOpen] = React.useState(Boolean(message.isStreaming))
+  const [actionsOpen, setActionsOpen] = React.useState(Boolean(message.isStreaming))
 
   React.useEffect(() => {
     const streaming = Boolean(message.isStreaming)
     setReasoningOpen(streaming)
-    setChainOpen(streaming || message.toolCalls.length > 0)
+    setChainOpen(streaming)
+    setActionsOpen(streaming || message.toolCalls.length > 0)
   }, [message.isStreaming, message.toolCalls.length])
 
-  const hasChain = !isUser && (message.thoughts.length > 0 || message.toolCalls.length > 0)
+  const hasReasoning = !isUser && message.thoughts.length > 0
+  const hasActions = !isUser && message.toolCalls.length > 0
 
   return (
     <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
@@ -80,7 +127,7 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
       </div>
 
       <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
-        {hasChain && (
+        {hasReasoning && (
           <div className="w-full overflow-hidden rounded-aurora-3 border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-strong),var(--aurora-highlight-strong)]">
             <ChainOfThought
               open={chainOpen}
@@ -88,42 +135,40 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
               className="px-4 py-3"
             >
               <ChainOfThoughtHeader className="font-medium text-aurora-text-muted">
-                Chain of Thought
+                Reasoning Summary
               </ChainOfThoughtHeader>
               <ChainOfThoughtContent className="pt-1">
-                {message.thoughts.length > 0 && (
-                  <div className="rounded-aurora-2 border border-aurora-border-default/70 bg-aurora-control-surface px-3 py-3">
-                    <Reasoning
-                      isStreaming={Boolean(message.isStreaming)}
-                      open={reasoningOpen}
-                      onOpenChange={setReasoningOpen}
-                      className="mb-0"
-                    >
-                      <ReasoningTrigger className="text-aurora-text-muted" />
-                      <ReasoningContent className="mt-3 space-y-3 text-aurora-text-primary">
-                        {message.thoughts.join('\n\n')}
-                      </ReasoningContent>
-                    </Reasoning>
-                  </div>
-                )}
-
-                {message.toolCalls.length > 0 && (
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center gap-2 px-1">
-                      <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
-                        agent actions
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {message.toolCalls.map((toolCall) => (
-                        <ToolCallDisplay key={toolCall.id} toolCall={toolCall} />
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="rounded-aurora-2 border border-aurora-border-default/70 bg-aurora-control-surface px-3 py-3">
+                  <Reasoning
+                    isStreaming={Boolean(message.isStreaming)}
+                    open={reasoningOpen}
+                    onOpenChange={setReasoningOpen}
+                    className="mb-0"
+                  >
+                    <ReasoningTrigger
+                      className="text-aurora-text-muted"
+                      getThinkingMessage={(isStreaming, duration) => {
+                        if (isStreaming || duration === 0) return <span className="animate-pulse">Reasoning...</span>
+                        if (duration === undefined) return <span>Reasoning</span>
+                        return <span>Reasoned for {duration} seconds</span>
+                      }}
+                    />
+                    <ReasoningContent className="mt-3 space-y-3 text-aurora-text-primary">
+                      {message.thoughts.join('\n\n')}
+                    </ReasoningContent>
+                  </Reasoning>
+                </div>
               </ChainOfThoughtContent>
             </ChainOfThought>
           </div>
+        )}
+
+        {hasActions && (
+          <AgentActionsPanel
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            toolCalls={message.toolCalls}
+          />
         )}
 
         {message.text && (

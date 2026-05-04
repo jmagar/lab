@@ -41,8 +41,8 @@ export function resolvePersistedChatLayoutState(): ChatLayoutState {
   }
 }
 
-export function shouldAutoBootstrapChat(open: boolean, isOnChatPage: boolean) {
-  return open || isOnChatPage
+export function shouldAutoBootstrapChat(_open: boolean, _isOnChatPage: boolean) {
+  return false
 }
 
 export function AdminLayoutClient({

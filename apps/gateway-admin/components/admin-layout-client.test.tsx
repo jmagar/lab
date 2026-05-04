@@ -10,7 +10,7 @@ import {
   writePersistedState,
 } from './floating-chat-popover'
 
-test('resolved persisted chat layout state carries open into bootstrap gating', () => {
+test('resolved persisted chat layout state does not auto-create chat sessions', () => {
   writePersistedState({
     open: true,
     config: { sendPageContext: true },
@@ -22,7 +22,7 @@ test('resolved persisted chat layout state carries open into bootstrap gating', 
     open: true,
     config: { sendPageContext: true },
   })
-  assert.equal(shouldAutoBootstrapChat(state.open, false), true)
+  assert.equal(shouldAutoBootstrapChat(state.open, false), false)
 })
 
 test('chat auto bootstrap remains disabled when closed outside the chat page', () => {
@@ -38,5 +38,5 @@ test('chat auto bootstrap remains disabled when closed outside the chat page', (
     config: DEFAULT_CONFIG,
   })
   assert.equal(shouldAutoBootstrapChat(state.open, false), false)
-  assert.equal(shouldAutoBootstrapChat(state.open, true), true)
+  assert.equal(shouldAutoBootstrapChat(state.open, true), false)
 })

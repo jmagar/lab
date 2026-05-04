@@ -156,11 +156,6 @@
             "description": "Gemini CLI, extension, and AI workflow reference skills."
         },
         {
-            "name": "github",
-            "source": "./plugins/gh-auto",
-            "description": "GitHub workflow skills for CI debugging and pull request review thread resolution."
-        },
-        {
             "name": "gogcli",
             "source": "./plugins/gogcli",
             "description": "Google Workspace CLI for Gmail, Calendar, Drive, and more (NOT GOG.com). Wraps Peter Steinberger's gogcli \u2014 a script-friendly CLI for Gmail, Calendar, Drive, Docs, Sheets, Slides, Chat, Contacts, Tasks, People, Admin, Groups, Keep, Classroom, Forms, and Apps Script. Pure CLI, no MCP server required."
@@ -288,7 +283,7 @@
         {
             "name": "vibin",
             "source": "./plugins/vibin",
-            "description": "Session workflow skills for quick push and session documentation."
+            "description": "Session, GitHub review, and CI workflow skills for quick push, session documentation, PR comments, and CI debugging."
         },
         {
             "name": "agent-sdk-dev",

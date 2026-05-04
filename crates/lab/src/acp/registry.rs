@@ -425,6 +425,11 @@ impl AcpSessionRegistry {
         }
         {
             let mut summary = session.summary.write().await;
+            if should_replace_prompt_title(&summary.title)
+                && let Some(title) = title_from_prompt(prompt)
+            {
+                summary.title = title;
+            }
             summary.state = AcpSessionState::Running;
             summary.updated_at = jiff::Timestamp::now().to_string();
         }
@@ -1296,6 +1301,13 @@ impl AcpSessionRegistry {
     }
 
     #[cfg(test)]
+    pub async fn set_title_for_test(&self, session_id: &str, title: &str) {
+        if let Ok(session) = self.get_session_arc(session_id).await {
+            session.summary.write().await.title = title.to_string();
+        }
+    }
+
+    #[cfg(test)]
     pub async fn detach_runtime_for_test(&self, session_id: &str) {
         if let Ok(session) = self.get_session_arc(session_id).await {
             *session.handle.lock().await = None;
@@ -1461,6 +1473,34 @@ fn not_found(message: &str) -> ToolError {
         sdk_kind: "not_found".to_string(),
         message: message.to_string(),
     }
+}
+
+fn should_replace_prompt_title(title: &str) -> bool {
+    title.trim().is_empty() || title.trim() == "New session"
+}
+
+fn title_from_prompt(prompt: &str) -> Option<String> {
+    let line = prompt
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+    let normalized = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return None;
+    }
+    const MAX_TITLE_CHARS: usize = 64;
+    if normalized.chars().count() > MAX_TITLE_CHARS {
+        let mut title = normalized
+            .chars()
+            .take(MAX_TITLE_CHARS.saturating_sub(3))
+            .collect::<String>()
+            .trim_end()
+            .to_string();
+        title.push_str("...");
+        return Some(title);
+    }
+    Some(normalized)
 }
 
 // ---------------------------------------------------------------------------
@@ -1634,6 +1674,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn prompt_session_sets_fallback_title_from_first_prompt() {
+        let registry = test_registry();
+        registry.inject_fake_session("title-sess", "alice").await;
+        registry
+            .set_title_for_test("title-sess", "New session")
+            .await;
+
+        registry
+            .prompt_session(
+                "title-sess",
+                "Context: route=/chat\n\nInvestigate empty ACP sessions",
+                "alice",
+            )
+            .await
+            .expect("prompt dispatch");
+
+        let summary = registry
+            .get_session("title-sess")
+            .await
+            .expect("session summary");
+        assert_eq!(summary.title, "Investigate empty ACP sessions");
+    }
+
+    #[tokio::test]
     async fn test_session_limit_resets_after_removal() {
         let registry = test_registry();
         for i in 0..MAX_CONCURRENT_SESSIONS {
@@ -1655,5 +1719,14 @@ mod tests {
 
         assert_eq!(registry.session_count().await, MAX_CONCURRENT_SESSIONS + 5);
         assert_eq!(registry.runtime_session_count().await, 0);
+    }
+
+    #[test]
+    fn title_from_prompt_uses_last_user_line_and_bounds_length() {
+        let prompt = "Context: route=/chat\n\nSummarize the Docker ACP session creation behavior and identify the trigger.";
+        assert_eq!(
+            title_from_prompt(prompt).as_deref(),
+            Some("Summarize the Docker ACP session creation behavior and identi...")
+        );
     }
 }

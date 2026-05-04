@@ -288,14 +288,14 @@ test('chat shell sends prompts without bearer auth and resumes session streams f
   })
 
   await page.goto(`${BASE_URL}/chat/`, { waitUntil: 'networkidle' })
-
-  await assert.doesNotReject(() => page.getByText('Bootstrap session').first().waitFor())
-  await assert.doesNotReject(() => page.getByText('Hello session 1').waitFor())
+  assert.equal(sessions.length, 0, 'opening /chat must not create an empty backend session')
 
   await page.getByRole('textbox', { name: 'Message' }).fill('Summarize Stage 3 browser coverage')
   await page.getByRole('button', { name: 'Send message' }).click()
 
   await waitForCondition(() => promptRequests.length === 1)
+  await assert.doesNotReject(() => page.getByText('Bootstrap session').first().waitFor())
+  await assert.doesNotReject(() => page.getByText('Hello session 1').waitFor())
   assert.deepEqual(promptRequests, [
     {
       sessionId: 'session-1',
@@ -564,7 +564,7 @@ test('chat shell agent picker switches provider and sends through a provider-mat
 
   await page.goto(`${BASE_URL}/chat/`, { waitUntil: 'networkidle' })
 
-  await assert.doesNotReject(() => page.getByText('codex-acp session').first().waitFor())
+  assert.deepEqual(createRequests, [], 'opening /chat must not create a provider session')
   await page.getByRole('button', { name: 'Selected agent: Codex ACP' }).click()
   await page.getByRole('option', { name: /Claude ACP/ }).click()
   await assert.doesNotReject(() =>
@@ -576,12 +576,11 @@ test('chat shell agent picker switches provider and sends through a provider-mat
 
   await waitForCondition(() => promptRequests.length === 1)
   assert.deepEqual(createRequests, [
-    { provider: 'codex-acp' },
     { provider: 'claude-acp' },
   ])
   assert.deepEqual(promptRequests, [
     {
-      sessionId: 'session-2',
+      sessionId: 'session-1',
       prompt: 'Use Claude for this',
     },
   ])
