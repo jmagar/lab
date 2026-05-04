@@ -2,6 +2,12 @@
 
 import * as React from 'react'
 import { Bot, Check, ChevronDown, Copy, ListChecks, UserRound } from 'lucide-react'
+import {
+  Streamdown,
+  defaultUrlTransform,
+  type AllowElement,
+  type UrlTransform,
+} from 'streamdown'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
@@ -42,12 +48,73 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+export function getMessageCopyText(message: Pick<ACPMessage, 'text'>) {
+  return message.text
+}
+
 function StreamingCursor() {
   return (
     <span
       aria-hidden="true"
       className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse rounded-sm bg-aurora-accent-primary align-middle"
     />
+  )
+}
+
+const SAFE_MARKDOWN_IMAGE_ELEMENTS = ['img'] as const
+const NO_REHYPE_PLUGINS = []
+const DISABLED_LINK_SAFETY = { enabled: false } as const
+
+function isAllowedMarkdownUrl(url: string) {
+  const trimmed = url.trim()
+  if (trimmed.startsWith('//')) return false
+
+  const scheme = trimmed.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase()
+  return !scheme || scheme === 'http' || scheme === 'https' || scheme === 'mailto'
+}
+
+const safeMarkdownUrlTransform: UrlTransform = (url, key, node) => {
+  const transformed = defaultUrlTransform(url, key, node)
+  if (!transformed) return transformed
+
+  return isAllowedMarkdownUrl(transformed) ? transformed : null
+}
+
+const allowSafeMarkdownElement: AllowElement = (element) => {
+  if (element.tagName === 'img') return false
+
+  if (element.tagName === 'a') {
+    const href = element.properties?.href
+    return typeof href === 'string' && isAllowedMarkdownUrl(href)
+  }
+
+  return true
+}
+
+function AssistantMarkdown({
+  text,
+  isStreaming,
+}: {
+  text: string
+  isStreaming: boolean
+}) {
+  return (
+    <div className="min-w-0 pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [&_a]:break-words [&_code]:break-words [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_table]:max-w-full [&_table]:overflow-x-auto">
+      <Streamdown
+        mode={isStreaming ? 'streaming' : 'static'}
+        skipHtml
+        rehypePlugins={NO_REHYPE_PLUGINS}
+        disallowedElements={SAFE_MARKDOWN_IMAGE_ELEMENTS}
+        allowElement={allowSafeMarkdownElement}
+        urlTransform={safeMarkdownUrlTransform}
+        controls={false}
+        linkSafety={DISABLED_LINK_SAFETY}
+        lineNumbers={false}
+      >
+        {text}
+      </Streamdown>
+      {isStreaming ? <StreamingCursor /> : null}
+    </div>
   )
 }
 
@@ -93,7 +160,7 @@ function AgentActionsPanel({
   )
 }
 
-export function MessageBubble({ message }: { message: ACPMessage }) {
+function MessageBubbleComponent({ message }: { message: ACPMessage }) {
   const isUser = message.role === 'user'
   const [reasoningOpen, setReasoningOpen] = React.useState(Boolean(message.isStreaming))
   const [chainOpen, setChainOpen] = React.useState(Boolean(message.isStreaming))
@@ -186,12 +253,16 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
                 className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
               />
             )}
-            <p className="whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary">
-              {message.text}
-              {message.isStreaming ? <StreamingCursor /> : null}
-            </p>
+            {isUser ? (
+              <p className="whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary">
+                {message.text}
+                {message.isStreaming ? <StreamingCursor /> : null}
+              </p>
+            ) : (
+              <AssistantMarkdown text={message.text} isStreaming={Boolean(message.isStreaming)} />
+            )}
             <div className="absolute right-2 top-2">
-              <CopyButton text={message.text} />
+              <CopyButton text={getMessageCopyText(message)} />
             </div>
           </div>
         )}
@@ -199,3 +270,23 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
     </div>
   )
 }
+
+function areMessageBubblePropsEqual(
+  previous: Readonly<{ message: ACPMessage }>,
+  next: Readonly<{ message: ACPMessage }>,
+) {
+  const prev = previous.message
+  const current = next.message
+
+  return (
+    prev.id === current.id &&
+    prev.role === current.role &&
+    prev.text === current.text &&
+    prev.isStreaming === current.isStreaming &&
+    prev.version === current.version &&
+    prev.thoughts.length === current.thoughts.length &&
+    prev.toolCalls.length === current.toolCalls.length
+  )
+}
+
+export const MessageBubble = React.memo(MessageBubbleComponent, areMessageBubblePropsEqual)
