@@ -12,7 +12,7 @@ The upstream pool lives in `crates/lab/src/dispatch/upstream/` because it is sha
 
 ## What Operators Configure
 
-To proxy an upstream server through `lab`, you configure one or more `[[upstream]]` entries in `~/.config/lab/config.toml`, optionally provide bearer-token env vars in `~/.lab/.env`, then start `lab serve` normally.
+To proxy an upstream server through `lab`, you configure one or more `[[upstream]]` entries in `~/.config/lab/config.toml`, optionally provide bearer-token env vars in `~/.lab/.env`, then start `labby serve` normally.
 
 `lab` will:
 
@@ -23,8 +23,8 @@ To proxy an upstream server through `lab`, you configure one or more `[[upstream
 
 That means the client connects only to `lab`:
 
-- `lab mcp` for stdio clients such as Claude Desktop
-- `lab serve` for streamable HTTP MCP clients
+- `labby mcp` for stdio clients such as Claude Desktop
+- `labby serve` for streamable HTTP MCP clients
 
 The client never connects directly to the upstreams once `lab` is acting as the gateway.
 
@@ -169,10 +169,10 @@ Operator browser flow lives in [GATEWAY.md](./GATEWAY.md).
 CLI examples:
 
 ```bash
-lab gateway mcp auth start chrome-devtools
-lab gateway mcp auth open chrome-devtools --wait
-lab gateway mcp auth status chrome-devtools
-lab gateway mcp auth clear chrome-devtools
+labby gateway mcp auth start chrome-devtools
+labby gateway mcp auth open chrome-devtools --wait
+labby gateway mcp auth status chrome-devtools
+labby gateway mcp auth clear chrome-devtools
 ```
 
 ### Spec-Aligned Invariants
@@ -438,13 +438,13 @@ Set bearer-token env vars named by `bearer_token_env` in `~/.lab/.env` or the pr
 For local stdio clients:
 
 ```bash
-lab mcp
+labby mcp
 ```
 
 For network MCP clients:
 
 ```bash
-lab serve
+labby serve
 ```
 
 ### 4. Point the client at `lab`, not the upstreams
@@ -455,7 +455,7 @@ Example `.mcp.json` for stdio:
 {
   "mcpServers": {
     "lab": {
-      "command": "lab",
+      "command": "labby",
       "args": ["serve"]
     }
   }

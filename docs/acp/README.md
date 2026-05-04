@@ -185,6 +185,13 @@ Landed:
   and paths-with-spaces round-trip verbatim. Legacy entries without an
   `args` key fall back to whitespace-splitting `command` (one-time read
   fidelity gap; re-installing migrates the entry).
+- Docker-hosted Codex ACP providers must disable Codex's inner filesystem
+  sandbox with `sandbox_mode="danger-full-access"` in the provider args or
+  `CODEX_HOME/config.toml`. The Docker container is the outer isolation
+  boundary; Docker's default seccomp profile blocks the nested namespace
+  setup used by Codex `workspace-write` and `read-only` modes. At ACP registry
+  startup, Lab emits a `container_sandbox_incompatible` warning if it detects
+  a container runtime with an unsafe Codex sandbox mode.
 - Provider stderr is line-redacted and length-capped before being forwarded
   on the SSE event stream (`MAX_PROVIDER_STDERR_CHARS`, redaction via
   `dispatch::redact`).

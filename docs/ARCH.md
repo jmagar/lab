@@ -109,7 +109,7 @@ Every service client implements a common health surface:
 - `service_type()`
 - `health()`
 
-That gives `lab health`, `lab doctor`, TUI status views, and MCP `status` surfaces a shared model without forcing all other service operations into one trait.
+That gives `labby health`, `labby doctor`, TUI status views, and MCP `status` surfaces a shared model without forcing all other service operations into one trait.
 
 ### `ServiceStatus`
 
@@ -140,8 +140,8 @@ Service identifiers must use service-local newtypes rather than raw integers eve
 The same service logic is exposed through three product surfaces:
 
 - CLI: `lab <service> <command>`
-- MCP stdio: `lab mcp`
-- MCP HTTP: `lab serve`
+- MCP stdio: `labby mcp`
+- MCP HTTP: `labby serve`
 - TUI: `lab plugins`
 
 All three consume the same service metadata and service clients.
@@ -200,4 +200,4 @@ Each service gets:
 - one `PluginMeta` when it participates in install/TUI/doctor flows
 - one health-check implementation when it models a remotely configured service
 
-There are product-local exceptions. [`EXTRACT.md`](./EXTRACT.md) is a synthetic bootstrap service, `crates/lab-apis::marketplace` is a synthetic marketplace surface that exports only the pure types (`Marketplace`, `Plugin`, `Artifact`, `PluginSource`, `ArtifactLang`) while all dispatch and filesystem behavior lives under `crates/lab/src/dispatch/marketplace/`, [`GATEWAY.md`](./GATEWAY.md) is a product-local management surface for runtime upstream configuration, and [`DEVICE_RUNTIME.md`](./DEVICE_RUNTIME.md) describes the device runtime that turns every `lab serve` process into either the fleet `master` or a reporting non-master device.
+There are product-local exceptions. [`EXTRACT.md`](./EXTRACT.md) is a synthetic bootstrap service, `crates/lab-apis::marketplace` is a synthetic marketplace surface that exports only the pure types (`Marketplace`, `Plugin`, `Artifact`, `PluginSource`, `ArtifactLang`) while all dispatch and filesystem behavior lives under `crates/lab/src/dispatch/marketplace/`, [`GATEWAY.md`](./GATEWAY.md) is a product-local management surface for runtime upstream configuration, and [`DEVICE_RUNTIME.md`](./DEVICE_RUNTIME.md) describes the device runtime that turns every `labby serve` process into either the fleet `master` or a reporting non-master device.

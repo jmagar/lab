@@ -171,8 +171,8 @@ cli/              → arg parsing, --json output shape
 
 ```bash
 just test                  # full workspace (cargo-nextest)
-cargo test -p lab-apis     # SDK only
-cargo test -p lab          # dispatch + adapters
+cargo test -p labby-apis     # SDK only
+cargo test -p labby          # dispatch + adapters
 just lint                  # clippy -D warnings + fmt check
 ```
 

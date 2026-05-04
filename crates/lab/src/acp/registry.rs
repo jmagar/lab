@@ -94,6 +94,15 @@ struct Session {
 
 impl Session {
     fn new(id: String, principal: String, summary: AcpSessionSummary) -> Arc<Self> {
+        Self::new_with_seq(id, principal, summary, 1)
+    }
+
+    fn new_with_seq(
+        id: String,
+        principal: String,
+        summary: AcpSessionSummary,
+        next_seq: u64,
+    ) -> Arc<Self> {
         Arc::new(Self {
             id,
             principal,
@@ -102,7 +111,7 @@ impl Session {
             handle: Mutex::new(None),
             subscribers: Mutex::new(Vec::new()),
             events: RwLock::new(Vec::new()),
-            next_seq: Mutex::new(1),
+            next_seq: Mutex::new(next_seq),
             last_activity: Mutex::new(Instant::now()),
         })
     }
@@ -128,6 +137,7 @@ pub struct AcpSessionRegistry {
 impl AcpSessionRegistry {
     #[must_use]
     pub fn new() -> Self {
+        crate::acp::runtime::warn_if_acp_provider_sandbox_is_incompatible();
         let default_cwd = std::env::var("ACP_SESSION_CWD").unwrap_or_else(|_| {
             std::env::current_dir()
                 .map(|p| p.display().to_string())
@@ -249,11 +259,11 @@ impl AcpSessionRegistry {
             });
         }
 
-        // Guard: concurrent session limit.
-        let active_count = {
-            let map_guard = self.sessions.read().await;
-            map_guard.len()
-        };
+        // Guard: concurrent runtime limit.
+        //
+        // Restored SQLite sessions stay in the map for history and reattach,
+        // but they do not own provider processes until prompted again.
+        let active_count = self.runtime_session_count().await;
         if active_count >= MAX_CONCURRENT_SESSIONS {
             tracing::warn!(
                 surface = "acp",
@@ -492,10 +502,7 @@ impl AcpSessionRegistry {
             session_id = %session_id, reason = "user_cancelled",
             "ACP session cancelled",
         );
-        let runtime = { session.handle.lock().await.clone() };
-        if let Some(rt) = runtime {
-            drop(rt.cancel().await);
-        }
+        cancel_and_drop_runtime(&session).await;
 
         if let Some(db) = self.persistence().await {
             if let Err(error) = db
@@ -605,10 +612,7 @@ impl AcpSessionRegistry {
             session_id = %session_id, reason = "user_closed",
             "ACP session closed",
         );
-        let runtime = { session.handle.lock().await.clone() };
-        if let Some(rt) = runtime {
-            drop(rt.cancel().await);
-        }
+        cancel_and_drop_runtime(&session).await;
         // Free the slot immediately.
         {
             self.sessions.write().await.remove(session_id);
@@ -643,14 +647,11 @@ impl AcpSessionRegistry {
             "Initiating graceful shutdown — terminating all ACP sessions",
         );
         for session in &sessions {
-            let runtime = { session.handle.lock().await.clone() };
-            if let Some(rt) = runtime {
-                drop(rt.cancel().await);
-                tracing::info!(
-                    surface = "acp", service = "registry", action = "shutdown",
-                    session_id = %session.id, "ACP session cancelled during shutdown",
-                );
-            }
+            cancel_and_drop_runtime(session).await;
+            tracing::info!(
+                surface = "acp", service = "registry", action = "shutdown",
+                session_id = %session.id, "ACP session cancelled during shutdown",
+            );
         }
         // Wait for event forwarders to remove sessions (up to 10 s).
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
@@ -684,7 +685,9 @@ impl AcpSessionRegistry {
     /// Remove a session from the live map and free its slot.
     #[allow(dead_code)]
     pub async fn remove_session(&self, session_id: &str) {
-        if self.sessions.write().await.remove(session_id).is_some() {
+        let session = self.sessions.write().await.remove(session_id);
+        if let Some(session) = session {
+            cancel_and_drop_runtime(&session).await;
             tracing::info!(
                 surface = "acp", service = "registry", action = "session.remove",
                 session_id = %session_id, "ACP session removed from registry",
@@ -843,10 +846,7 @@ impl AcpSessionRegistry {
                     timeout_secs = self.idle_timeout.as_secs(),
                     "ACP session exceeded idle timeout — removing from registry",
                 );
-                let runtime = { session.handle.lock().await.clone() };
-                if let Some(rt) = runtime {
-                    drop(rt.cancel().await);
-                }
+                cancel_and_drop_runtime(&session).await;
                 self.sessions.write().await.remove(&session.id);
             }
         }
@@ -1003,6 +1003,160 @@ impl AcpSessionRegistry {
         Ok(())
     }
 
+    async fn runtime_session_count(&self) -> usize {
+        let sessions: Vec<Arc<Session>> =
+            { self.sessions.read().await.values().cloned().collect() };
+        let mut count = 0usize;
+        for session in sessions {
+            if session.handle.lock().await.is_some() {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    // ── Startup restore ────────────────────────────────────────────────────
+
+    /// Rehydrate sessions from SQLite into the in-memory map after a process
+    /// restart.  Must be called once, after construction, before accepting
+    /// requests.
+    ///
+    /// - Sessions with no `principal` are skipped — they cannot be accessed.
+    /// - `next_seq` is seeded to `max(persisted_seq) + 1` so new events never
+    ///   collide with the existing UNIQUE(session_id, seq) index.
+    /// - Sessions that were `Running` or `WaitingForPermission` at shutdown get
+    ///   synthetic `SessionUpdate{Failed}` + `ProviderInfo{container_restart}`
+    ///   events written to both the in-memory buffer and SQLite so callers see
+    ///   a clean terminal transition.
+    pub async fn restore_from_db(&self) {
+        let Some(db) = self.persistence().await else {
+            tracing::warn!(
+                surface = "acp",
+                service = "registry",
+                action = "restore",
+                kind = "persistence_unavailable",
+                "persistence unavailable — skipping session restore",
+            );
+            return;
+        };
+
+        let sessions = match db.load_sessions().await {
+            Ok(s) => s,
+            Err(error) => {
+                tracing::error!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "restore",
+                    kind = "internal_error",
+                    error = %error,
+                    "failed to load sessions from SQLite for restore",
+                );
+                return;
+            }
+        };
+
+        let max_seqs = match db.load_max_seqs().await {
+            Ok(m) => m,
+            Err(error) => {
+                tracing::warn!(
+                    surface = "acp",
+                    service = "registry",
+                    action = "restore",
+                    kind = "internal_error",
+                    error = %error,
+                    "failed to load max seqs from SQLite — seeding next_seq=1 for all sessions",
+                );
+                HashMap::new()
+            }
+        };
+
+        let now = jiff::Timestamp::now().to_string();
+        let total = sessions.len();
+        let mut restored = 0usize;
+
+        for summary in sessions {
+            let principal = match &summary.principal {
+                Some(p) if !p.is_empty() => p.clone(),
+                _ => continue,
+            };
+
+            let max_seq = max_seqs.get(&summary.id).copied().unwrap_or(0);
+            let next_seq = max_seq + 1;
+
+            let in_flight = matches!(
+                summary.state,
+                AcpSessionState::Running | AcpSessionState::WaitingForPermission
+            );
+
+            let restore_summary = if in_flight {
+                AcpSessionSummary {
+                    state: AcpSessionState::Failed,
+                    updated_at: now.clone(),
+                    ..summary.clone()
+                }
+            } else {
+                summary.clone()
+            };
+
+            let session =
+                Session::new_with_seq(summary.id.clone(), principal, restore_summary, next_seq);
+
+            // For in-flight sessions: write synthetic failure events so SSE
+            // subscribers and the DB reflect the clean Failed transition.
+            if in_flight {
+                let failed = next_session_event(
+                    &session,
+                    AcpEvent::SessionUpdate {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: now.clone(),
+                        session_id: summary.id.clone(),
+                        seq: 0,
+                        state: AcpSessionState::Failed,
+                    },
+                )
+                .await;
+                persist_session_event(self, &failed).await;
+                apply_session_event(&session, &failed).await;
+
+                let info = next_session_event(
+                    &session,
+                    AcpEvent::ProviderInfo {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        created_at: now.clone(),
+                        session_id: summary.id.clone(),
+                        seq: 0,
+                        provider: "lab".to_string(),
+                        raw: serde_json::json!({
+                            "type": "container_restart",
+                            "title": "Session interrupted by container restart",
+                            "status": "failed",
+                        }),
+                    },
+                )
+                .await;
+                persist_session_event(self, &info).await;
+                apply_session_event(&session, &info).await;
+            }
+
+            {
+                self.sessions
+                    .write()
+                    .await
+                    .insert(summary.id.clone(), session);
+            }
+            restored += 1;
+        }
+
+        tracing::info!(
+            surface = "acp",
+            service = "registry",
+            action = "restore",
+            total_in_db = total,
+            restored,
+            "ACP sessions restored from SQLite",
+        );
+    }
+
     // ── Test helpers ───────────────────────────────────────────────────────
 
     /// Create a test registry with a custom idle timeout. Background tasks are
@@ -1142,6 +1296,13 @@ impl AcpSessionRegistry {
     }
 
     #[cfg(test)]
+    pub async fn detach_runtime_for_test(&self, session_id: &str) {
+        if let Ok(session) = self.get_session_arc(session_id).await {
+            *session.handle.lock().await = None;
+        }
+    }
+
+    #[cfg(test)]
     pub async fn session_count(&self) -> usize {
         self.sessions.read().await.len()
     }
@@ -1156,6 +1317,13 @@ impl Default for AcpSessionRegistry {
 // ---------------------------------------------------------------------------
 // Free functions
 // ---------------------------------------------------------------------------
+
+async fn cancel_and_drop_runtime(session: &Arc<Session>) {
+    let runtime = { session.handle.lock().await.take() };
+    if let Some(rt) = runtime {
+        drop(rt.cancel().await);
+    }
+}
 
 async fn load_in_memory_events(session: &Arc<Session>, since_seq: u64) -> Vec<AcpEvent> {
     let events = session.events.read().await;
@@ -1474,5 +1642,18 @@ mod tests {
         assert_eq!(registry.session_count().await, MAX_CONCURRENT_SESSIONS);
         registry.remove_session("rs-0").await;
         assert_eq!(registry.session_count().await, MAX_CONCURRENT_SESSIONS - 1);
+    }
+
+    #[tokio::test]
+    async fn restored_sessions_without_runtime_do_not_count_against_limit() {
+        let registry = test_registry();
+        for i in 0..(MAX_CONCURRENT_SESSIONS + 5) {
+            let session_id = format!("restored-{i}");
+            registry.inject_fake_session(&session_id, "alice").await;
+            registry.detach_runtime_for_test(&session_id).await;
+        }
+
+        assert_eq!(registry.session_count().await, MAX_CONCURRENT_SESSIONS + 5);
+        assert_eq!(registry.runtime_session_count().await, 0);
     }
 }

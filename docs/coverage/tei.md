@@ -85,7 +85,7 @@ return a `validation_error` with message indicating the limit and recommending s
 
 ### CLI (`crates/lab/src/cli/tei.rs`)
 
-Tier-2 shim. `lab tei <action> [--params '<json>']`. The `action` argument defaults to `help`
+Tier-2 shim. `labby tei <action> [--params '<json>']`. The `action` argument defaults to `help`
 when omitted. All eight actions plus `help` and `schema` are wired.
 
 ### MCP (`crates/lab/src/registry.rs`)

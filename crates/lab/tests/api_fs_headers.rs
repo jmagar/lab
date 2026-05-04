@@ -27,8 +27,8 @@ fn fs_router() -> Router {
     // short-circuits on `not_configured_error()` — a ToolError which flows
     // through `IntoResponse` unchanged. That is exactly the error path we
     // want to assert headers on.
-    let state = lab::api::state::AppState::new();
-    let router = Router::new().nest("/fs", lab::api::services::fs::routes(state.clone()));
+    let state = labby::api::state::AppState::new();
+    let router = Router::new().nest("/fs", labby::api::services::fs::routes(state.clone()));
     Router::new().nest("/v1", router).with_state(state)
 }
 

@@ -39,7 +39,7 @@ pub async fn probe_service(
 
 /// Run only service probes, without system or auth checks.
 ///
-/// Used by `lab doctor services`. Results are sent to `tx` as they complete,
+/// Used by `labby doctor services`. Results are sent to `tx` as they complete,
 /// in parallel bounded by `Semaphore(5)`.
 pub async fn stream_service_probes(
     clients: Arc<ServiceClients>,

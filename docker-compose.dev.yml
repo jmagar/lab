@@ -10,7 +10,15 @@
 #
 # Fast iteration (debug build, ~3x faster compile, no optimizations):
 #   just dev-debug
+#
+# ACP runtime smoke check after a restart:
+#   just acp-smoke --provider-only
+#   just acp-smoke
 services:
-  lab-master:
+  labby-master:
     volumes:
-      - ./bin/lab:/usr/local/bin/lab
+      - ./bin/labby:/usr/local/bin/labby
+    environment:
+      # Serve frontend assets from the bind-mounted workspace so `pnpm build`
+      # changes are reflected immediately without a binary rebuild.
+      LAB_WEB_ASSETS_DIR: "/workspace/lab/apps/gateway-admin/out"

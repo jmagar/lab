@@ -22,7 +22,7 @@ What that work does not cover:
 1. **Distribution and Claude Code integration** — how a homelab user installs the binary, how they end up with one MCP server per service in Claude Code, and how the web UI turns into actual `claude plugin install` calls.
 2. **A wizard mode for plugin users** — bg3e was implicitly designed for the operator who runs the full `lab` stack (web UI, HTTP API, OAuth, multi-node fleet, etc.). A user who installed `lab-plex` from the Claude Code marketplace doesn't care about Surfaces, Nodes, OAuth, or PreFlight; they want to enter Plex creds and have the MCP server start working. Showing them all of that pushes operator-grade complexity onto a plugin-grade use case.
 
-This plan adds both, on top of bg3e. The wizard becomes one surface with two **modes** — `plugin` (default when invoked from a plugin slash command, hides operator surfaces) and `full` (default for standalone `lab setup`, shows everything). Plugin-mode users can promote to full at any time; full-mode users see nothing different from what bg3e already specs.
+This plan adds both, on top of bg3e. The wizard becomes one surface with two **modes** — `plugin` (default when invoked from a plugin slash command, hides operator surfaces) and `full` (default for standalone `labby setup`, shows everything). Plugin-mode users can promote to full at any time; full-mode users see nothing different from what bg3e already specs.
 
 This is not a parallel "plugin wizard." It is the same wizard with a render-time gate driven by `setup.state.mode`. Adding the gate is cheap; building a parallel UI would duplicate `ServiceForm`, the stepper, and the API surface for no reason.
 
@@ -55,7 +55,7 @@ The first acceptance criterion below is to reopen the three premature closures a
 - [ ] **`full` mode** renders the complete 7-step flow per the locked bg3e spec. No change to existing behavior.
 - [ ] Both modes share the same components, hooks, and API. Mode is checked in the parent wizard shell; individual step components do not branch on mode.
 - [ ] Plugin mode shows a **"Show advanced setup"** affordance in the topbar. Clicking it switches to full mode in place (no reload), unlocks the hidden steps, and persists the new mode. There is no demote-to-plugin affordance — once a user has explicitly opted into operator complexity, they keep it. (They can edit `~/.lab/.setup-state.json` to undo this; intentional friction.)
-- [ ] `lab setup --mode plugin` and `lab setup --mode full` are CLI flags. The slash command `/setup-core` (shipped by the core plugin) invokes `lab setup --mode plugin`. Standalone `lab setup` defaults to `full`.
+- [ ] `labby setup --mode plugin` and `labby setup --mode full` are CLI flags. The slash command `/setup-core` (shipped by the core plugin) invokes `labby setup --mode plugin`. Standalone `labby setup` defaults to `full`.
 - [ ] The `/settings` rail follows the same gate: in plugin mode, only the Services panel is visible; Core/Doctor/Extract/v2-stubs are hidden behind the same advanced affordance.
 
 ### Plugin lifecycle in setup
@@ -72,21 +72,21 @@ The first acceptance criterion below is to reopen the three premature closures a
 - [ ] The settings rail (`/settings`) Services panel mirrors the toggle. State stays consistent across `/setup` and `/settings` because both read `setup.installed_plugins`.
 
 ### Distribution
-- [ ] `lab marketplace generate --out <dir>` is a real CLI command. Reads every compiled-in service's `PluginMeta`, emits a marketplace tree:
-  - `<dir>/lab-core/` — plugin manifest, `bin/lab` (built binary), `commands/setup-core.md` slash command, README, optional setup skill.
-  - `<dir>/lab-<service>/` for each service — plugin manifest, `commands/install-core.md` slash command, `.mcp.json` containing `{ "command": "<absolute-path-to-core-binary>", "args": ["mcp", "--services", "<service>"] }` where the absolute path is `~/.claude/plugins/lab-core/bin/lab` (escaped per the user's home), README listing the env vars and link-back to `/setup`.
+- [ ] `labby marketplace generate --out <dir>` is a real CLI command. Reads every compiled-in service's `PluginMeta`, emits a marketplace tree:
+  - `<dir>/lab-core/` — plugin manifest, `bin/labby` (built binary), `commands/setup-core.md` slash command, README, optional setup skill.
+  - `<dir>/lab-<service>/` for each service — plugin manifest, `commands/install-core.md` slash command, `.mcp.json` containing `{ "command": "<absolute-path-to-core-binary>", "args": ["mcp", "--services", "<service>"] }` where the absolute path is `~/.claude/plugins/lab-core/bin/labby` (escaped per the user's home), README listing the env vars and link-back to `/setup`.
 - [ ] The generator runs in CI on each release tag and the resulting tree is published as a release artefact.
-- [ ] `bin/lab` inside `lab-core` is a copy of the freshly built release binary, not a symlink — Claude Code's plugin clone needs the file present.
+- [ ] `bin/labby` inside `lab-core` is a copy of the freshly built release binary, not a symlink — Claude Code's plugin clone needs the file present.
 - [ ] The generator is **not** a feature flag and is **not** the only allowed plugin source. Hand-written plugin overrides in the marketplace repo are preserved; the generator only writes service plugins it owns.
 
 ### Core plugin
-- [ ] `marketplace/lab-core/commands/setup-core.md` slash command runs `lab setup --mode plugin`. The user types `/setup-core` in Claude Code and the wizard opens in plugin mode (Services + Finalize only).
-- [ ] `marketplace/lab-core/commands/setup-core-advanced.md` slash command runs `lab setup --mode full`. Documented in the core plugin's README as the operator entry point.
+- [ ] `marketplace/lab-core/commands/setup-core.md` slash command runs `labby setup --mode plugin`. The user types `/setup-core` in Claude Code and the wizard opens in plugin mode (Services + Finalize only).
+- [ ] `marketplace/lab-core/commands/setup-core-advanced.md` slash command runs `labby setup --mode full`. Documented in the core plugin's README as the operator entry point.
 - [ ] `marketplace/lab-core/skills/install-binary/` (or equivalent) handles the PATH question:
-  - If `~/.local/bin/lab` does not exist or doesn't point at the core plugin's `bin/lab`, offer to create the symlink. Skip silently otherwise.
+  - If `~/.local/bin/labby` does not exist or doesn't point at the core plugin's `bin/labby`, offer to create the symlink. Skip silently otherwise.
   - On failure to symlink (permissions, etc.), fall back to printing one line telling the user the absolute path of the core binary and that `claude plugin install` will use it directly via service plugins' `.mcp.json`.
   - This skill **never** auto-installs other plugins, never edits Claude Code config, never restarts anything.
-- [ ] No SessionStart hook in the core plugin auto-spawns a webserver. Setup runs only when the user invokes `/setup-core` (or `lab setup` from a terminal).
+- [ ] No SessionStart hook in the core plugin auto-spawns a webserver. Setup runs only when the user invokes `/setup-core` (or `labby setup` from a terminal).
 
 ### Service plugins
 - [ ] Each `marketplace/lab-<service>/` plugin contains a `commands/install-core.md` slash command. When the user has installed the service plugin without core, `/install-core` prints a one-liner `claude plugin install lab-core@<org>` and asks the user to restart. The slash command does not shell out itself.
@@ -96,8 +96,8 @@ The first acceptance criterion below is to reopen the three premature closures a
 ### Env-aware CLI
 - [ ] `lab help` shows only services whose required env vars are present. Always-visible operator commands (`init`, `setup`, `doctor`, `plugins`, `extract`, `gateway`, `help`, `completions`, `scaffold`, `audit`, `marketplace`) are never filtered.
 - [ ] `LAB_SHOW_ALL=1` and `lab help --all` bypass the filter.
-- [ ] The MCP `lab://catalog` resource uses the same filter (registry filter). `--services foo,bar` continues to override at `lab serve` / `lab mcp` level.
-- [ ] (Optional polish) `lab --help` (clap-derived, top-level) honors the same filter via `Cli::command_for_update()` + `mut_subcommand("<svc>", |c| c.hide(true))`.
+- [ ] The MCP `lab://catalog` resource uses the same filter (registry filter). `--services foo,bar` continues to override at `labby serve` / `labby mcp` level.
+- [ ] (Optional polish) `labby --help` (clap-derived, top-level) honors the same filter via `Cli::command_for_update()` + `mut_subcommand("<svc>", |c| c.hide(true))`.
 
 ### Verification
 - [ ] All-features build passes (`just build`).
@@ -143,13 +143,13 @@ The "loopback-only over HTTP" rule lives at the API router, not in the dispatch 
   - Add `configured_services(registry: &ToolRegistry) -> Vec<&str>` walking each service's `PluginMeta.required_env`. A service is "configured" iff every `required: true` env var has a non-empty value in `std::env::vars()`. Optional vars don't count.
   - Default filter applied to `lab help`. Operator commands listed in the acceptance criteria are never filtered.
   - `LAB_SHOW_ALL=1` and `--all` bypass.
-- [ ] `crates/lab/src/cli.rs` — optional polish: `Cli::command_for_update()` + `mut_subcommand` to hide unconfigured service subcommands from `lab --help`. Behind the same `LAB_SHOW_ALL` env / `--all` flag. Mark this as the last AC item; it can ship in a follow-up PR.
-- [ ] `crates/lab/src/cli/setup.rs` (already created in bg3e.3) — add three Tier-2 dispatch shims for the new actions: `lab setup installed_plugins`, `lab setup install_plugin`, `lab setup uninstall_plugin`. Standard destructive flag handling per `crates/lab/src/cli/CLAUDE.md`.
-- [ ] `crates/lab/src/cli/marketplace.rs` (existing) — add a new subcommand `lab marketplace generate --out <dir> [--org <prefix>] [--binary <path>]`:
+- [ ] `crates/lab/src/cli.rs` — optional polish: `Cli::command_for_update()` + `mut_subcommand` to hide unconfigured service subcommands from `labby --help`. Behind the same `LAB_SHOW_ALL` env / `--all` flag. Mark this as the last AC item; it can ship in a follow-up PR.
+- [ ] `crates/lab/src/cli/setup.rs` (already created in bg3e.3) — add three Tier-2 dispatch shims for the new actions: `labby setup installed_plugins`, `labby setup install_plugin`, `labby setup uninstall_plugin`. Standard destructive flag handling per `crates/lab/src/cli/CLAUDE.md`.
+- [ ] `crates/lab/src/cli/marketplace.rs` (existing) — add a new subcommand `labby marketplace generate --out <dir> [--org <prefix>] [--binary <path>]`:
   - Iterates `build_default_registry()` and emits the marketplace tree.
   - `--org` defaults to the value baked in at build time (cargo env var `LAB_PLUGIN_ORG`, default `lab`).
-  - `--binary` defaults to `target/release/lab` from the workspace root.
-  - The generator copies the binary into `<out>/lab-core/bin/lab`, sets executable bits, and writes templated `plugin.json` / `.mcp.json` / `commands/*.md` files.
+  - `--binary` defaults to `target/release/labby` from the workspace root.
+  - The generator copies the binary into `<out>/lab-core/bin/labby`, sets executable bits, and writes templated `plugin.json` / `.mcp.json` / `commands/*.md` files.
   - Tests assert that round-tripping `PluginMeta` → generator → re-parse yields the same env-var lists.
 
 ### API changes
@@ -187,7 +187,7 @@ These extend the bg3e.4 wizard and bg3e.5 settings rail; they are not new pages.
 │   ├── bin/
 │   │   └── lab                      # copied release binary
 │   ├── commands/
-│   │   └── setup-core.md            # /setup-core → "lab setup"
+│   │   └── setup-core.md            # /setup-core → "labby setup"
 │   └── skills/
 │       └── install-binary/
 │           ├── SKILL.md
@@ -306,11 +306,11 @@ CLI shims honor `-y` / `--no-confirm` / `--dry-run` per `crates/lab/src/cli/CLAU
 1. Default org prefix. `lab` is the obvious choice but is also the binary name and may collide with unrelated packages in a global namespace. Proposal: bake `LAB_PLUGIN_ORG` at build time; ship with `lab` for OSS but allow forks to set their own without recompiling the marketplace.
 2. Plugin scope default. The Setup wizard chose `user` historically (homelab tools shouldn't follow project directories). Confirm and surface as a single radio in /setup with `[plugins] default_scope` persisted.
 3. Whether `install_plugin` should also accept a `version` param. `claude plugin install foo@bar@1.2.3` style. Proposal: defer; ship without versioning, add later behind a `version?: string` param.
-4. `lab marketplace generate` ergonomics. Should it default to writing into a sibling repo (e.g. `../lab-marketplace/`) when run from the workspace? Proposal: no — explicit `--out` only. CI ergonomics live in the release workflow.
+4. `labby marketplace generate` ergonomics. Should it default to writing into a sibling repo (e.g. `../lab-marketplace/`) when run from the workspace? Proposal: no — explicit `--out` only. CI ergonomics live in the release workflow.
 5. Whether the env-aware `lab help` filter should also be the default for the MCP catalog when no `--services` is passed. Proposal: yes — same filter, same env vars, same `LAB_SHOW_ALL` escape hatch. Documented behavior change in `docs/CONVENTIONS.md`.
 6. SessionStart hook in the core plugin. The earlier draft had one; we explicitly removed it because hook-driven webserver spawning is brittle. Confirm we ship core with **no** SessionStart hook — `/setup-core` is the only entry point.
 7. Plugin-mode service filtering. Step 4 in plugin mode shows only services with installed plugins. What if the user has Plex creds in `~/.lab/.env` but never installed `lab-plex`? Proposal: still show the service in plugin mode if it's already configured, with the toggle off, so the user can choose to install the plugin or clear the leftover env. Hide it only if it's neither installed nor configured.
-8. Mode for re-runs. If a user ran `/setup-core` (plugin mode) once, then later runs standalone `lab setup`, do they get plugin or full mode? Proposal: the CLI flag wins. `lab setup` with no flag picks up the persisted mode from `~/.lab/.setup-state.json`, defaulting to `full` if the state file says nothing. Users who want full from a plugin install always have `/setup-core-advanced`.
+8. Mode for re-runs. If a user ran `/setup-core` (plugin mode) once, then later runs standalone `labby setup`, do they get plugin or full mode? Proposal: the CLI flag wins. `labby setup` with no flag picks up the persisted mode from `~/.lab/.setup-state.json`, defaulting to `full` if the state file says nothing. Users who want full from a plugin install always have `/setup-core-advanced`.
 9. Whether `setup.state.set_mode` should be available over stdio MCP at all. Proposal: yes — it's not destructive (no fs write outside `~/.lab/.setup-state.json`), and stdio MCP callers (i.e. Claude Code itself) may legitimately need to flip the wizard mode programmatically. Loopback gate stays only on the actual plugin lifecycle actions.
 
 ---
@@ -322,7 +322,7 @@ CLI shims honor `-y` / `--no-confirm` / `--dry-run` per `crates/lab/src/cli/CLAU
 - A standalone `claude` dispatch service. Plugin lifecycle lives in `setup` because nothing else needs it. If a future use case appears (e.g. a diagnostic skill listing installed plugins), promote then.
 - Auto-installing the core plugin from a service plugin. `/install-core` prints a command; the user runs it. No hooks, no auto-install.
 - Auto-restarting Claude Code after a plugin install. The web UI tells the user to restart; the user does it.
-- Bundling plugins inside the binary. The marketplace remains the distribution channel; the binary's `lab marketplace generate` produces the tree from `PluginMeta` so the marketplace stays in sync without hand-maintenance.
+- Bundling plugins inside the binary. The marketplace remains the distribution channel; the binary's `labby marketplace generate` produces the tree from `PluginMeta` so the marketplace stays in sync without hand-maintenance.
 - Windows-specific PATH handling beyond best-effort. Linux + macOS are the supported target platforms; Windows users get the absolute-path fallback only.
 - Light-mode polish for the new toggle. Inherits whatever bg3e.4/.5 ship.
 - Support for marketplaces other than `claude plugin install <id>@<org>`. Other distribution channels (cargo, brew, deb) are not addressed.

@@ -214,9 +214,9 @@ function PermissionPanel({ toolCall }: { toolCall: TranscriptToolCall }) {
         'mt-2 rounded-aurora-2 border px-3 py-3',
         isResolved
           ? granted
-            ? 'border-aurora-success/40 bg-aurora-success/10'
-            : 'border-aurora-error/40 bg-aurora-error/10'
-          : 'border-aurora-warn/40 bg-aurora-warn/10',
+            ? 'border-aurora-success/40 bg-aurora-success/12'
+            : 'border-aurora-error/40 bg-aurora-error/12'
+          : 'border-aurora-warn/40 bg-aurora-warn/12',
       )}
     >
       <ConfirmationTitle className="block">
@@ -360,7 +360,7 @@ export function ToolArtifactPanels({
 
       {artifact.terminalOutput ? (
         // O6: bounded height prevents re-measure storm during streaming + virtualization.
-        <div className="mt-2 max-h-96 overflow-auto rounded-aurora-2 border border-aurora-border-default/70">
+        <div className="aurora-scrollbar mt-2 max-h-96 overflow-auto rounded-aurora-2 border border-aurora-border-default/70">
           <Terminal
             output={artifact.terminalOutput}
             className="rounded-none border-0 bg-aurora-page-bg text-aurora-text-primary"

@@ -133,8 +133,8 @@ mod tests {
     #[test]
     fn remote_path_allowlist_enforced() {
         assert!(validate_remote_path("/etc/passwd").is_err());
-        assert!(validate_remote_path("/usr/local/bin/lab").is_ok());
-        assert!(validate_remote_path("/opt/lab/bin/lab").is_ok());
+        assert!(validate_remote_path("/usr/local/bin/labby").is_ok());
+        assert!(validate_remote_path("/opt/lab/bin/labby").is_ok());
         assert!(validate_remote_path("/usr/local/bin/../../etc/passwd").is_err());
     }
 

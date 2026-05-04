@@ -1,4 +1,4 @@
-//! `lab marketplace` — thin CLI shim for the marketplace plugin manager.
+//! `labby marketplace` — thin CLI shim for the marketplace plugin manager.
 //!
 //! Thin shim: parse → shared dispatch layer → format.
 //! Always-on (synthetic service). See `apprise.rs` for the reference pattern.
@@ -11,7 +11,7 @@ use clap::Args;
 use crate::cli::helpers::{action_parser, print_dry_run, run_confirmable_action_command};
 use crate::output::OutputFormat;
 
-/// `lab marketplace` arguments.
+/// `labby marketplace` arguments.
 #[derive(Debug, Args)]
 pub struct MarketplaceArgs {
     /// Action to run (e.g. sources.list, plugins.list, plugin.install).
@@ -28,7 +28,7 @@ pub struct MarketplaceArgs {
     pub dry_run: bool,
 }
 
-/// Run the `lab marketplace` subcommand.
+/// Run the `labby marketplace` subcommand.
 ///
 /// # Errors
 /// Returns an error if dispatch fails.

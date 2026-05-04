@@ -112,11 +112,11 @@ container and a single discovered container id.
 
 | Surface | Command shape | Result |
 |---|---|---|
-| CLI | `lab --json dozzle server.health` | `reachable=true` |
-| CLI | `lab --json dozzle server.version` | `version=v10.5.1` |
-| CLI | `lab --json dozzle containers.list` | 1 container returned |
-| CLI | `lab --json dozzle logs.fetch ... max_lines=20 max_bytes=1048576 timeout_ms=5000` | 3 events, `truncated=false` |
-| CLI | `lab --json dozzle logs.fetch-plain ... max_lines=20 max_bytes=1048576 timeout_ms=5000` | 323 bytes, `truncated=false` |
+| CLI | `labby --json dozzle server.health` | `reachable=true` |
+| CLI | `labby --json dozzle server.version` | `version=v10.5.1` |
+| CLI | `labby --json dozzle containers.list` | 1 container returned |
+| CLI | `labby --json dozzle logs.fetch ... max_lines=20 max_bytes=1048576 timeout_ms=5000` | 3 events, `truncated=false` |
+| CLI | `labby --json dozzle logs.fetch-plain ... max_lines=20 max_bytes=1048576 timeout_ms=5000` | 323 bytes, `truncated=false` |
 | API | `POST /v1/dozzle {"action":"server.version"}` | `version=v10.5.1` |
 | API | `POST /v1/dozzle {"action":"logs.fetch",...}` | 3 events, `truncated=false` |
 | API | `POST /v1/dozzle {"action":"not.real"}` | HTTP 400, `kind=unknown_action` |

@@ -1,32 +1,41 @@
 services:
-  lab-master:
-    image: lab:dev
+  labby-master:
+    image: labby:dev
     build:
       context: .
       dockerfile: config/Dockerfile.fast
     restart: unless-stopped
+    # Run Docker's tiny init as PID 1 so provider grandchildren orphaned by
+    # launch wrappers such as npx are reaped after Lab terminates the process group.
+    init: true
 
     ports:
       # LAB_HOST_PORT lets you remap the host-side port without editing this file.
       - "${LAB_HOST_PORT:-8765}:8765"
 
     volumes:
-      # Named volume — persists SQLite DBs, master.lock, OAuth keys across
-      # container restarts and image rebuilds.
-      - lab-data:/home/lab/.local
-      # Host config file mounted read-only. Keep runtime config in ~/.lab so
-      # Docker and local `lab serve` use the same auth/service settings.
+      # Bind-mount the host ~/.lab directory so every file the binary writes
+      # there (auth.db, acp.db, registry.db, stash/, node-enrollments.json,
+      # node-token, auth-jwt.pem) persists across container restarts and
+      # image rebuilds without needing per-path env var overrides.
+      - ${HOME}/.lab:/home/lab/.lab
+      # Named volume for the log DB only — it is redirected to ~/.local via
+      # LAB_LOCAL_LOGS_STORE_PATH and is ephemeral (TTL-pruned), so keeping
+      # it off the host .lab directory avoids churn in host storage.
+      - labby-data:/home/lab/.local
+      # Host config file — also visible via the .lab bind mount above, but
+      # the explicit :ro mount here makes the intent clear.
       - ${HOME}/.lab/config.toml:/home/lab/.config/lab/config.toml:ro
-      # Mount secrets for Lab's own dotenv loader instead of using Compose
-      # env_file, which expands them into `docker compose config` output.
+      # Secrets — mounted :ro so the container cannot modify the host .env.
+      # File-level mount wins over the parent directory bind mount above.
       - ${HOME}/.lab/.env:/home/lab/.lab/.env:ro
       # Host identity used for controller/node role resolution. Without this,
       # Docker's container ID hostname would be mistaken for the machine name.
       - /etc/hostname:/run/host/hostname:ro
-      # ACP provider state and Docker-normalized provider commands. The provider
-      # file uses container paths while the mounted homes carry host auth state.
+      # Docker-specific ACP provider file. Uses container-local paths for
+      # provider commands; overrides whatever is in the host ~/.lab/. File-level
+      # mount wins over the parent directory bind mount above.
       - ./config/acp-providers.docker.json:/home/lab/.lab/acp-providers.json:ro
-      - ${HOME}/.lab/acp:/home/lab/.lab/acp
       - ${HOME}/.gemini:/home/lab/.gemini
       - .:/workspace/lab
 
@@ -37,11 +46,27 @@ services:
       LAB_MCP_HTTP_PORT: "8765"
       # Override host-only paths from ~/.lab/.env for the container filesystem.
       LAB_WEB_ASSETS_DIR: ""
+      # Redirect the log DB into the named volume (ephemeral, TTL-pruned).
+      # All other DBs default to ~/.lab/ which is now bind-mounted from host.
       LAB_LOCAL_LOGS_STORE_PATH: "/home/lab/.local/share/lab/logs.db"
       ACP_SESSION_CWD: "/workspace/lab"
+      # ACP prompt idle timeout — how long the runtime waits for any ACP event
+      # after the first assistant text chunk before declaring idle_completion.
+      # 5s (default) is too short for multi-step tool chains on a Docker-mounted
+      # volume; 30s gives tool executions room to complete before we cut off.
+      LAB_ACP_PROMPT_IDLE_TIMEOUT_MS: "30000"
+      # After an idle_completion-terminated turn, the drain window waits for
+      # codex-acp's late StopReason before accepting the next prompt.  Cap at 15s
+      # so a follow-up prompt doesn't stall for the 5-minute default.
+      LAB_ACP_TURN_DRAIN_TIMEOUT_MS: "15000"
       # Structured log levels — RUST_LOG for tracing, LAB_LOG for app filter.
-      RUST_LOG: "lab=info,warn"
+      RUST_LOG: "labby=info,warn"
       LAB_LOG: "info"
+      # Docker pipes stderr as a non-TTY; force ANSI colors for docker compose logs -f.
+      # LAB_LOG_COLOR forces ColorPolicy::Color in tracing's with_ansi().
+      # CLICOLOR_FORCE forces console::colors_enabled() which the custom log formatter uses.
+      LAB_LOG_COLOR: "force"
+      CLICOLOR_FORCE: "1"
 
     # ── Hard outer boundary ──────────────────────────────────────────────────
     # Even if the spawn-guard logic in the binary fails, the container's pid
@@ -53,5 +78,5 @@ services:
           pids: 200
 
 volumes:
-  lab-data:
+  labby-data:
     driver: local

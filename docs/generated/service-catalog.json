@@ -236,8 +236,8 @@
     "description": "Pull API keys and URLs from existing service config files",
     "category": "bootstrap",
     "status": "available",
-    "feature": null,
-    "exposure": "always_on",
+    "feature": "extract",
+    "exposure": "feature_gated",
     "surfaces": {
       "cli": true,
       "mcp": true,

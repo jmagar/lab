@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { Copy, Check } from 'lucide-react'
+import { Bot, Copy, Check, UserRound } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -66,13 +66,17 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
     <div className={cn('group/bubble flex gap-3', isUser && 'flex-row-reverse')}>
       <div
         className={cn(
-          'mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-bold',
+          'mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border',
           isUser
-            ? 'border-aurora-border-strong bg-aurora-panel-strong text-aurora-text-muted'
-            : 'border-aurora-accent-primary/30 bg-aurora-accent-deep/20 text-aurora-accent-primary',
+            ? 'border-aurora-border-strong bg-aurora-panel-strong'
+            : 'border-aurora-accent-primary/30 bg-aurora-accent-deep/18',
         )}
       >
-        {isUser ? 'U' : 'A'}
+        {isUser ? (
+          <UserRound className="size-3 text-aurora-text-muted" />
+        ) : (
+          <Bot className="size-3 text-aurora-accent-primary" />
+        )}
       </div>
 
       <div className={cn('flex min-w-0 max-w-[92%] flex-col gap-2.5 sm:max-w-[80%]', isUser && 'items-end')}>
@@ -125,12 +129,18 @@ export function MessageBubble({ message }: { message: ACPMessage }) {
         {message.text && (
           <div
             className={cn(
-              'relative rounded-aurora-2 px-4 py-3',
+              'relative overflow-hidden rounded-aurora-2 px-4 py-3',
               isUser
                 ? 'border border-aurora-border-strong bg-aurora-panel-strong shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]'
                 : 'border border-aurora-border-default bg-aurora-panel-medium shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
             )}
           >
+            {!isUser && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
+              />
+            )}
             <p className="whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary">
               {message.text}
               {message.isStreaming ? <StreamingCursor /> : null}

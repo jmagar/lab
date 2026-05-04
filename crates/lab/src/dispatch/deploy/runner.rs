@@ -116,7 +116,7 @@ impl DefaultRunner {
                     .as_ref()
                     .and_then(|d| d.remote_path.clone())
             })
-            .unwrap_or_else(|| "/usr/local/bin/lab".to_string())
+            .unwrap_or_else(|| "/usr/local/bin/labby".to_string())
     }
 
     fn effective_unit(&self, host: &str) -> Option<String> {
@@ -263,7 +263,7 @@ impl DefaultRunner {
 
         // --- async: only owned values, no &self ---
         Box::pin(async move {
-            let artifact = build::expected_artifact_path("lab");
+            let artifact = build::expected_artifact_path("labby");
             let artifact_sha256 = if matches!(artifact.try_exists(), Ok(true)) {
                 let p = artifact.clone();
                 tokio::task::spawn_blocking(move || build::sha256_file_blocking(&p))
@@ -1043,7 +1043,7 @@ async fn rollback_one_host<I: HostIo + 'static>(
     let binary = Path::new(&remote_path)
         .file_name()
         .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "lab".to_string());
+        .unwrap_or_else(|| "labby".to_string());
 
     let t = stage_enter(&host, "rollback.find");
     // shell_quote parent and binary so any (theoretically allowlisted)

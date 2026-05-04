@@ -96,10 +96,10 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                     key={`${command.cmd ?? command.path ?? 'command'}-${index}`}
                     className={cn(
                       'rounded-aurora-1 border border-aurora-border-default/70 bg-aurora-control-surface px-2.5 py-2',
-                      presentation.category === 'command' && 'bg-emerald-500/5',
-                      presentation.category === 'read' && 'bg-sky-500/5',
-                      presentation.category === 'search' && 'bg-cyan-500/5',
-                      presentation.category === 'edit' && 'bg-orange-500/5',
+                      presentation.category === 'command' && 'bg-aurora-success/12',
+                      presentation.category === 'read' && 'bg-aurora-accent-primary/12',
+                      presentation.category === 'search' && 'bg-aurora-accent-primary/12',
+                      presentation.category === 'edit' && 'bg-aurora-warn/12',
                     )}
                   >
                     <p className="text-[12px] font-medium text-aurora-text-primary">
@@ -140,8 +140,8 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
               </div>
             ) : null}
             {artifact.diffPreview ? (
-              <div className="mt-2 overflow-hidden rounded-aurora-2 border border-orange-500/20 bg-orange-500/5">
-                <div className="border-b border-orange-500/10 px-2.5 py-2">
+              <div className="mt-2 overflow-hidden rounded-aurora-2 border border-aurora-warn/18 bg-aurora-warn/12">
+                <div className="border-b border-aurora-warn/18 px-2.5 py-2">
                   <p className="text-[12px] font-medium text-aurora-text-primary">
                     {artifact.diffPreview.title}
                   </p>
@@ -151,8 +151,8 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                     <p
                       key={`${toolCall.id}-diff-${index}`}
                       className={cn(
-                        line.startsWith('+') && 'text-emerald-300',
-                        line.startsWith('-') && 'text-rose-300',
+                        line.startsWith('+') && 'text-aurora-success',
+                        line.startsWith('-') && 'text-aurora-error',
                         !line.startsWith('+') && !line.startsWith('-') && 'text-aurora-text-muted',
                       )}
                     >
@@ -170,7 +170,7 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-full border border-aurora-border-default bg-aurora-control-surface px-2.5 py-1 text-[11px] text-aurora-text-primary transition-colors hover:border-aurora-accent-primary/50 hover:text-aurora-accent-primary"
+                    className="rounded-full border border-aurora-border-default bg-aurora-control-surface px-2.5 py-1 text-[11px] text-aurora-text-primary transition-colors hover:border-aurora-accent-primary/40 hover:text-aurora-accent-primary"
                   >
                     {toDomainChip(url)}
                   </a>
@@ -191,9 +191,9 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
               <p
                 className={cn(
                   'mt-2 rounded-aurora-1 border border-aurora-border-default/70 px-2.5 py-2 text-[12px] leading-[1.55] text-aurora-text-muted',
-                  presentation.category === 'review' && 'bg-orange-500/5',
-                  presentation.category === 'media' && 'bg-pink-500/5',
-                  presentation.category === 'source' && 'bg-emerald-500/5',
+                  presentation.category === 'review' && 'bg-aurora-warn/12',
+                  presentation.category === 'media' && 'bg-aurora-accent-deep/12',
+                  presentation.category === 'source' && 'bg-aurora-success/12',
                 )}
               >
                 {artifact.summary}
@@ -217,7 +217,7 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
 
             {toolCall.output !== undefined && (
               <div className="px-3 py-2">
-                <p className={cn(AURORA_MUTED_LABEL, 'mb-1.5 text-aurora-success/70')}>
+                <p className={cn(AURORA_MUTED_LABEL, 'mb-1.5 text-aurora-success')}>
                   Output
                 </p>
                 <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap font-mono text-[11px] leading-[1.5] text-aurora-text-primary">

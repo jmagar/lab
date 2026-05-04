@@ -57,7 +57,7 @@ sub-modules (`client/chat.rs`, etc.) — same pattern applied recursively. `open
 fn health(&self) -> impl Future<Output = Result<ServiceStatus, ApiError>> + Send;
 ```
 
-`ServiceClient` is implemented in `foo.rs` (the module entry point), not in `client.rs`. The trait is for `lab doctor` health polling only. Do not add operational methods to it.
+`ServiceClient` is implemented in `foo.rs` (the module entry point), not in `client.rs`. The trait is for `labby doctor` health polling only. Do not add operational methods to it.
 
 - **No `Box<dyn ServiceClient>`** — use generics or concrete types.
 - **Native `async fn in trait`** (Rust 1.75+) — do not use `#[async_trait]`.

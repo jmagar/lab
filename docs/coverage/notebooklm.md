@@ -48,8 +48,8 @@ project's flow.
 Use:
 
 ```bash
-cargo check -p lab@0.12.1 --all-features
-cargo test -p lab@0.12.1 --all-features dispatch::notebooklm
+cargo check -p labby --all-features
+cargo test -p labby --all-features dispatch::notebooklm
 ```
 
 Live smoke tests require valid NotebookLM cookies:

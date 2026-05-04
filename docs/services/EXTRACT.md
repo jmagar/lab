@@ -87,18 +87,18 @@ The default conflict policy is preserve-existing, not overwrite.
 Typical targeted usage:
 
 ```bash
-lab extract /path/to/appdata
-lab extract host:/path/to/appdata --diff
-lab extract host:/path/to/appdata --apply
+labby extract /path/to/appdata
+labby extract host:/path/to/appdata --diff
+labby extract host:/path/to/appdata --apply
 ```
 
 Fleet discovery usage:
 
 ```bash
-lab extract
+labby extract
 ```
 
-Bare `lab extract` reads `~/.ssh/config`, inspects reachable hosts for running
+Bare `labby extract` reads `~/.ssh/config`, inspects reachable hosts for running
 supported Docker containers, prefers Tailscale IPs when available, probes
 candidate endpoints, and only attempts credential extraction for services with
 verified working URLs.

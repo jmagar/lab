@@ -1,4 +1,4 @@
-//! `lab tei` — thin CLI shim for the TEI (Text Embeddings Inference) service.
+//! `labby tei` — thin CLI shim for the TEI (Text Embeddings Inference) service.
 //!
 //! Thin shim: parse → shared dispatch layer → format.
 //! See `radarr.rs` for the reference pattern.
@@ -12,7 +12,7 @@ use crate::cli::helpers::{action_parser, run_action_command};
 use crate::dispatch::tei::ACTIONS;
 use crate::output::OutputFormat;
 
-/// `lab tei` arguments.
+/// `labby tei` arguments.
 #[derive(Debug, Args)]
 pub struct TeiArgs {
     /// Action to run (e.g. help).
@@ -23,7 +23,7 @@ pub struct TeiArgs {
     pub params: Option<String>,
 }
 
-/// Run the `lab tei` subcommand.
+/// Run the `labby tei` subcommand.
 ///
 /// # Errors
 /// Returns an error if dispatch fails.

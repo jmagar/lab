@@ -88,7 +88,7 @@ impl AppState {
     /// Build state from a pre-filtered or pre-built registry.
     ///
     /// Use this when the caller has already applied service filtering (e.g.
-    /// `--services` on `lab serve`) so that the HTTP surface
+    /// `--services` on `labby serve`) so that the HTTP surface
     /// respects the same service set as the stdio surface.
     ///
     /// `enabled_services` is derived from the registry entries so the router
@@ -165,7 +165,7 @@ impl AppState {
 
     /// Attach the shared gateway manager.
     #[must_use]
-    #[allow(dead_code)] // Called by `lab serve` when gateway runtime is wired.
+    #[allow(dead_code)] // Called by `labby serve` when gateway runtime is wired.
     pub fn with_gateway_manager(
         mut self,
         manager: Arc<crate::dispatch::gateway::manager::GatewayManager>,

@@ -29,13 +29,13 @@ The queue exists to make early-runtime log upload resilient to temporary control
 
 Fleet log search is available on the controller through:
 
-- CLI: `lab logs search <node> <query>`
+- CLI: `labby logs search <node> <query>`
 - HTTP: `POST /v1/nodes/logs/search`
 
 Example:
 
 ```bash
-lab logs search dookie oauth
+labby logs search dookie oauth
 ```
 
 ```json
@@ -52,8 +52,8 @@ The current implementation performs a case-insensitive substring match against `
 
 The controller also exposes:
 
-- `lab nodes list`
-- `lab nodes get <node_id>`
+- `labby nodes list`
+- `labby nodes get <node_id>`
 - `GET /v1/nodes`
 - `GET /v1/nodes/{node_id}`
 

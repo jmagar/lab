@@ -1,6 +1,6 @@
 # Scaffold & Audit: Complete Reference
 
-This document is the single authoritative reference for the `lab scaffold` and `lab audit`
+This document is the single authoritative reference for the `labby scaffold` and `labby audit`
 systems — how they work, what they produce, how they verify, and every invariant that
 governs them.
 
@@ -53,9 +53,9 @@ registration point, file, and structural contract without human guesswork.
 ### The three-step contract
 
 ```
-lab scaffold service <name>   →  generates skeleton files and repo patches
+labby scaffold service <name>   →  generates skeleton files and repo patches
 # ... engineer implements the service ...
-lab audit onboarding <name>   →  verifies all wiring is in place
+labby audit onboarding <name>   →  verifies all wiring is in place
 cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features
                                →  confirms it compiles and passes tests
 ```
@@ -100,7 +100,7 @@ The result carries:
 Source: `crates/lab/src/cli/scaffold.rs`
 
 ```
-lab scaffold service <name> [--kind <kind>] [--dry-run] [-y]
+labby scaffold service <name> [--kind <kind>] [--dry-run] [-y]
 ```
 
 ### Flags
@@ -129,13 +129,13 @@ lab scaffold service <name> [--kind <kind>] [--dry-run] [-y]
 
 ```bash
 # Preview what will be generated
-lab scaffold service mysvc --dry-run
+labby scaffold service mysvc --dry-run
 
 # Generate for real
-lab scaffold service mysvc --yes
+labby scaffold service mysvc --yes
 
 # Generate a non-HTTP service (no HTTP client, no AppState field)
-lab scaffold service mylocal --kind non-http --yes
+labby scaffold service mylocal --kind non-http --yes
 ```
 
 ---
@@ -401,7 +401,7 @@ if state.registry.services().iter().any(|s| s.name == "<svc>") {
 ```
 
 Both guards are required. The `#[cfg(feature)]` gate ensures the handler module compiles;
-the runtime registry check ensures that `lab serve --services X` cannot be bypassed.
+the runtime registry check ensures that `labby serve --services X` cannot be bypassed.
 
 #### `patch_api_state_rs`
 Two insertions:
@@ -552,7 +552,7 @@ Registration checks that depend on these files will produce `Fail` results in th
 Source: `crates/lab/src/cli/audit.rs`
 
 ```
-lab audit onboarding <service>... [--json]
+labby audit onboarding <service>... [--json]
 ```
 
 One or more service names are required. Multiple names audit in series; each gets a
@@ -560,13 +560,13 @@ One or more service names are required. Multiple names audit in series; each get
 
 ```bash
 # Audit one service
-lab audit onboarding myapi
+labby audit onboarding myapi
 
 # Audit several
-lab audit onboarding myapi another_svc
+labby audit onboarding myapi another_svc
 
 # JSON output for scripting
-lab audit onboarding myapi --json
+labby audit onboarding myapi --json
 ```
 
 ### Exit codes
@@ -865,10 +865,10 @@ contract (every migrated service must have `client.rs`), while making it explici
 
 ```bash
 # Preview first
-lab scaffold service myapi --dry-run
+labby scaffold service myapi --dry-run
 
 # Generate for real
-lab scaffold service myapi --yes
+labby scaffold service myapi --yes
 ```
 
 24 file operations run. Check `created` and `modified` in the output.
@@ -906,7 +906,7 @@ Edit `crates/lab/src/dispatch/myapi/`:
 ### Step 5: Audit
 
 ```bash
-lab audit onboarding myapi
+labby audit onboarding myapi
 ```
 
 Fix every `Fail`. `Skip` results are informational. All registration checks should be `Pass`.
@@ -989,7 +989,7 @@ The generated router patch includes both:
 1. `#[cfg(feature = "<svc>")]` — compile-time gate
 2. `if state.registry.services().iter().any(...)` — runtime registry gate
 
-Both must be present. The runtime gate enforces `lab serve --services` filtering.
+Both must be present. The runtime gate enforces `labby serve --services` filtering.
 
 ### Dispatch split
 

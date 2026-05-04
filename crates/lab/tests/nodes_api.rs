@@ -4,7 +4,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use lab::{
+use labby::{
     api::{router::build_router_with_bearer, state::AppState},
     node::enrollment::store::{EnrollmentAttempt, EnrollmentStore, TailnetIdentity},
     node::store::NodeStore,
@@ -145,7 +145,7 @@ async fn device_oauth_route_rejects_invalid_target_url() {
 async fn existing_fleet_logs_search_still_works() {
     let (app, store, _enrollment_store) = test_device_router();
     store
-        .record_hello(lab::node::checkin::NodeHello {
+        .record_hello(labby::node::checkin::NodeHello {
             node_id: "dookie".to_string(),
             role: "non-master".to_string(),
             version: "1.0.0".to_string(),
@@ -154,7 +154,7 @@ async fn existing_fleet_logs_search_still_works() {
     store
         .record_logs(
             "dookie",
-            vec![lab::node::log_event::NodeLogEvent {
+            vec![labby::node::log_event::NodeLogEvent {
                 node_id: "dookie".to_string(),
                 timestamp_unix_ms: 1,
                 source: "journald".to_string(),
@@ -187,7 +187,7 @@ async fn existing_fleet_logs_search_still_works() {
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let events: Vec<lab::node::log_event::NodeLogEvent> = serde_json::from_slice(&body).unwrap();
+    let events: Vec<labby::node::log_event::NodeLogEvent> = serde_json::from_slice(&body).unwrap();
     assert_eq!(events.len(), 1);
     assert!(events[0].message.contains("fleet search"));
 }
@@ -368,7 +368,7 @@ fn oauth_relay_start_request(body: &str) -> Request<Body> {
 // not Err, because absence from inventory ≠ transport failure.
 
 mod node_connected {
-    use lab::node::master_client::MasterClient;
+    use labby::node::master_client::MasterClient;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

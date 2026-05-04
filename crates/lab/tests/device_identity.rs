@@ -1,5 +1,5 @@
-use lab::config::NodeRole;
-use lab::node::identity::resolve_runtime_role;
+use labby::config::NodeRole;
+use labby::node::identity::resolve_runtime_role;
 
 #[test]
 fn resolves_master_role_when_master_matches_local_hostname() {

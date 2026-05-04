@@ -1,4 +1,4 @@
-use lab::config::{ArtifactRole, LabConfig, NodeRuntimeRole, RestartModel};
+use labby::config::{ArtifactRole, LabConfig, NodeRuntimeRole, RestartModel};
 
 #[test]
 fn parses_node_controller_config_block() {
@@ -51,7 +51,7 @@ fn parses_deploy_restart_model_blocks() {
     let raw = r#"
         [deploy.defaults.restart]
         kind = "system_service"
-        service = "lab"
+        service = "labby"
 
         [deploy.hosts.edge.restart]
         kind = "wrapper_command"

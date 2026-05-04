@@ -1,6 +1,6 @@
 # Deploy
 
-This document covers the node-runtime deployment model introduced by `lab serve`.
+This document covers the node-runtime deployment model introduced by `labby serve`.
 
 ## Topology
 
@@ -33,7 +33,7 @@ They do not expose the operator control plane.
 1. Choose a stable hostname for the controller host.
 2. Set `[node].controller` to that hostname in `config.toml` on every non-controller machine.
    Legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`.
-3. Start `lab serve` on the controller host.
+3. Start `labby serve` on the controller host.
 4. If the controller binds beyond loopback, configure auth before startup.
 
 Example:
@@ -43,7 +43,7 @@ LAB_MCP_TRANSPORT=http
 LAB_MCP_HTTP_HOST=0.0.0.0
 LAB_MCP_HTTP_PORT=8765
 LAB_MCP_HTTP_TOKEN=replace-me
-lab serve
+labby serve
 ```
 
 ## Node Setup
@@ -67,7 +67,7 @@ port = 8765
 Then start:
 
 ```bash
-lab serve
+labby serve
 ```
 
 The node runtime will queue metadata and bootstrap logs locally, open its WebSocket session automatically, and keep retrying until the controller admits the node.
@@ -86,9 +86,9 @@ Expected rollout:
 Examples:
 
 ```bash
-lab nodes enrollments list
-lab nodes enrollments approve dookie
-lab nodes enrollments deny steamy-wsl --reason "unexpected token"
+labby nodes enrollments list
+labby nodes enrollments approve dookie
+labby nodes enrollments deny steamy-wsl --reason "unexpected token"
 ```
 
 ## Operational Notes
@@ -107,9 +107,9 @@ Useful checks after deployment:
 curl http://<node>:8765/health
 curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes
 curl -H "Authorization: Bearer $LAB_MCP_HTTP_TOKEN" http://<controller>:8765/v1/nodes/enrollments
-lab nodes list
-lab nodes enrollments list
-lab logs search <node_id> <query>
+labby nodes list
+labby nodes enrollments list
+labby logs search <node_id> <query>
 ```
 
 ## Readiness Verification Model
@@ -143,7 +143,7 @@ When `nodes update` updates the local controller and readiness verification fail
 2. A `recovery_hint` field in the result JSON provides the exact restore command.
 3. To restore manually:
    ```
-   sudo install -m 755 <backup_path> /usr/local/bin/lab
+   sudo install -m 755 <backup_path> /usr/local/bin/labby
    sudo systemctl restart lab
    ```
 4. Verify recovery:

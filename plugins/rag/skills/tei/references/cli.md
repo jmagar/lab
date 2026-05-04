@@ -1,9 +1,9 @@
-## `lab tei`
+## `labby tei`
 
 ```text
 HF Text Embeddings Inference
 
-Usage: lab tei [OPTIONS] [ACTION]
+Usage: labby tei [OPTIONS] [ACTION]
 
 Arguments:
   [ACTION]  Action to run (e.g. help) [default: help] [possible values: help, schema, server.health, server.info, embed.create, embed.rerank, embed.tokenize, embed.similarity, embed.sparse, embed.openai]

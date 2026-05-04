@@ -323,9 +323,9 @@ Confirmation is enforced uniformly across all surfaces:
 ## Health Check
 
 Probe: `GET /api/statistics/` — lightest authenticated endpoint that returns meaningful
-data. Used by `lab doctor` and the `ServiceClient::health()` implementation.
+data. Used by `labby doctor` and the `ServiceClient::health()` implementation.
 
-Implementation: `PaperlessClient::probe()` in SDK, integrated into `lab doctor`.
+Implementation: `PaperlessClient::probe()` in SDK, integrated into `labby doctor`.
 
 ## Surface Implementation Details
 

@@ -266,7 +266,7 @@ Services are enumerated from `PluginMeta` constants at compile time via `metadat
 | Ai | openai, notebooklm, qdrant, tei |
 | Bootstrap | extract |
 
-Each row shows: service name, short description, category, health dot (from `lab doctor`), and enabled state.
+Each row shows: service name, short description, category, health dot (from `labby doctor`), and enabled state.
 
 ### Enable / disable
 
@@ -300,7 +300,7 @@ The `lab` entry follows the standard MCP server entry format. The `--services` a
 {
   "mcpServers": {
     "lab": {
-      "command": "/path/to/lab",
+      "command": "/path/to/labby",
       "args": ["mcp", "--services", "radarr", "sonarr", "plex"]
     }
   }
@@ -317,7 +317,7 @@ If `.mcp.json` does not exist, the TUI creates it with an empty `--services` lis
 {
   "mcpServers": {
     "lab": {
-      "command": "/path/to/lab",
+      "command": "/path/to/labby",
       "args": ["mcp", "--services"]
     }
   }
@@ -337,7 +337,7 @@ Either condition alone is not enough. A service in `--services` with missing env
 
 ### Health dots
 
-Each service row shows a live health indicator sourced from `lab doctor`:
+Each service row shows a live health indicator sourced from `labby doctor`:
 
 | Dot | Meaning |
 |-----|---------|

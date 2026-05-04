@@ -7,11 +7,11 @@ use support::log_system::{InstalledLogSystemGuard, SqlitePathCleanup, test_lock}
 fn event_with(
     event_id: &str,
     ts: i64,
-    subsystem: lab::dispatch::logs::types::Subsystem,
-    level: lab::dispatch::logs::types::LogLevel,
+    subsystem: labby::dispatch::logs::types::Subsystem,
+    level: labby::dispatch::logs::types::LogLevel,
     message: &str,
-) -> lab::dispatch::logs::types::LogEvent {
-    let mut event = lab::dispatch::logs::types::LogEvent::fixture();
+) -> labby::dispatch::logs::types::LogEvent {
+    let mut event = labby::dispatch::logs::types::LogEvent::fixture();
     event.event_id = event_id.to_string();
     event.ts = ts;
     event.subsystem = subsystem;
@@ -20,8 +20,8 @@ fn event_with(
     event
 }
 
-fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
-    lab::dispatch::logs::types::RawLogEvent {
+fn raw_gateway_event(message: &str) -> labby::dispatch::logs::types::RawLogEvent {
+    labby::dispatch::logs::types::RawLogEvent {
         ts: Some(1_713_225_600_000),
         level: Some("warn".to_string()),
         subsystem: Some("gateway".to_string()),
@@ -46,7 +46,7 @@ fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
     }
 }
 
-fn raw_event_with_bearer_token() -> lab::dispatch::logs::types::RawLogEvent {
+fn raw_event_with_bearer_token() -> labby::dispatch::logs::types::RawLogEvent {
     let mut event = raw_gateway_event("Authorization: Bearer secret-value");
     event.fields_json = serde_json::json!({"authorization":"Bearer secret-value"});
     event
@@ -62,18 +62,18 @@ fn unique_store_path(prefix: &str) -> std::path::PathBuf {
 
 #[test]
 fn default_registry_includes_logs_service() {
-    let registry = lab::registry::build_default_registry();
+    let registry = labby::registry::build_default_registry();
     let service = registry.service("logs").expect("logs service registered");
     assert_eq!(service.status, "available");
 }
 
 #[tokio::test]
 async fn logs_dispatch_help_and_schema_exist() {
-    let help = lab::dispatch::logs::dispatch("help", serde_json::json!({}))
+    let help = labby::dispatch::logs::dispatch("help", serde_json::json!({}))
         .await
         .unwrap();
     let schema =
-        lab::dispatch::logs::dispatch("schema", serde_json::json!({"action":"logs.search"}))
+        labby::dispatch::logs::dispatch("schema", serde_json::json!({"action":"logs.search"}))
             .await
             .unwrap();
 
@@ -86,7 +86,7 @@ fn log_system_bootstrap_installs_runtime() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let runtime = lab::dispatch::logs::client::bootstrap_log_system_for_test();
+    let runtime = labby::dispatch::logs::client::bootstrap_log_system_for_test();
     assert!(runtime.is_ok());
 }
 
@@ -95,7 +95,7 @@ async fn local_live_commands_fail_cleanly_without_long_lived_runtime() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let error = lab::dispatch::logs::dispatch("logs.tail", serde_json::json!({"limit": 10}))
+    let error = labby::dispatch::logs::dispatch("logs.tail", serde_json::json!({"limit": 10}))
         .await
         .unwrap_err();
     assert_eq!(error.kind(), "internal_error");
@@ -103,7 +103,7 @@ async fn local_live_commands_fail_cleanly_without_long_lived_runtime() {
 
 #[test]
 fn log_event_serialization_preserves_future_ingest_fields() {
-    let event = lab::dispatch::logs::types::LogEvent::fixture();
+    let event = labby::dispatch::logs::types::LogEvent::fixture();
     let json = serde_json::to_value(&event).unwrap();
     assert!(json.get("source_kind").is_some());
     assert!(json.get("source_device_id").is_some());
@@ -113,23 +113,23 @@ fn log_event_serialization_preserves_future_ingest_fields() {
 #[test]
 fn subsystem_enum_includes_local_master_taxonomy() {
     assert_eq!(
-        lab::dispatch::logs::types::Subsystem::Gateway.as_str(),
+        labby::dispatch::logs::types::Subsystem::Gateway.as_str(),
         "gateway"
     );
     assert_eq!(
-        lab::dispatch::logs::types::Subsystem::OauthRelay.as_str(),
+        labby::dispatch::logs::types::Subsystem::OauthRelay.as_str(),
         "oauth_relay"
     );
     assert_eq!(
-        lab::dispatch::logs::types::Subsystem::AuthUpstream.as_str(),
+        labby::dispatch::logs::types::Subsystem::AuthUpstream.as_str(),
         "auth_upstream"
     );
 }
 
 #[test]
 fn local_logs_resolvers_honor_config_and_documented_defaults() {
-    let mut config = lab::config::LabConfig::default();
-    config.local_logs = Some(lab::config::LocalLogsPreferences {
+    let mut config = labby::config::LabConfig::default();
+    config.local_logs = Some(labby::config::LocalLogsPreferences {
         store_path: Some(std::path::PathBuf::from("/tmp/lab-local-logs-config.db")),
         retention_days: Some(11),
         max_bytes: Some(12_345),
@@ -138,48 +138,49 @@ fn local_logs_resolvers_honor_config_and_documented_defaults() {
     });
 
     assert_eq!(
-        lab::dispatch::logs::client::resolve_store_path(Some(&config)),
+        labby::dispatch::logs::client::resolve_store_path(Some(&config)),
         std::path::PathBuf::from("/tmp/lab-local-logs-config.db")
     );
 
-    let retention = lab::dispatch::logs::client::resolve_retention(Some(&config));
+    let retention = labby::dispatch::logs::client::resolve_retention(Some(&config));
     assert_eq!(retention.max_age_days, 11);
     assert_eq!(retention.max_bytes, 12_345);
     assert_eq!(
-        lab::dispatch::logs::client::resolve_queue_capacity(Some(&config)),
+        labby::dispatch::logs::client::resolve_queue_capacity(Some(&config)),
         77
     );
     assert_eq!(
-        lab::dispatch::logs::client::resolve_subscriber_capacity(Some(&config)),
+        labby::dispatch::logs::client::resolve_subscriber_capacity(Some(&config)),
         55
     );
 
-    let empty = lab::config::LabConfig::default();
+    let empty = labby::config::LabConfig::default();
     assert_eq!(
-        lab::dispatch::logs::client::resolve_queue_capacity(Some(&empty)),
+        labby::dispatch::logs::client::resolve_queue_capacity(Some(&empty)),
         1024
     );
     assert_eq!(
-        lab::dispatch::logs::client::resolve_subscriber_capacity(Some(&empty)),
+        labby::dispatch::logs::client::resolve_subscriber_capacity(Some(&empty)),
         256
     );
 }
 
 #[tokio::test]
 async fn store_search_filters_by_subsystem_and_level() {
-    let store =
-        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+    let store = labby::dispatch::logs::store::open_store_for_test(
+        labby::dispatch::logs::types::LogRetention {
             max_age_days: 30,
             max_bytes: 1024 * 1024,
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     store
         .insert(&event_with(
             "evt-gateway-warn",
             1_713_225_600_000,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Warn,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Warn,
             "gateway warning",
         ))
         .await
@@ -188,18 +189,18 @@ async fn store_search_filters_by_subsystem_and_level() {
         .insert(&event_with(
             "evt-api-info",
             1_713_225_601_000,
-            lab::dispatch::logs::types::Subsystem::Api,
-            lab::dispatch::logs::types::LogLevel::Info,
+            labby::dispatch::logs::types::Subsystem::Api,
+            labby::dispatch::logs::types::LogLevel::Info,
             "api info",
         ))
         .await
         .unwrap();
 
     let result = store
-        .search(lab::dispatch::logs::types::LogQuery {
-            subsystems: vec![lab::dispatch::logs::types::Subsystem::Gateway],
-            levels: vec![lab::dispatch::logs::types::LogLevel::Warn],
-            ..lab::dispatch::logs::types::LogQuery::default()
+        .search(labby::dispatch::logs::types::LogQuery {
+            subsystems: vec![labby::dispatch::logs::types::Subsystem::Gateway],
+            levels: vec![labby::dispatch::logs::types::LogLevel::Warn],
+            ..labby::dispatch::logs::types::LogQuery::default()
         })
         .await
         .unwrap();
@@ -209,19 +210,20 @@ async fn store_search_filters_by_subsystem_and_level() {
 
 #[tokio::test]
 async fn retention_enforces_age_and_size_limits() {
-    let store =
-        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+    let store = labby::dispatch::logs::store::open_store_for_test(
+        labby::dispatch::logs::types::LogRetention {
             max_age_days: 7,
             max_bytes: 1024,
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     store
         .insert(&event_with(
             "evt-old",
             1,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Warn,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Warn,
             &"x".repeat(2048),
         ))
         .await
@@ -230,8 +232,8 @@ async fn retention_enforces_age_and_size_limits() {
         .insert(&event_with(
             "evt-new",
             4_102_444_800_000,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Info,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Info,
             "recent event",
         ))
         .await
@@ -249,13 +251,13 @@ async fn ingest_redacts_sensitive_fields_before_store_and_stream() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
     system.ingest(raw_event_with_bearer_token()).await.unwrap();
 
     let stored = system
-        .search(lab::dispatch::logs::types::LogQuery::default())
+        .search(labby::dispatch::logs::types::LogQuery::default())
         .await
         .unwrap();
     assert!(!stored.events[0].message.contains("Bearer "));
@@ -272,11 +274,11 @@ async fn stream_subscribers_receive_new_events_without_querying_store() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
     let mut sub = system
-        .subscribe(lab::dispatch::logs::types::StreamSubscription::default())
+        .subscribe(labby::dispatch::logs::types::StreamSubscription::default())
         .await
         .unwrap();
     system.ingest(raw_gateway_event("stream me")).await.unwrap();
@@ -284,7 +286,7 @@ async fn stream_subscribers_receive_new_events_without_querying_store() {
     let next = sub.recv().await.unwrap();
     assert_eq!(
         next.subsystem,
-        lab::dispatch::logs::types::Subsystem::Gateway
+        labby::dispatch::logs::types::Subsystem::Gateway
     );
 }
 
@@ -293,7 +295,7 @@ async fn full_ingest_queue_records_overflow_without_blocking_caller() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(1)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(1)
         .await
         .unwrap();
     for _ in 0..100 {
@@ -320,12 +322,12 @@ async fn logs_search_returns_filtered_results() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
     system.ingest(raw_gateway_event("search me")).await.unwrap();
 
-    let value = lab::dispatch::logs::dispatch(
+    let value = labby::dispatch::logs::dispatch(
         "logs.search",
         serde_json::json!({
             "query": { "subsystems": ["gateway"], "levels": ["warn"] }
@@ -344,11 +346,11 @@ async fn logs_stats_returns_retention_metadata() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let _system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let _system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
 
-    let value = lab::dispatch::logs::dispatch("logs.stats", serde_json::json!({}))
+    let value = labby::dispatch::logs::dispatch("logs.stats", serde_json::json!({}))
         .await
         .unwrap();
 
@@ -360,12 +362,12 @@ async fn logs_tail_returns_bounded_follow_up_window() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .unwrap();
     system.ingest(raw_gateway_event("tail me")).await.unwrap();
 
-    let value = lab::dispatch::logs::dispatch(
+    let value = labby::dispatch::logs::dispatch(
         "logs.tail",
         serde_json::json!({
             "after_ts": 0,
@@ -381,19 +383,20 @@ async fn logs_tail_returns_bounded_follow_up_window() {
 
 #[tokio::test]
 async fn logs_tail_honors_since_event_id_cursor() {
-    let store =
-        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+    let store = labby::dispatch::logs::store::open_store_for_test(
+        labby::dispatch::logs::types::LogRetention {
             max_age_days: 30,
             max_bytes: 1024 * 1024,
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     store
         .insert(&event_with(
             "evt-1",
             10,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Info,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Info,
             "before cursor",
         ))
         .await
@@ -402,8 +405,8 @@ async fn logs_tail_honors_since_event_id_cursor() {
         .insert(&event_with(
             "evt-2",
             20,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Info,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Info,
             "cursor",
         ))
         .await
@@ -412,18 +415,18 @@ async fn logs_tail_honors_since_event_id_cursor() {
         .insert(&event_with(
             "evt-3",
             30,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Info,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Info,
             "after cursor",
         ))
         .await
         .unwrap();
 
     let result = store
-        .tail(lab::dispatch::logs::types::LogTailRequest {
+        .tail(labby::dispatch::logs::types::LogTailRequest {
             since_event_id: Some("evt-2".to_string()),
             limit: Some(10),
-            ..lab::dispatch::logs::types::LogTailRequest::default()
+            ..labby::dispatch::logs::types::LogTailRequest::default()
         })
         .await
         .unwrap();
@@ -434,28 +437,29 @@ async fn logs_tail_honors_since_event_id_cursor() {
 
 #[tokio::test]
 async fn store_search_text_matches_request_identifiers() {
-    let store =
-        lab::dispatch::logs::store::open_store_for_test(lab::dispatch::logs::types::LogRetention {
+    let store = labby::dispatch::logs::store::open_store_for_test(
+        labby::dispatch::logs::types::LogRetention {
             max_age_days: 30,
             max_bytes: 1024 * 1024,
-        })
-        .await
-        .unwrap();
+        },
+    )
+    .await
+    .unwrap();
     store
         .insert(&event_with(
             "evt-request-id",
             1_713_225_600_000,
-            lab::dispatch::logs::types::Subsystem::Gateway,
-            lab::dispatch::logs::types::LogLevel::Warn,
+            labby::dispatch::logs::types::Subsystem::Gateway,
+            labby::dispatch::logs::types::LogLevel::Warn,
             "gateway warning",
         ))
         .await
         .unwrap();
 
     let result = store
-        .search(lab::dispatch::logs::types::LogQuery {
+        .search(labby::dispatch::logs::types::LogQuery {
             text: Some("req-fixture".to_string()),
-            ..lab::dispatch::logs::types::LogQuery::default()
+            ..labby::dispatch::logs::types::LogQuery::default()
         })
         .await
         .unwrap();
@@ -471,9 +475,9 @@ async fn local_logs_persist_across_restart() {
     let _installed = InstalledLogSystemGuard::new();
     let path = unique_store_path("lab-local-logs-persist");
     let _cleanup = SqlitePathCleanup::new(path.clone());
-    let writer = lab::dispatch::logs::client::bootstrap_running_log_system(
+    let writer = labby::dispatch::logs::client::bootstrap_running_log_system(
         path.clone(),
-        lab::dispatch::logs::types::LogRetention::default(),
+        labby::dispatch::logs::types::LogRetention::default(),
         16,
         16,
     )
@@ -485,17 +489,17 @@ async fn local_logs_persist_across_restart() {
         .expect("seed event");
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let reader = lab::dispatch::logs::client::bootstrap_store_backed_log_system(
+    let reader = labby::dispatch::logs::client::bootstrap_store_backed_log_system(
         path,
-        lab::dispatch::logs::types::LogRetention::default(),
+        labby::dispatch::logs::types::LogRetention::default(),
     )
     .await
     .expect("reader runtime");
 
     let result = reader
-        .search(lab::dispatch::logs::types::LogQuery {
+        .search(labby::dispatch::logs::types::LogQuery {
             text: Some("persisted".to_string()),
-            ..lab::dispatch::logs::types::LogQuery::default()
+            ..labby::dispatch::logs::types::LogQuery::default()
         })
         .await
         .expect("search after restart");

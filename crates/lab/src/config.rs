@@ -704,7 +704,7 @@ fn insert_if_some(target: &mut HashMap<String, String>, key: &str, value: Option
 /// operators don't need to clutter `.env` with non-secret preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LogPreferences {
-    /// Tracing filter directive (e.g. `"lab=info,lab_apis=warn"`).
+    /// Tracing filter directive (e.g. `"labby=info,lab_apis=warn"`).
     /// Overridden by `LAB_LOG` env var.
     #[serde(default)]
     pub filter: Option<String>,
@@ -747,7 +747,7 @@ pub struct ApiPreferences {
 /// Web UI preferences.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WebPreferences {
-    /// Path to the exported Labby assets directory served by `lab serve`.
+    /// Path to the exported Labby assets directory served by `labby serve`.
     #[serde(default)]
     pub assets_dir: Option<PathBuf>,
     /// Disable `/v1/*` auth for the hosted web UI. Intended only for trusted reverse-proxy setups.
@@ -1153,7 +1153,7 @@ fn scan_instances_from(
     out
 }
 
-// ─── .env writer (used by `lab extract --apply`) ─────────────────────────────
+// ─── .env writer (used by `labby extract --apply`) ─────────────────────────────
 
 /// Merge `creds` into the `.env` file at `path` via the canonical
 /// [`env_merge::merge`] primitive. Preferred over [`write_env`] /
@@ -2146,27 +2146,30 @@ top_k_default = 0
     fn parses_deploy_defaults_and_host_overrides() {
         let raw = r#"
 [deploy.defaults]
-remote_path = "/usr/local/bin/lab"
-service = "lab"
+remote_path = "/usr/local/bin/labby"
+service = "labby"
 service_scope = "system"
 max_parallel = 4
 canary_hosts = ["mini1"]
 
 [deploy.hosts.mini2]
-remote_path = "/opt/lab/bin/lab"
+remote_path = "/opt/lab/bin/labby"
 service = "lab-worker"
 service_scope = "user"
 "#;
         let parsed: LabConfig = toml::from_str(raw).unwrap();
         let d = parsed.deploy.expect("deploy present");
         let defaults = d.defaults.expect("defaults present");
-        assert_eq!(defaults.remote_path.as_deref(), Some("/usr/local/bin/lab"));
-        assert_eq!(defaults.service.as_deref(), Some("lab"));
+        assert_eq!(
+            defaults.remote_path.as_deref(),
+            Some("/usr/local/bin/labby")
+        );
+        assert_eq!(defaults.service.as_deref(), Some("labby"));
         assert_eq!(defaults.service_scope, Some(ServiceScope::System));
         assert_eq!(defaults.max_parallel, Some(4));
         assert_eq!(defaults.canary_hosts, vec!["mini1".to_string()]);
         let mini2 = d.hosts.get("mini2").expect("mini2 override");
-        assert_eq!(mini2.remote_path.as_deref(), Some("/opt/lab/bin/lab"));
+        assert_eq!(mini2.remote_path.as_deref(), Some("/opt/lab/bin/labby"));
         assert_eq!(mini2.service_scope, Some(ServiceScope::User));
     }
 
@@ -2179,7 +2182,7 @@ service_scope = "user"
 
     #[test]
     fn deploy_max_parallel_defaults_to_one_for_safety_at_read_time() {
-        let raw = "[deploy.defaults]\nremote_path = \"/usr/local/bin/lab\"\n";
+        let raw = "[deploy.defaults]\nremote_path = \"/usr/local/bin/labby\"\n";
         let parsed: LabConfig = toml::from_str(raw).unwrap();
         let d = parsed.deploy.unwrap().defaults.unwrap();
         // unset remains None; safe default applied at orchestrator entry

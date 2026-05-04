@@ -14,9 +14,9 @@
 Canonical CLI:
 
 ```bash
-lab nodes list
-lab nodes get squirts
-lab nodes enrollments list
+labby nodes list
+labby nodes get squirts
+labby nodes enrollments list
 ```
 
 Canonical HTTP routes:

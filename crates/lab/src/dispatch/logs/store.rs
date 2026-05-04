@@ -36,7 +36,7 @@ impl LogStore {
     pub async fn open(path: PathBuf, retention: LogRetention) -> Result<Self, ToolError> {
         let path_display = path.display().to_string();
         tracing::info!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs",
             service = "store",
             action = "sqlite.open.start",
@@ -50,7 +50,7 @@ impl LogStore {
                 if let Some(parent) = path.parent() {
                     if std::fs::create_dir_all(parent).is_ok() {
                         tracing::debug!(
-                            target: "lab::dispatch::logs",
+                            target: "labby::dispatch::logs",
                             surface = "logs",
                             service = "store",
                             action = "sqlite.open.parent_ready",
@@ -69,7 +69,7 @@ impl LogStore {
                 wc.pragma_update(None, "temp_store", "MEMORY")?;
                 wc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
                 tracing::debug!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     surface = "logs",
                     service = "store",
                     action = "sqlite.pragmas",
@@ -90,7 +90,7 @@ impl LogStore {
                 rc.pragma_update(None, "mmap_size", 134_217_728_i64)?;
                 rc.pragma_update(None, "query_only", "true")?;
                 tracing::debug!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     surface = "logs",
                     service = "store",
                     action = "sqlite.pragmas",
@@ -115,7 +115,7 @@ impl LogStore {
             retention,
         };
         tracing::info!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs", service = "store", action = "open",
             path = %path_display,
             "log store SQLite opened",
@@ -214,7 +214,7 @@ pub async fn open_store_for_test(retention: LogRetention) -> Result<LogStore, To
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     let mut version: i32 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
     tracing::debug!(
-        target: "lab::dispatch::logs",
+        target: "labby::dispatch::logs",
         surface = "logs",
         service = "store",
         action = "sqlite.migrate.start",
@@ -225,7 +225,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch(include_str!("store_schema.sql"))?;
         conn.pragma_update(None, "user_version", 1)?;
         tracing::info!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs",
             service = "store",
             action = "sqlite.migrate.apply",
@@ -239,7 +239,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         migrate_actor_key(conn)?;
         conn.pragma_update(None, "user_version", 2)?;
         tracing::info!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs",
             service = "store",
             action = "sqlite.migrate.apply",
@@ -249,7 +249,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         );
     } else {
         tracing::debug!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs",
             service = "store",
             action = "sqlite.migrate.skip",

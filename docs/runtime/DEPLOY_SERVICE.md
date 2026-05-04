@@ -40,14 +40,14 @@ V1 with a WARN log; host aliases that depend on them will not deploy.
 
 ```toml
 [deploy.defaults]
-remote_path  = "/usr/local/bin/lab"
+remote_path  = "/usr/local/bin/labby"
 service      = "lab"
 service_scope = "system"   # or "user"
 max_parallel = 1
 canary_hosts = ["mini1"]
 
 [deploy.hosts.mini2]
-remote_path  = "/opt/lab/bin/lab"
+remote_path  = "/opt/lab/bin/labby"
 service      = "lab-worker"
 service_scope = "user"
 ```
@@ -58,7 +58,7 @@ service_scope = "user"
 
 ## Pipeline stages
 
-1. **Build** — `cargo build --release --all-features -p lab`. The artifact
+1. **Build** — `cargo build --release --all-features -p labby`. The artifact
    is sha256-hashed locally.
 2. **Preflight** — per host: `uname -m` must match the local build's target
    triple arch (`arch_mismatch` otherwise); the install directory's parent
@@ -112,5 +112,5 @@ stage), CLI shim, MCP adapter, and the V1 orchestrator are wired. The
 orchestrator runs the per-stage preflight/transfer/install/restart/verify
 pipeline against the `HostIo` trait, with the production path using SSH I/O.
 
-The CLI also exposes `lab deploy monitor` for monitor-oriented deployment
+The CLI also exposes `labby deploy monitor` for monitor-oriented deployment
 workflows.

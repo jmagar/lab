@@ -143,12 +143,12 @@ export function WorkspacePicker({ open, onOpenChange, onSelect }: WorkspacePicke
         <div
           role="region"
           aria-label="Workspace directory browser"
-          className="min-h-[200px] overflow-y-auto"
+          className="aurora-scrollbar min-h-[200px] overflow-y-auto"
         >
           {error && (
             <div
               role="alert"
-              className="flex items-center gap-2 rounded-aurora-2 border border-destructive/40 bg-destructive/10 px-3 py-2 text-[12px] text-destructive"
+              className="flex items-center gap-2 rounded-aurora-2 border border-aurora-error/40 bg-aurora-error/12 px-3 py-2 text-[12px] text-aurora-error"
             >
               <AlertTriangle className="size-3.5" />
               <span>{error}</span>

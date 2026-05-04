@@ -216,63 +216,81 @@ export function useSessionEvents(sessionId: string | null) {
     const abortController = new AbortController()
 
     void (async () => {
-      try {
-        const ticket = await requestAcpSubscribeTicket(
-          fetchAcp,
-          sessionId,
-          abortController.signal,
-        )
-        const url = buildSessionEventsUrl(
-          acpBase,
-          sessionId,
-          lastSeqRef.current,
-          ticket,
-          window.location.origin,
-        )
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: gatewayHeaders(),
-          credentials: requestCredentials,
-          cache: 'no-store',
-          signal: abortController.signal,
-        })
+      let retryDelay = 1_000
 
-        if (!response.ok || !response.body) {
-          setConnectionState('error')
-          return
-        }
+      while (!abortController.signal.aborted) {
+        setConnectionState('connecting')
+        try {
+          const ticket = await requestAcpSubscribeTicket(
+            fetchAcp,
+            sessionId,
+            abortController.signal,
+          )
+          const url = buildSessionEventsUrl(
+            acpBase,
+            sessionId,
+            lastSeqRef.current,
+            ticket,
+            window.location.origin,
+          )
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: gatewayHeaders(),
+            credentials: requestCredentials,
+            cache: 'no-store',
+            signal: abortController.signal,
+          })
 
-        setConnectionState('open')
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-        let buffer = ''
-        const applyBuffer = () => {
-          const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
-          buffer = consumed.buffer
-
-          for (const event of consumed.events) {
-            lastSeqRef.current = event.seq
-            sessionLastSeqCache.set(sessionId, event.seq)
-            enqueueEvent(event)
+          if (!response.ok || !response.body) {
+            setConnectionState('error')
+            await new Promise((r) => setTimeout(r, retryDelay))
+            retryDelay = Math.min(retryDelay * 2, 30_000)
+            continue
           }
-        }
 
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) {
+          setConnectionState('open')
+          retryDelay = 1_000 // reset backoff on successful open
+
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          let buffer = ''
+          const applyBuffer = () => {
+            const consumed = consumeSessionEventBuffer(buffer, lastSeqRef.current)
+            buffer = consumed.buffer
+
+            for (const event of consumed.events) {
+              lastSeqRef.current = event.seq
+              sessionLastSeqCache.set(sessionId, event.seq)
+              enqueueEvent(event)
+            }
+          }
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) {
+              break
+            }
+
+            buffer += decoder.decode(value, { stream: true })
+            applyBuffer()
+          }
+
+          buffer += decoder.decode()
+          applyBuffer()
+
+          // Stream closed by server — reconnect after a short delay.
+          if (!abortController.signal.aborted) {
+            setConnectionState('connecting')
+            await new Promise((r) => setTimeout(r, retryDelay))
+            retryDelay = Math.min(retryDelay * 2, 30_000)
+          }
+        } catch {
+          if (abortController.signal.aborted) {
             break
           }
-
-          buffer += decoder.decode(value, { stream: true })
-          applyBuffer()
-        }
-
-        buffer += decoder.decode()
-        applyBuffer()
-      } catch {
-        if (!abortController.signal.aborted) {
           setConnectionState('error')
+          await new Promise((r) => setTimeout(r, retryDelay))
+          retryDelay = Math.min(retryDelay * 2, 30_000)
         }
       }
     })()

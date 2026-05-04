@@ -1,4 +1,4 @@
-//! `lab audit` — onboarding audit.
+//! `labby audit` — onboarding audit.
 
 use std::process::ExitCode;
 
@@ -8,21 +8,21 @@ use clap::{Args, Subcommand};
 use crate::audit::{AuditReport, audit_services};
 use crate::output::{OutputFormat, print, render_audit_report};
 
-/// `lab audit` arguments.
+/// `labby audit` arguments.
 #[derive(Debug, Args)]
 pub struct AuditArgs {
     #[command(subcommand)]
     pub command: AuditCommand,
 }
 
-/// `lab audit` subcommands.
+/// `labby audit` subcommands.
 #[derive(Debug, Subcommand)]
 pub enum AuditCommand {
     /// Audit onboarding for one or more services.
     Onboarding(OnboardingArgs),
 }
 
-/// `lab audit onboarding` arguments.
+/// `labby audit onboarding` arguments.
 #[derive(Debug, Args)]
 pub struct OnboardingArgs {
     /// Services to audit.

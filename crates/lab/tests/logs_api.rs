@@ -14,23 +14,23 @@ mod support;
 
 use support::log_system::{InstalledLogSystemGuard, test_lock};
 
-fn logs_registry() -> lab::registry::ToolRegistry {
-    let mut registry = lab::registry::ToolRegistry::new();
-    registry.register(lab::registry::RegisteredService {
+fn logs_registry() -> labby::registry::ToolRegistry {
+    let mut registry = labby::registry::ToolRegistry::new();
+    registry.register(labby::registry::RegisteredService {
         name: "logs",
         description: "Search and stream local-master runtime logs",
         category: "bootstrap",
         status: "available",
-        actions: lab::dispatch::logs::ACTIONS,
+        actions: labby::dispatch::logs::ACTIONS,
         dispatch: |action, params| {
-            Box::pin(async move { lab::dispatch::logs::dispatch(&action, params).await })
+            Box::pin(async move { labby::dispatch::logs::dispatch(&action, params).await })
         },
     });
     registry
 }
 
-fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
-    lab::dispatch::logs::types::RawLogEvent {
+fn raw_gateway_event(message: &str) -> labby::dispatch::logs::types::RawLogEvent {
+    labby::dispatch::logs::types::RawLogEvent {
         ts: Some(1_713_225_600_000),
         level: Some("warn".to_string()),
         subsystem: Some("gateway".to_string()),
@@ -55,14 +55,14 @@ fn raw_gateway_event(message: &str) -> lab::dispatch::logs::types::RawLogEvent {
     }
 }
 
-async fn test_app() -> (Router, Arc<lab::dispatch::logs::types::LogSystem>) {
-    let logs_system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+async fn test_app() -> (Router, Arc<labby::dispatch::logs::types::LogSystem>) {
+    let logs_system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("log system");
-    let state = lab::api::state::AppState::from_registry(logs_registry())
+    let state = labby::api::state::AppState::from_registry(logs_registry())
         .with_log_system(Arc::clone(&logs_system));
     (
-        lab::api::router::build_router_with_bearer(state, None, None),
+        labby::api::router::build_router_with_bearer(state, None, None),
         logs_system,
     )
 }
@@ -212,7 +212,7 @@ async fn logs_mcp_tail_matches_api_query_semantics() {
         .await
         .expect("seed event");
 
-    let mcp_value = lab::dispatch::logs::dispatch(
+    let mcp_value = labby::dispatch::logs::dispatch(
         "logs.tail",
         serde_json::json!({ "after_ts": 0, "limit": 10 }),
     )
@@ -249,12 +249,12 @@ async fn logs_routes_respect_runtime_service_filtering() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let logs_system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let logs_system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("log system");
-    let state = lab::api::state::AppState::from_registry(lab::registry::ToolRegistry::new())
+    let state = labby::api::state::AppState::from_registry(labby::registry::ToolRegistry::new())
         .with_log_system(logs_system);
-    let app = lab::api::router::build_router_with_bearer(state, None, None);
+    let app = labby::api::router::build_router_with_bearer(state, None, None);
 
     let response = app
         .oneshot(

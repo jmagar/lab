@@ -54,7 +54,7 @@ Value precedence at point of use (highest wins):
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `filter` | `LAB_LOG` | `"lab=info,lab_apis=warn"` | Tracing filter directive |
+| `filter` | `LAB_LOG` | `"labby=info,lab_apis=warn"` | Tracing filter directive |
 | `format` | `LAB_LOG_FORMAT` | `"text"` | Log format: `"text"` or `"json"` |
 
 ### `[local_logs]`
@@ -85,7 +85,7 @@ Rules:
 - retention is whichever limit hits first: age or size
 - oldest events are evicted first by the shared local log subsystem
 - these knobs affect the controller runtime log store only; they do not change node log retention
-- the browser log console and `lab logs local *` commands both read this same local store contract
+- the browser log console and `labby logs local *` commands both read this same local store contract
 
 ### `[mcp]`
 
@@ -122,7 +122,7 @@ Rules:
 
 - when omitted, the local machine resolves itself as the controller
 - non-controller nodes use this hostname plus `mcp.port` to reach `http://<controller>:<port>`
-- the node runtime uses this for websocket node sessions, metadata/status/log delivery, and controller-routed CLI commands such as `lab nodes list`
+- the node runtime uses this for websocket node sessions, metadata/status/log delivery, and controller-routed CLI commands such as `labby nodes list`
 - legacy `[device].master` is still read for compatibility, but new config should use `[node].controller`
 - Docker/Compose deployments should expose the host hostname to the container.
   The bundled Compose file mounts `/etc/hostname` at `/run/host/hostname`, which
@@ -133,7 +133,7 @@ Rules:
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
-| `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `lab serve` |
+| `assets_dir` | `LAB_WEB_ASSETS_DIR` | auto-detect | Path to exported Labby assets served by `labby serve` |
 
 ### `[workspace]`
 
@@ -190,11 +190,11 @@ Rules:
 - when enabled, raw upstream tools are hidden from MCP `list_tools`; clients discover them through `tool_search` and invoke them through `tool_invoke`
 - when disabled, upstream tools are exposed normally according to each upstream's `expose_tools` policy
 - old `[[upstream]].tool_search` config is read only for migration compatibility and is dropped the next time gateway config is written
-- operators can change it without hand-editing TOML using `lab gateway tool-search status`, `lab gateway tool-search enable`, and `lab gateway tool-search disable`
+- operators can change it without hand-editing TOML using `labby gateway tool-search status`, `labby gateway tool-search enable`, and `labby gateway tool-search disable`
 
 ### `[oauth.machines.<id>]`
 
-Named OAuth callback forwarding targets for `lab oauth relay-local`.
+Named OAuth callback forwarding targets for `labby oauth relay-local`.
 
 | Key | Env override | Default | Description |
 |-----|-------------|---------|-------------|
@@ -214,7 +214,7 @@ default_port = 38935
 This is used by:
 
 ```bash
-lab oauth relay-local --machine dookie --port 38935
+labby oauth relay-local --machine dookie --port 38935
 ```
 
 `oauth.machines` config is TOML-only. There is no env-var override for the named machine map.
@@ -387,7 +387,7 @@ Environment variables override `[auth]` values field-by-field.
 
 ## Node Runtime Auth
 
-If the controller protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, controller-routed `lab nodes` / `lab logs` commands reuse that bearer token automatically.
+If the controller protects `/v1/*` with `LAB_MCP_HTTP_TOKEN`, controller-routed `labby nodes` / `labby logs` commands reuse that bearer token automatically.
 
 Fleet websocket sessions are separate from that bearer auth path. Node-to-controller delivery is admitted through the enrollment store using the node token (`device_token` wire field) presented during websocket `initialize`.
 
@@ -400,13 +400,13 @@ description = "Dookie Claude callback target"
 default_port = 38935
 ```
 
-Machine IDs are stable config keys. When `lab oauth relay-local --machine dookie --port 38935`
+Machine IDs are stable config keys. When `labby oauth relay-local --machine dookie --port 38935`
 runs, it resolves the forwarding target from this map and preserves the incoming suffix path and
 query string when proxying the callback.
 
 ## Web UI Hosting
 
-When `lab serve` can find exported Labby assets, it serves the web UI from the
+When `labby serve` can find exported Labby assets, it serves the web UI from the
 same origin as the API and MCP server. Asset directory resolution is:
 
 1. `LAB_WEB_ASSETS_DIR`
@@ -542,14 +542,14 @@ surfaces as `oauth_needs_reauth`, never as an internal error.
 | `LAB_MCP_STATEFUL` | `true` | Whether to use stateful MCP sessions. |
 | `LAB_MCP_ALLOWED_HOSTS` | — | Comma-separated hostnames for DNS rebinding protection. |
 | `LAB_CORS_ORIGINS` | — | Comma-separated CORS origin allowlist. |
-| `LAB_WEB_ASSETS_DIR` | — | Override path to exported Labby assets for `lab serve`. |
+| `LAB_WEB_ASSETS_DIR` | — | Override path to exported Labby assets for `labby serve`. |
 
 Full details in [TRANSPORT.md](./TRANSPORT.md).
 
 ## Docker Deployment
 
 `docker-compose.yml` mounts config and secrets from the host user's `~/.lab/`
-directory so the container and a local `lab serve` process share the same
+directory so the container and a local `labby serve` process share the same
 configuration without duplicating files:
 
 ```yaml
@@ -563,7 +563,7 @@ env_file:
 **Implications:**
 
 - Changes to `~/.lab/config.toml` take effect on the next container restart
-  (`docker compose restart lab-master`).
+  (`docker compose restart labby-master`).
 - Copy `config/config.example.toml` to `~/.lab/config.toml` and uncomment
   sections as needed.
 - The container overrides two env vars that would be wrong inside the container
@@ -571,7 +571,25 @@ env_file:
   - `LAB_WEB_ASSETS_DIR=""` — clears any host filesystem path so the binary
     falls back to its embedded assets.
   - `LAB_LOCAL_LOGS_STORE_PATH="/home/lab/.local/share/lab/logs.db"` — routes
-    the log store into the named `lab-data` volume.
+    the log store into the named `labby-data` volume.
+- Docker-specific ACP provider config is mounted from
+  `config/acp-providers.docker.json` to `/home/lab/.lab/acp-providers.json`.
+  That file uses container paths and passes
+  `sandbox_mode="danger-full-access"` to Codex ACP because Docker's default
+  seccomp profile blocks the nested namespace sandbox used by Codex
+  `workspace-write` and `read-only` modes. Provider config changes affect new
+  sessions; already-running provider subprocesses keep their launch state until
+  a new session or container restart.
+- `docker-compose.yml` sets `init: true` for `labby-master` so Docker's tiny
+  init reaps provider grandchildren orphaned by launch wrappers such as `npx`
+  after Lab terminates the ACP process group.
+- `just dev-debug` rebuilds the local debug binary, hot-swaps it into the
+  dev container through the bind-mounted `bin/labby`, and restarts the
+  container. Config-only edits usually need only a restart; Rust ACP health or
+  preflight edits need `just dev-debug` or another binary rebuild path.
+- After restart, `just acp-smoke --provider-only` checks the mounted Docker ACP
+  config and `/v1/acp/provider` health. `just acp-smoke` also creates a Codex
+  ACP session, sends a minimal `pwd` prompt, and streams a short event sample.
 
 ## `.mcp.json` Environment
 

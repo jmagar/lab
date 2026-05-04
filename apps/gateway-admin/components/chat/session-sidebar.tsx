@@ -3,13 +3,13 @@
 import * as React from 'react'
 import { ChevronDown, ChevronRight, Database, Plus, MoreHorizontal, Search, Sparkles, Circle, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { AURORA_DENSE_META } from '@/components/aurora/tokens'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { AURORA_MUTED_LABEL } from '@/components/aurora/tokens'
 import { formatTimeAgo } from './mock-data'
 import type { ACPProject, ACPRun, ACPRunStatus } from './types'
 
@@ -30,14 +30,18 @@ function RunIcon({ status, agentId }: { status: ACPRunStatus; agentId: string })
   if (status === 'running') {
     return (
       <span className="relative flex size-3.5 shrink-0 items-center justify-center">
-        <Sparkles className="size-3.5 text-aurora-accent-primary" />
+        <span className="absolute size-3.5 animate-ping rounded-full bg-aurora-accent-primary/30" />
+        <Sparkles className="relative size-3 text-aurora-accent-primary" />
       </span>
     )
+  }
+  if (status === 'waiting_for_permission') {
+    return <Circle className="size-3.5 shrink-0 animate-pulse text-aurora-warn" />
   }
   if (agentId === 'claude-3-7') {
     return <Sparkles className="size-3.5 shrink-0 text-aurora-text-muted/50" />
   }
-  return <Circle className="size-3.5 shrink-0 text-aurora-text-muted/40" />
+  return <Circle className="size-3.5 shrink-0 text-aurora-text-muted/30" />
 }
 
 function RunRow({
@@ -54,15 +58,21 @@ function RunRow({
       type="button"
       onClick={onSelect}
       className={cn(
-        'group/run flex w-full items-center gap-2 rounded-aurora-1 px-2 py-1.5 text-left transition-colors',
+        'group/run relative flex w-full items-center gap-2 overflow-hidden rounded-aurora-1 px-2 py-1.5 text-left transition-colors',
         isSelected
           ? 'bg-aurora-panel-strong text-aurora-text-primary shadow-[var(--aurora-active-glow)]'
           : 'text-aurora-text-muted hover:bg-aurora-hover-bg hover:text-aurora-text-primary',
       )}
     >
+      {isSelected && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-0.5 rounded-r bg-aurora-accent-primary"
+        />
+      )}
       <RunIcon status={run.status} agentId={run.agentId} />
       <span className="min-w-0 flex-1 truncate text-[13px] leading-[1.2]">{run.title}</span>
-      <span className={cn('shrink-0 text-[11px] tabular-nums', AURORA_MUTED_LABEL, 'text-aurora-text-muted/60')}>
+      <span className={cn(AURORA_DENSE_META, 'shrink-0 tabular-nums text-aurora-text-muted')}>
         {formatTimeAgo(run.updatedAt)}
       </span>
     </button>

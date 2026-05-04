@@ -128,20 +128,20 @@ None. Returns a large `serde_json::Value` listing all loaded Apprise plugins and
 
 ## Surface Details
 
-### CLI (`lab apprise`)
+### CLI (`labby apprise`)
 
 Tier 2 (dispatch-backed thin shim). Accepts `action` as positional arg and `--params` as a
 JSON string. Defaults to `help` when no action is given.
 
 ```bash
-lab apprise server.health
-lab apprise notify.send --params '{"body":"hello","urls":["slack://..."]}'
-lab apprise notify.key.send --params '{"key":"mygroup","body":"hello"}'
-lab apprise config.add --params '{"key":"mygroup","config":"urls:\n- slack://...","format":"yaml"}'
-lab apprise config.get --params '{"key":"mygroup"}'
-lab apprise config.delete --params '{"key":"mygroup"}' --yes
-lab apprise config.urls --params '{"key":"mygroup"}'
-lab apprise server.details
+labby apprise server.health
+labby apprise notify.send --params '{"body":"hello","urls":["slack://..."]}'
+labby apprise notify.key.send --params '{"key":"mygroup","body":"hello"}'
+labby apprise config.add --params '{"key":"mygroup","config":"urls:\n- slack://...","format":"yaml"}'
+labby apprise config.get --params '{"key":"mygroup"}'
+labby apprise config.delete --params '{"key":"mygroup"}' --yes
+labby apprise config.urls --params '{"key":"mygroup"}'
+labby apprise server.details
 ```
 
 `config.delete` is destructive — requires `-y` / `--yes` in non-interactive CLI use.

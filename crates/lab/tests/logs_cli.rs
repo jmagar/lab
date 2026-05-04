@@ -1,7 +1,7 @@
 use clap::Parser;
 
-use lab::cli::Cli;
-use lab::dispatch::logs::types::{LogLevel, LogQuery, RawLogEvent, Subsystem};
+use labby::cli::Cli;
+use labby::dispatch::logs::types::{LogLevel, LogQuery, RawLogEvent, Subsystem};
 
 mod support;
 
@@ -37,7 +37,7 @@ fn raw_gateway_event(message: &str) -> RawLogEvent {
 fn logs_cli_parses_existing_fleet_search() {
     let cli = Cli::try_parse_from(["lab", "logs", "search", "node-a", "timeout"])
         .expect("fleet search parses");
-    assert!(matches!(cli.command, lab::cli::Command::Logs(_)));
+    assert!(matches!(cli.command, labby::cli::Command::Logs(_)));
 }
 
 #[test]
@@ -55,7 +55,7 @@ fn logs_cli_parses_local_search() {
         "10",
     ])
     .expect("local search parses");
-    assert!(matches!(cli.command, lab::cli::Command::Logs(_)));
+    assert!(matches!(cli.command, labby::cli::Command::Logs(_)));
 }
 
 #[tokio::test]
@@ -63,7 +63,7 @@ async fn logs_local_search_uses_shared_dispatch_contract() {
     let mut lock = test_lock();
     let _lock = lock.write().expect("log system test lock");
     let _installed = InstalledLogSystemGuard::new();
-    let system = lab::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
+    let system = labby::dispatch::logs::client::bootstrap_running_log_system_for_test(16)
         .await
         .expect("runtime");
     system
@@ -71,7 +71,7 @@ async fn logs_local_search_uses_shared_dispatch_contract() {
         .await
         .expect("seed event");
 
-    let value = lab::dispatch::logs::dispatch::dispatch_with_system(
+    let value = labby::dispatch::logs::dispatch::dispatch_with_system(
         &system,
         "logs.search",
         serde_json::json!({

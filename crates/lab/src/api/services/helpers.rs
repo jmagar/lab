@@ -557,7 +557,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("lab=info"))
+            .with(EnvFilter::new("labby=info"))
             .with(
                 fmt::layer()
                     .json()
@@ -605,7 +605,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let recorder = EventRecorder::default();
         let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("lab=info"))
+            .with(EnvFilter::new("labby=info"))
             .with(RecordingLayer {
                 recorder: recorder.clone(),
             });
@@ -671,7 +671,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let buf = SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
-            .with(EnvFilter::new("lab=info"))
+            .with(EnvFilter::new("labby=info"))
             .with(
                 fmt::layer()
                     .json()

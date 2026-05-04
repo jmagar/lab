@@ -13,10 +13,9 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use lab::config::ArtifactRole;
-use lab::dispatch::deploy::build::BuildOutcome;
-use lab::dispatch::deploy::runner::test_support::{RecordingIo, RunResp};
-use lab::dispatch::deploy::runner::{HostIo, orchestrate_with_io};
+use labby::dispatch::deploy::build::BuildOutcome;
+use labby::dispatch::deploy::runner::test_support::{RecordingIo, RunResp};
+use labby::dispatch::deploy::runner::{HostIo, orchestrate_with_io};
 
 /// Bundle of pre-programmed responses for a single host's full happy path.
 ///
@@ -61,7 +60,7 @@ fn script_verify_fail(build_sha: &str) -> RecordingIo {
 
 fn script_happy_no_unit(build_sha: &str) -> RecordingIo {
     let io = script_happy_path(build_sha, false);
-    io.push_run(RunResp::ok("lab 0.3.4\n")); // verify
+    io.push_run(RunResp::ok("labby 0.3.4\n")); // verify
     io
 }
 
@@ -70,11 +69,11 @@ fn fake_build() -> Arc<BuildOutcome> {
     // inside `run_host_pipeline`. sha256 of the contents matches `target_sha`.
     let tmp = tempfile::NamedTempFile::new().unwrap();
     let path = tmp.path().to_path_buf();
-    std::fs::write(&path, b"lab-fake").unwrap();
+    std::fs::write(&path, b"labby-fake").unwrap();
     let sha = {
         use sha2::{Digest, Sha256};
         let mut h = Sha256::new();
-        h.update(b"lab-fake");
+        h.update(b"labby-fake");
         hex::encode(h.finalize())
     };
     // Keep the tempfile alive for the duration of the test by leaking the
@@ -85,7 +84,7 @@ fn fake_build() -> Arc<BuildOutcome> {
         sha256: sha,
         size_bytes: 8,
         target_triple: "x86_64-unknown-linux-gnu".into(),
-        role: lab::config::ArtifactRole::Node,
+        role: labby::config::ArtifactRole::Node,
     })
 }
 
@@ -210,8 +209,8 @@ async fn continue_on_error_reports_partial_failure() {
     let f = factory.clone();
     let results = orchestrate_with_io(
         vec![
-            ("host1".into(), None, None, "/usr/local/bin/lab".into()),
-            ("host2".into(), None, None, "/usr/local/bin/lab".into()),
+            ("host1".into(), None, None, "/usr/local/bin/labby".into()),
+            ("host2".into(), None, None, "/usr/local/bin/labby".into()),
         ],
         build,
         2,
@@ -245,8 +244,8 @@ async fn fail_fast_aborts_subsequent_hosts() {
     // the stop flag can actually prevent host2's pipeline from running.
     let results = orchestrate_with_io(
         vec![
-            ("host1".into(), None, None, "/usr/local/bin/lab".into()),
-            ("host2".into(), None, None, "/usr/local/bin/lab".into()),
+            ("host1".into(), None, None, "/usr/local/bin/labby".into()),
+            ("host2".into(), None, None, "/usr/local/bin/labby".into()),
         ],
         build,
         1,
@@ -345,11 +344,11 @@ async fn max_parallel_bounds_concurrency() {
     let max_seen_c = max_seen.clone();
     let results = orchestrate_with_io(
         vec![
-            ("h1".into(), None, None, "/usr/local/bin/lab".into()),
-            ("h2".into(), None, None, "/usr/local/bin/lab".into()),
-            ("h3".into(), None, None, "/usr/local/bin/lab".into()),
-            ("h4".into(), None, None, "/usr/local/bin/lab".into()),
-            ("h5".into(), None, None, "/usr/local/bin/lab".into()),
+            ("h1".into(), None, None, "/usr/local/bin/labby".into()),
+            ("h2".into(), None, None, "/usr/local/bin/labby".into()),
+            ("h3".into(), None, None, "/usr/local/bin/labby".into()),
+            ("h4".into(), None, None, "/usr/local/bin/labby".into()),
+            ("h5".into(), None, None, "/usr/local/bin/labby".into()),
         ],
         build,
         2,
@@ -391,9 +390,9 @@ async fn all_succeed_happy_path() {
     let f = factory.clone();
     let results = orchestrate_with_io(
         vec![
-            ("a".into(), None, None, "/usr/local/bin/lab".into()),
-            ("b".into(), None, None, "/usr/local/bin/lab".into()),
-            ("c".into(), None, None, "/usr/local/bin/lab".into()),
+            ("a".into(), None, None, "/usr/local/bin/labby".into()),
+            ("b".into(), None, None, "/usr/local/bin/labby".into()),
+            ("c".into(), None, None, "/usr/local/bin/labby".into()),
         ],
         build,
         3,
@@ -415,7 +414,7 @@ async fn skip_transfer_when_sha_matches_does_not_call_upload() {
     io.push_run(RunResp::ok("x86_64\n"));
     io.push_run(RunResp::ok(""));
     io.push_sha(Some(build.sha256.clone()));
-    io.push_run(RunResp::ok("lab 0.3.4\n")); // verify
+    io.push_run(RunResp::ok("labby 0.3.4\n")); // verify
     let mut map = HashMap::new();
     map.insert("skiphost".to_string(), io);
     let factory = IoFactory::new(map);
@@ -433,7 +432,7 @@ async fn skip_transfer_when_sha_matches_does_not_call_upload() {
 
     let f = factory.clone();
     let results = orchestrate_with_io(
-        vec![("skiphost".into(), None, None, "/usr/local/bin/lab".into())],
+        vec![("skiphost".into(), None, None, "/usr/local/bin/labby".into())],
         build,
         1,
         false,
@@ -470,10 +469,10 @@ async fn unknown_host_alias_in_factory_path_is_separate_from_plan_validation() {
 /// host — `plan_impl` only validates aliases against the inventory.
 #[tokio::test]
 async fn plan_artifacts_includes_per_role_entries() {
-    use lab::config::{ArtifactRole, DeployDefaults, DeployHostOverride, DeployPreferences};
-    use lab::dispatch::deploy::runner::{DefaultRunner, build_default_runner};
     use lab_apis::core::ssh::SshHostTarget;
     use lab_apis::deploy::DeployRequest;
+    use labby::config::{ArtifactRole, DeployDefaults, DeployHostOverride, DeployPreferences};
+    use labby::dispatch::deploy::runner::DefaultRunner;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
@@ -495,7 +494,7 @@ async fn plan_artifacts_includes_per_role_entries() {
     );
     let prefs = DeployPreferences {
         defaults: Some(DeployDefaults {
-            remote_path: Some("/usr/local/bin/lab".to_string()),
+            remote_path: Some("/usr/local/bin/labby".to_string()),
             ..Default::default()
         }),
         hosts,
@@ -522,7 +521,7 @@ async fn plan_artifacts_includes_per_role_entries() {
     let runner = DefaultRunner::new(
         prefs,
         Arc::new(inventory),
-        Arc::new(lab::dispatch::deploy::lock::HostLockRegistry::default()),
+        Arc::new(labby::dispatch::deploy::lock::HostLockRegistry::default()),
     );
 
     let req = DeployRequest {

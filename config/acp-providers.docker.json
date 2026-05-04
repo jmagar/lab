@@ -7,7 +7,9 @@
     "command": "npx",
     "args": [
       "-y",
-      "@zed-industries/codex-acp@0.12.0"
+      "@zed-industries/codex-acp@0.12.0",
+      "-c",
+      "sandbox_mode=\"danger-full-access\""
     ],
     "env": {
       "CODEX_HOME": "/home/lab/.lab/acp/codex-home"

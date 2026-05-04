@@ -47,7 +47,7 @@ export function SettingsPanel({
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="aurora-scrollbar flex-1 overflow-y-auto">
         {/* Agent info */}
         {agent && (
           <div className="px-4 py-3">

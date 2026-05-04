@@ -93,7 +93,7 @@ impl IngestHandle {
                 let total_dropped = self.counters.record_drop();
                 let saturation_events = self.counters.record_saturation();
                 tracing::warn!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     surface = "logs", service = "ingest", action = "event.drop",
                     kind = "rate_limited",
                     queue_capacity = tx.max_capacity(),
@@ -110,7 +110,7 @@ impl IngestHandle {
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 let total_dropped = self.counters.record_drop();
                 tracing::warn!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     surface = "logs", service = "ingest", action = "event.drop",
                     kind = "internal_error",
                     queue_capacity = tx.max_capacity(),
@@ -150,7 +150,7 @@ pub fn spawn_writer(
             let event = canonicalize(raw);
             if let Err(err) = store.insert(&event).await {
                 tracing::warn!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     surface = "logs", service = "ingest", action = "event.insert_failed",
                     error = %err, "log store insert failed; event dropped",
                 );
@@ -160,7 +160,7 @@ pub fn spawn_writer(
             hub.publish(event);
         }
         tracing::warn!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             surface = "logs", service = "ingest", action = "writer.exit",
             processed_events,
             "log ingest writer task exited; all senders dropped; log ingest offline",
@@ -295,7 +295,7 @@ where
         let metadata = event.metadata();
 
         // Guard against self-log infinite loop: skip events from the logs subsystem itself.
-        if metadata.target().starts_with("lab::dispatch::logs") {
+        if metadata.target().starts_with("labby::dispatch::logs") {
             return;
         }
 

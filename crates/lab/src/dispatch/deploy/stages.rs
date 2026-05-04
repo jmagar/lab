@@ -329,7 +329,7 @@ mod tests_preflight {
         io.push_run(RunResp::ok("aarch64\n"));
         let err = preflight(
             io,
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "x86_64-unknown-linux-gnu".to_string(),
             "abc123".to_string(),
         )
@@ -346,7 +346,7 @@ mod tests_preflight {
         io.push_sha(Some("abc123".to_string()));
         let res = preflight(
             io,
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "x86_64-unknown-linux-gnu".to_string(),
             "abc123".to_string(),
         )
@@ -363,7 +363,7 @@ mod tests_preflight {
         io.push_sha(Some("deadbeef".to_string()));
         let res = preflight(
             io,
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "x86_64-unknown-linux-gnu".to_string(),
             "abc123".to_string(),
         )
@@ -379,7 +379,7 @@ mod tests_preflight {
         io.push_run(RunResp::fail(1, "permission denied"));
         let err = preflight(
             io,
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "x86_64-unknown-linux-gnu".to_string(),
             "abc123".to_string(),
         )
@@ -396,7 +396,7 @@ mod tests_preflight {
         io.push_sha(None);
         let _ = preflight(
             io.clone(),
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "x86_64-unknown-linux-gnu".to_string(),
             "abc123".to_string(),
         )
@@ -409,7 +409,7 @@ mod tests_preflight {
             .find(|o| o.starts_with("run:sh,-c,"))
             .expect("canary run recorded");
         assert!(probe.contains("/usr/local/bin/.lab.deploy.canary"));
-        assert!(!probe.contains("'/usr/local/bin/lab'"));
+        assert!(!probe.contains("'/usr/local/bin/labby'"));
     }
 }
 
@@ -436,7 +436,7 @@ mod tests_transfer_install {
 
         let outcome = transfer_and_install(
             io.clone(),
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "abc123".to_string(),
             tokio::io::empty(),
         )
@@ -448,33 +448,33 @@ mod tests_transfer_install {
         let ops = io.ops();
         assert!(
             ops.iter()
-                .any(|o| o == "upload:/usr/local/bin/lab.new.partial"),
+                .any(|o| o == "upload:/usr/local/bin/labby.new.partial"),
             "ops: {ops:?}"
         );
         assert!(
             ops.iter()
-                .any(|o| o == "run:mv,--,/usr/local/bin/lab.new.partial,/usr/local/bin/lab.new"),
+                .any(|o| o == "run:mv,--,/usr/local/bin/labby.new.partial,/usr/local/bin/labby.new"),
             "ops: {ops:?}"
         );
         assert!(
-            ops.iter().any(|o| o == "sha256:/usr/local/bin/lab.new"),
+            ops.iter().any(|o| o == "sha256:/usr/local/bin/labby.new"),
             "ops: {ops:?}"
         );
         // backup rename targets the existing binary
         assert!(
             ops.iter()
-                .any(|o| o.starts_with("run:mv,--,/usr/local/bin/lab,/usr/local/bin/lab.bak.")),
+                .any(|o| o.starts_with("run:mv,--,/usr/local/bin/labby,/usr/local/bin/labby.bak.")),
             "ops: {ops:?}"
         );
         // atomic swap
         assert!(
             ops.iter()
-                .any(|o| o == "run:mv,--,/usr/local/bin/lab.new,/usr/local/bin/lab"),
+                .any(|o| o == "run:mv,--,/usr/local/bin/labby.new,/usr/local/bin/labby"),
             "ops: {ops:?}"
         );
         assert!(
             ops.iter()
-                .any(|o| o == "run:chmod,755,--,/usr/local/bin/lab"),
+                .any(|o| o == "run:chmod,755,--,/usr/local/bin/labby"),
             "ops: {ops:?}"
         );
     }
@@ -491,7 +491,7 @@ mod tests_transfer_install {
 
         let err = transfer_and_install(
             io.clone(),
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "abc123".to_string(),
             tokio::io::empty(),
         )
@@ -503,12 +503,12 @@ mod tests_transfer_install {
         // must NOT have performed the final swap or the backup rename
         assert!(
             !ops.iter()
-                .any(|o| o == "run:mv,--,/usr/local/bin/lab.new,/usr/local/bin/lab"),
+                .any(|o| o == "run:mv,--,/usr/local/bin/labby.new,/usr/local/bin/labby"),
             "ops: {ops:?}"
         );
         assert!(
             !ops.iter()
-                .any(|o| o.starts_with("run:mv,--,/usr/local/bin/lab,/usr/local/bin/lab.bak.")),
+                .any(|o| o.starts_with("run:mv,--,/usr/local/bin/labby,/usr/local/bin/labby.bak.")),
             "ops: {ops:?}"
         );
     }
@@ -524,7 +524,7 @@ mod tests_transfer_install {
 
         let outcome = transfer_and_install(
             io.clone(),
-            "/usr/local/bin/lab".to_string(),
+            "/usr/local/bin/labby".to_string(),
             "abc123".to_string(),
             tokio::io::empty(),
         )
@@ -536,12 +536,12 @@ mod tests_transfer_install {
         let ops = io.ops();
         assert!(
             ops.iter()
-                .any(|o| o == "run:mv,--,/usr/local/bin/lab.new,/usr/local/bin/lab"),
+                .any(|o| o == "run:mv,--,/usr/local/bin/labby.new,/usr/local/bin/labby"),
             "ops: {ops:?}"
         );
         assert!(
             ops.iter()
-                .any(|o| o == "run:chmod,755,--,/usr/local/bin/lab"),
+                .any(|o| o == "run:chmod,755,--,/usr/local/bin/labby"),
             "ops: {ops:?}"
         );
     }
@@ -569,19 +569,19 @@ mod tests_restart_verify {
 
         restart(
             io.clone(),
-            Some("lab".to_string()),
+            Some("labby".to_string()),
             Some(ServiceScope::System),
         )
         .await
         .unwrap();
         let ops = io.ops();
         assert!(
-            ops.iter().any(|o| o == "run:systemctl,restart,lab"),
+            ops.iter().any(|o| o == "run:systemctl,restart,labby"),
             "ops: {ops:?}"
         );
         assert!(
             ops.iter()
-                .any(|o| o == "run:systemctl,is-active,--wait,lab"),
+                .any(|o| o == "run:systemctl,is-active,--wait,labby"),
             "ops: {ops:?}"
         );
     }
@@ -626,13 +626,14 @@ mod tests_restart_verify {
     async fn verify_runs_version_and_rejects_nonzero_exit() {
         let io = Arc::new(RecordingIo::new());
         io.push_run(RunResp::fail(1, "unknown flag"));
-        let err = verify(io.clone(), "/usr/local/bin/lab".to_string())
+        let err = verify(io.clone(), "/usr/local/bin/labby".to_string())
             .await
             .unwrap_err();
         assert_eq!(err.kind(), "verify_failed");
         let ops = io.ops();
         assert!(
-            ops.iter().any(|o| o == "run:/usr/local/bin/lab,--version"),
+            ops.iter()
+                .any(|o| o == "run:/usr/local/bin/labby,--version"),
             "ops: {ops:?}"
         );
     }
@@ -640,8 +641,10 @@ mod tests_restart_verify {
     #[tokio::test]
     async fn verify_accepts_zero_exit() {
         let io = Arc::new(RecordingIo::new());
-        io.push_run(RunResp::ok("lab 0.3.4\n"));
-        verify(io, "/usr/local/bin/lab".to_string()).await.unwrap();
+        io.push_run(RunResp::ok("labby 0.3.4\n"));
+        verify(io, "/usr/local/bin/labby".to_string())
+            .await
+            .unwrap();
     }
 }
 

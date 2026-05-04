@@ -36,7 +36,7 @@ OAuth mode is configured through env vars and/or `config.toml`. Env vars take pr
 
 ## Startup Behavior
 
-When OAuth mode is configured, `lab serve` performs these steps at startup:
+When OAuth mode is configured, `labby serve` performs these steps at startup:
 
 1. Validate that `LAB_PUBLIC_URL`, Google credentials, and `LAB_AUTH_ADMIN_EMAIL` are present.
 2. Open the SQLite auth store in WAL mode with a non-zero busy timeout.
@@ -93,8 +93,8 @@ Google-specific notes:
 `lab` also ships a local OAuth callback forwarder for browser-side machines:
 
 ```bash
-lab oauth relay-local --machine dookie --port 38935
-lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+labby oauth relay-local --machine dookie --port 38935
+labby oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
 ```
 
 This helper exists for cases where:
@@ -337,7 +337,7 @@ LAB_GOOGLE_CLIENT_ID=google-client-id
 LAB_GOOGLE_CLIENT_SECRET=google-client-secret
 
 # Start
-lab serve
+labby serve
 ```
 
 Verify the metadata endpoint:
@@ -389,11 +389,11 @@ The script covers:
 
 Exit codes: `0` = all pass, `1` = one or more failures.
 
-### Internal pre-flight — `lab doctor`
+### Internal pre-flight — `labby doctor`
 
-`lab doctor` is the in-process health audit. It checks config validity, file permissions on `auth.db` and `auth-jwt.pem`, service reachability, and auth configuration before you have a running server to probe. Use the shell script for post-deploy black-box verification; use `lab doctor` for pre-flight and service-level health.
+`labby doctor` is the in-process health audit. It checks config validity, file permissions on `auth.db` and `auth-jwt.pem`, service reachability, and auth configuration before you have a running server to probe. Use the shell script for post-deploy black-box verification; use `labby doctor` for pre-flight and service-level health.
 
-Auth-specific items `lab doctor` covers (or should cover):
+Auth-specific items `labby doctor` covers (or should cover):
 
 - `LAB_PUBLIC_URL` is set when OAuth mode is active
 - Google credentials present

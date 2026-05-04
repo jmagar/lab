@@ -1,9 +1,9 @@
-//! `lab setup` — first-run wizard entry point.
+//! `labby setup` — first-run wizard entry point.
 //!
 //! Thin CLI shim over the `setup` dispatch service. Detects first-run via
 //! `setup.state`, then prints either:
 //!
-//! - first-run: instructions to start `lab serve` and visit `/setup`, or
+//! - first-run: instructions to start `labby serve` and visit `/setup`, or
 //! - re-run: instructions to visit `/settings`.
 //!
 //! Honors `LAB_SKIP_SETUP=1` and `--no-setup` for CI / power users.
@@ -42,7 +42,7 @@ const DEFAULT_LAB_URL: &str = "http://127.0.0.1:8765";
 pub async fn run(args: SetupArgs) -> Result<ExitCode> {
     if std::env::var("LAB_SKIP_SETUP").as_deref() == Ok("1") || args.no_setup {
         eprintln!(
-            "setup skipped (LAB_SKIP_SETUP=1 or --no-setup); run `lab setup` manually when ready"
+            "setup skipped (LAB_SKIP_SETUP=1 or --no-setup); run `labby setup` manually when ready"
         );
         return Ok(ExitCode::SUCCESS);
     }
@@ -73,7 +73,7 @@ pub async fn run(args: SetupArgs) -> Result<ExitCode> {
         eprintln!("lab is already configured. Opening Settings.");
     }
     eprintln!();
-    eprintln!("→ Run `lab serve` and visit: {url}");
+    eprintln!("→ Run `labby serve` and visit: {url}");
     eprintln!();
     eprintln!("Tip: set LAB_SKIP_SETUP=1 to suppress this message in CI.");
     Ok(ExitCode::SUCCESS)

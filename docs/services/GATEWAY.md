@@ -108,10 +108,10 @@ max_tools = 5000
 CLI:
 
 ```bash
-lab gateway tool-search status
-lab gateway tool-search enable
-lab gateway tool-search enable --top-k-default 20 --max-tools 8000
-lab gateway tool-search disable
+labby gateway tool-search status
+labby gateway tool-search enable
+labby gateway tool-search enable --top-k-default 20 --max-tools 8000
+labby gateway tool-search disable
 ```
 
 HTTP/MCP gateway management actions:
@@ -181,14 +181,14 @@ Observability requirements for that reconcile:
 ### CLI
 
 ```bash
-lab gateway list
-lab gateway get remote-lab
-lab gateway test --name remote-lab
-lab gateway add --name remote-lab --url https://lab2.example.com/mcp --bearer-token-env REMOTE_LAB_TOKEN
-lab gateway add --name local-tools --command local-mcp-server --allow-stdio
-lab gateway update remote-lab --proxy-resources true
-lab gateway remove remote-lab
-lab gateway reload
+labby gateway list
+labby gateway get remote-lab
+labby gateway test --name remote-lab
+labby gateway add --name remote-lab --url https://lab2.example.com/mcp --bearer-token-env REMOTE_LAB_TOKEN
+labby gateway add --name local-tools --command local-mcp-server --allow-stdio
+labby gateway update remote-lab --proxy-resources true
+labby gateway remove remote-lab
+labby gateway reload
 ```
 
 ### MCP
@@ -232,10 +232,10 @@ session and the master-only middleware; non-master sessions get `403`.
 CLI:
 
 ```bash
-lab gateway mcp auth start chrome-devtools
-lab gateway mcp auth open chrome-devtools --wait
-lab gateway mcp auth status chrome-devtools
-lab gateway mcp auth clear chrome-devtools
+labby gateway mcp auth start chrome-devtools
+labby gateway mcp auth open chrome-devtools --wait
+labby gateway mcp auth status chrome-devtools
+labby gateway mcp auth clear chrome-devtools
 ```
 
 MCP tool calls:

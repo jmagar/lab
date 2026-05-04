@@ -6,7 +6,7 @@ export function buildGatewayEndpointPreview(gateway: Gateway): string {
   }
 
   if (gateway.transport === 'in_process') {
-    return `lab mcp --services ${gateway.name}`
+    return `labby mcp --services ${gateway.name}`
   }
 
   return [gateway.config.command, ...(gateway.config.args ?? [])].filter(Boolean).join(' ')

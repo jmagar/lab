@@ -1,4 +1,4 @@
-//! `lab health` — quick reachability ping for every configured service.
+//! `labby health` — quick reachability ping for every configured service.
 
 use std::process::ExitCode;
 

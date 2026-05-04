@@ -5,7 +5,7 @@
 //! host transitions between `online` and `offline`, plus an initial snapshot
 //! line for every host on startup.
 //!
-//! Single-instance: refuses to start if another `lab deploy monitor` is already
+//! Single-instance: refuses to start if another `labby deploy monitor` is already
 //! running, using a pidfile at `~/.lab/run/deploy-monitor.lock`. Stale pidfiles
 //! (process no longer alive) are silently overwritten.
 //!
@@ -102,7 +102,7 @@ impl LockGuard {
             && pid_alive(pid)
         {
             bail!(
-                "another `lab deploy monitor` is already running (pid {pid}); \
+                "another `labby deploy monitor` is already running (pid {pid}); \
                  stop it or delete {} if you're sure it's stale",
                 path.display()
             );
@@ -123,7 +123,7 @@ impl Drop for LockGuard {
 /// Watch the given hosts, emitting JSON state-change events to stdout.
 ///
 /// Holds a single-instance pidfile lock; returns an error if another
-/// `lab deploy monitor` is already running. Runs until Ctrl-C is received.
+/// `labby deploy monitor` is already running. Runs until Ctrl-C is received.
 pub async fn watch_hosts(
     runner: &DefaultRunner,
     targets: Vec<String>,

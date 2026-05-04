@@ -13,7 +13,7 @@ export default function WelcomePage(): React.ReactElement {
           persisted as a draft and resumed on the next visit.
         </p>
         <p className="text-sm text-muted-foreground">
-          You can exit and re-run later by typing <code>lab setup</code> in
+          You can exit and re-run later by typing <code>labby setup</code> in
           your shell, or set <code>LAB_SKIP_SETUP=1</code> to suppress the
           first-run prompt entirely.
         </p>

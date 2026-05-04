@@ -41,8 +41,8 @@ use crate::log_fmt::formatter::PremiumEventFormatter;
 use crate::output::{ColorPolicy, RenderEnv, human_output_styling_enabled};
 
 fn human_console_target_enabled(target: &str) -> bool {
-    target == "lab"
-        || target.starts_with("lab::")
+    target == "labby"
+        || target.starts_with("labby::")
         || target == "lab_apis"
         || target.starts_with("lab_apis::")
         || target == "lab_auth"
@@ -66,7 +66,7 @@ fn init_tracing(
             let directive = log
                 .filter
                 .as_deref()
-                .unwrap_or("lab=info,lab_apis=warn,rmcp=warn");
+                .unwrap_or("labby=info,lab_apis=warn,rmcp=warn");
             EnvFilter::new(directive)
         })
     };
@@ -165,9 +165,29 @@ async fn main() -> ExitCode {
         cli::Command::Mcp(args) => args.log_level.as_ref(),
         _ => None,
     }
-    .map(|level| format!("lab={level},warn"));
+    .map(|level| format!("labby={level},warn"));
+
+    // LAB_LOG_COLOR overrides the CLI default when running without a TTY (e.g.
+    // inside Docker). The CLI --color flag wins when the user sets it explicitly,
+    // but since clap cannot distinguish "user passed --color auto" from "defaulted
+    // to auto", the env var only activates when the policy is Auto.
+    let color_policy = if cli.color == ColorPolicy::Auto {
+        match std::env::var("LAB_LOG_COLOR")
+            .ok()
+            .as_deref()
+            .map(str::to_lowercase)
+            .as_deref()
+        {
+            Some("force" | "always" | "1") => ColorPolicy::Color,
+            Some("plain" | "never" | "0") => ColorPolicy::Plain,
+            _ => ColorPolicy::Auto,
+        }
+    } else {
+        cli.color
+    };
+
     // _log_guard MUST live for the entire process — dropping it stops file logging.
-    let _log_guard = init_tracing(&config.log, cli.color, log_filter_override.as_deref());
+    let _log_guard = init_tracing(&config.log, color_policy, log_filter_override.as_deref());
 
     // 3. Load .env files (secrets + URL env vars) for runtime paths.
     // Static docs generation is intentionally metadata-only and must not

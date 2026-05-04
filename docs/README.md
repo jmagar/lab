@@ -19,7 +19,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Use [coverage/README.md](./coverage/README.md), [upstream-api/README.md](./upstream-api/README.md), [generated/README.md](./generated/README.md), and [features/README.md](./features/README.md) for directory-level indexes.
 - Use [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md) for Lab-owned registry metadata layered onto the mirrored MCP Registry surface.
 - Use [DEVICE_RUNTIME.md](./DEVICE_RUNTIME.md), [FLEET_LOGS.md](./FLEET_LOGS.md), and [DEPLOY.md](./DEPLOY.md) for the master/non-master fleet runtime, device inventory, and deployment model.
-- Use [MONITORS.md](./MONITORS.md) for Claude Code monitor definitions (`plugins/monitors/monitors.json`) and the `lab deploy monitor` command.
+- Use [MONITORS.md](./MONITORS.md) for Claude Code monitor definitions (`plugins/monitors/monitors.json`) and the `labby deploy monitor` command.
 - Use [LOCAL_LOGS.md](./LOCAL_LOGS.md) for the local-master runtime log store, `/v1/logs`, SSE streaming, and gateway-admin `/logs`.
 - See [UPSTREAM.md](./UPSTREAM.md) for upstream MCP gateway setup, configuration, tool merging, circuit breaker behavior, and resource proxying.
 - Consult [TRANSPORT.md](./TRANSPORT.md) for stdio and streamable HTTP transport configuration, middleware stack, and session management.
@@ -30,7 +30,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - Use [SERVICE_LAYER_MIGRATION.md](./SERVICE_LAYER_MIGRATION.md) when executing the refactor from surface-coupled dispatch to the shared `services` layer.
 - Use [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md) when you are bringing a new service online end to end.
 - Use [SCAFFOLD_AND_AUDIT.md](./SCAFFOLD_AND_AUDIT.md) for the scaffold/audit contract, [DEPLOY_SERVICE.md](./DEPLOY_SERVICE.md) for deploy-service actions, and [FLEET_METHODS.md](./FLEET_METHODS.md) for fleet WebSocket methods.
-- Use `lab scaffold service` and `lab audit onboarding` when you are creating
+- Use `labby scaffold service` and `labby audit onboarding` when you are creating
   or validating a new service onboarding path.
 
 ## Reading Paths
@@ -120,7 +120,7 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [DEPLOY_SERVICE.md](./DEPLOY_SERVICE.md)
   Deploy service action/API contract.
 - [MONITORS.md](./MONITORS.md)
-  Claude Code monitor definitions and `lab deploy monitor`.
+  Claude Code monitor definitions and `labby deploy monitor`.
 - [UPSTREAM.md](./UPSTREAM.md)
   Upstream MCP proxy gateway: config, discovery, tool collision handling, circuit breaker, resource proxying.
 - [TRANSPORT.md](./TRANSPORT.md)
@@ -146,9 +146,9 @@ The docs are split by topic so contributors do not have to recover architecture,
 - [SERVICE_ONBOARDING.md](./SERVICE_ONBOARDING.md)
   End-to-end checklist for adding a new service, from upstream spec to verification.
 - [SCAFFOLD_AND_AUDIT.md](./SCAFFOLD_AND_AUDIT.md)
-  `lab scaffold service` and `lab audit onboarding` contract.
+  `labby scaffold service` and `labby audit onboarding` contract.
 - [CLI.md](./CLI.md)
-  Command structure, output rules, confirmation rules, install/uninstall, operator commands, and `lab oauth relay-local`.
+  Command structure, output rules, confirmation rules, install/uninstall, operator commands, and `labby oauth relay-local`.
 - [design/CLI_DESIGN_SYSTEM.md](./design/CLI_DESIGN_SYSTEM.md)
   Human-readable CLI output language, semantic tokens, status hierarchy, and pipe-safe color policy.
 - [design/CLI_OUTPUT_THEME_API.md](./design/CLI_OUTPUT_THEME_API.md)

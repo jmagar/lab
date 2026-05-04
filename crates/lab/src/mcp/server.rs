@@ -134,7 +134,7 @@ impl ServerHandler for LabMcpServer {
     fn get_info(&self) -> ServerInfo {
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "server.info",
             subsystem = "mcp_server",
             phase = "server.info",
@@ -166,7 +166,7 @@ impl ServerHandler for LabMcpServer {
             .store(logging_level_rank(request.level), Ordering::Release);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "logging.setLevel",
             level = ?request.level,
             "rmcp logging level updated"
@@ -199,7 +199,7 @@ impl ServerHandler for LabMcpServer {
         let prompt = request.r#ref.as_prompt_name().map(str::to_string);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "completion.complete",
             subject,
             reference_type,
@@ -221,7 +221,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "completion.complete",
             subject,
             reference_type,
@@ -252,7 +252,7 @@ impl ServerHandler for LabMcpServer {
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_prompts",
             subject,
             "dispatch start"
@@ -282,7 +282,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_prompts",
             subject,
             elapsed_ms,
@@ -309,7 +309,7 @@ impl ServerHandler for LabMcpServer {
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "get_prompt",
             subject,
             prompt = %request.name,
@@ -333,7 +333,7 @@ impl ServerHandler for LabMcpServer {
             let elapsed_ms = start.elapsed().as_millis();
             tracing::info!(
                 surface = "mcp",
-                service = "lab",
+                service = "labby",
                 action = "get_prompt",
                 subject,
                 elapsed_ms,
@@ -356,7 +356,7 @@ impl ServerHandler for LabMcpServer {
             let prompt_name = request.name.clone();
             tracing::info!(
                 surface = "mcp",
-                service = "lab",
+                service = "labby",
                 action = "get_prompt",
                 prompt = %prompt_name,
                 upstream = %upstream_name,
@@ -368,7 +368,7 @@ impl ServerHandler for LabMcpServer {
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::info!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "get_prompt",
                         subject,
                         prompt = %prompt_name,
@@ -390,7 +390,7 @@ impl ServerHandler for LabMcpServer {
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "get_prompt",
                         prompt = %prompt_name,
                         upstream = %upstream_name,
@@ -416,7 +416,7 @@ impl ServerHandler for LabMcpServer {
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "get_prompt",
                         prompt = %prompt_name,
                         upstream = %upstream_name,
@@ -458,7 +458,7 @@ impl ServerHandler for LabMcpServer {
                 let prompt_name = request.name.clone();
                 tracing::info!(
                     surface = "mcp",
-                    service = "lab",
+                    service = "labby",
                     action = "get_prompt",
                     prompt = %prompt_name,
                     upstream = %config.name,
@@ -473,7 +473,7 @@ impl ServerHandler for LabMcpServer {
                         let elapsed_ms = start.elapsed().as_millis();
                         tracing::info!(
                             surface = "mcp",
-                            service = "lab",
+                            service = "labby",
                             action = "get_prompt",
                             subject,
                             prompt = %prompt_name,
@@ -495,7 +495,7 @@ impl ServerHandler for LabMcpServer {
                         let elapsed_ms = start.elapsed().as_millis();
                         tracing::warn!(
                             surface = "mcp",
-                            service = "lab",
+                            service = "labby",
                             action = "get_prompt",
                             prompt = %prompt_name,
                             upstream = %config.name,
@@ -528,7 +528,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         tracing::warn!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "get_prompt",
             subject,
             elapsed_ms,
@@ -561,7 +561,7 @@ impl ServerHandler for LabMcpServer {
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_resources",
             subject,
             "dispatch start"
@@ -597,7 +597,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_resources",
             subject,
             elapsed_ms,
@@ -625,7 +625,7 @@ impl ServerHandler for LabMcpServer {
         let uri = &request.uri;
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "read_resource",
             subject,
             resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
@@ -637,7 +637,7 @@ impl ServerHandler for LabMcpServer {
         {
             tracing::info!(
                 surface = "mcp",
-                service = "lab",
+                service = "labby",
                 action = "read_resource",
                 resource_uri =
                     crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
@@ -653,7 +653,7 @@ impl ServerHandler for LabMcpServer {
                         .unwrap_or("unknown");
                     tracing::info!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "read_resource",
                         subject,
                         upstream,
@@ -680,7 +680,7 @@ impl ServerHandler for LabMcpServer {
                         .unwrap_or("unknown");
                     tracing::warn!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "read_resource",
                         upstream,
                         resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
@@ -710,7 +710,7 @@ impl ServerHandler for LabMcpServer {
                         .unwrap_or("unknown");
                     tracing::warn!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "read_resource",
                         upstream,
                         resource_uri =
@@ -748,7 +748,7 @@ impl ServerHandler for LabMcpServer {
         {
             tracing::info!(
                 surface = "mcp",
-                service = "lab",
+                service = "labby",
                 action = "read_resource",
                 resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
                 upstream = %config.name,
@@ -763,7 +763,7 @@ impl ServerHandler for LabMcpServer {
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::info!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "read_resource",
                         subject,
                         upstream = %config.name,
@@ -785,7 +785,7 @@ impl ServerHandler for LabMcpServer {
                     let elapsed_ms = start.elapsed().as_millis();
                     tracing::warn!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "read_resource",
                         upstream = %config.name,
                         resource_uri = crate::dispatch::upstream::pool::redact_resource_uri_for_logging(uri),
@@ -831,7 +831,7 @@ impl ServerHandler for LabMcpServer {
                 let elapsed_ms = start.elapsed().as_millis();
                 tracing::info!(
                     surface = "mcp",
-                    service = "lab",
+                    service = "labby",
                     action = "read_resource",
                     subject,
                     elapsed_ms,
@@ -853,7 +853,7 @@ impl ServerHandler for LabMcpServer {
                 let elapsed_ms = start.elapsed().as_millis();
                 tracing::error!(
                     surface = "mcp",
-                    service = "lab",
+                    service = "labby",
                     action = "read_resource",
                     elapsed_ms,
                     kind = "internal_error",
@@ -884,7 +884,7 @@ impl ServerHandler for LabMcpServer {
         let subject = self.request_subject_log_tag(&context);
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_tools",
             subject,
             "dispatch start"
@@ -969,7 +969,7 @@ impl ServerHandler for LabMcpServer {
                 if builtin_names.contains(&tool_name) {
                     tracing::debug!(
                         surface = "mcp",
-                        service = "lab",
+                        service = "labby",
                         action = "tool.register",
                         tool = tool_name,
                         "skipping upstream tool that collides with built-in service"
@@ -1001,7 +1001,7 @@ impl ServerHandler for LabMcpServer {
         let elapsed_ms = start.elapsed().as_millis();
         tracing::info!(
             surface = "mcp",
-            service = "lab",
+            service = "labby",
             action = "list_tools",
             subject,
             elapsed_ms,

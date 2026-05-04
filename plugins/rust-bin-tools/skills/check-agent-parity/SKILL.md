@@ -352,7 +352,7 @@ GEMINI_COMMAND_NO_CLAUDE  .gemini/commands/quick-deploy.md   (mirror to Claude o
 
 === §5: MCP (claude vs gemini) ===
 MISSING_FROM_GEMINI    context7              (uses npx; portable)
-DRIFTED                lab                   (Claude command path /usr/local/bin/lab, Gemini /opt/lab/bin/lab — verify)
+DRIFTED                lab                   (Claude command path /usr/local/bin/labby, Gemini /opt/lab/bin/labby — verify)
 OK                     github
 
 === Summary ===

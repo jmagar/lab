@@ -39,7 +39,7 @@ export function FloatingChatFab({
   unreadCount = 0,
 }: FloatingChatFabProps) {
   const pathname = usePathname()
-  const isOnChatPage = pathname === '/chat'
+  const isOnChatPage = pathname === '/chat' || pathname === '/chat/'
 
   // Register/deregister from modal stack
   React.useEffect(() => {

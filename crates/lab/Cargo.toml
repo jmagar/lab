@@ -1,5 +1,5 @@
 [package]
-name = "lab"
+name = "labby"
 description = "Pluggable homelab CLI + MCP server. One binary, runtime service selection."
 version.workspace = true
 edition.workspace = true
@@ -12,7 +12,7 @@ keywords = ["homelab", "mcp", "cli", "tui"]
 categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
-name = "lab"
+name = "labby"
 path = "src/main.rs"
 
 [dependencies]
@@ -128,6 +128,7 @@ controller = [
   "gateway",
   "marketplace",
   "deploy",
+  "extract",
   "fs",
   "acp_registry",
   "dep:clap_complete",

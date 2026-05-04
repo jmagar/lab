@@ -140,7 +140,7 @@ fn default_mcp_json_path() -> Option<PathBuf> {
 /// The format written by `mcp_patch.rs` stores each service as a separate
 /// element in the `args` array immediately after `--services`:
 /// ```json
-/// { "mcpServers": { "lab": { "args": ["mcp", "--services", "radarr", "sonarr"] } } }
+/// { "mcpServers":{"labby": { "args": ["mcp", "--services", "radarr", "sonarr"] } } }
 /// ```
 pub fn seed_enabled_services(mcp_json_path: Option<&std::path::Path>) -> IndexSet<String> {
     let Some(path) = mcp_json_path else {
@@ -664,7 +664,7 @@ mod tests {
         let content = r#"{
   "mcpServers": {
     "lab": {
-      "command": "/usr/local/bin/lab",
+      "command": "/usr/local/bin/labby",
       "args": ["mcp", "--services", "radarr", "sonarr"]
     }
   }

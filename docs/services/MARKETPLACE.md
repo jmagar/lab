@@ -205,15 +205,15 @@ A non-zero exit from `claude plugin …` becomes a `server_error` envelope with 
 ## CLI Surface
 
 ```bash
-lab marketplace sources.list                    # default human table
-lab marketplace sources.list --json             # machine-readable
-lab marketplace plugins.list --params '{"marketplace":"jmagar-lab"}'
-lab marketplace plugin.get   --params '{"id":"aurora-design@jmagar-lab"}'
-lab marketplace plugin.artifacts --params '{"id":"aurora-design@jmagar-lab"}'
+labby marketplace sources.list                    # default human table
+labby marketplace sources.list --json             # machine-readable
+labby marketplace plugins.list --params '{"marketplace":"jmagar-lab"}'
+labby marketplace plugin.get   --params '{"id":"aurora-design@jmagar-lab"}'
+labby marketplace plugin.artifacts --params '{"id":"aurora-design@jmagar-lab"}'
 
-lab marketplace sources.add      --params '{"repo":"obra/superpowers-marketplace"}' -y
-lab marketplace plugin.install   --params '{"id":"aurora-design@jmagar-lab"}' -y
-lab marketplace plugin.uninstall --params '{"id":"aurora-design@jmagar-lab"}' -y
+labby marketplace sources.add      --params '{"repo":"obra/superpowers-marketplace"}' -y
+labby marketplace plugin.install   --params '{"id":"aurora-design@jmagar-lab"}' -y
+labby marketplace plugin.uninstall --params '{"id":"aurora-design@jmagar-lab"}' -y
 ```
 
 Destructive actions require `-y` / `--yes` (or `--no-confirm`) to run non-interactively. `--dry-run` prints what would be dispatched without touching `~/.claude/`.

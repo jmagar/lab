@@ -22,7 +22,7 @@ pnpm dev
 
 The dev server binds on `0.0.0.0` so the UI is reachable from other devices on the local network during development.
 
-The app defaults `NEXT_PUBLIC_API_URL` to `/v1`, which is the expected same-origin path once `lab serve` hosts both API and UI. Override it when pointing the UI at a different backend origin.
+The app defaults `NEXT_PUBLIC_API_URL` to `/v1`, which is the expected same-origin path once `labby serve` hosts both API and UI. Override it when pointing the UI at a different backend origin.
 
 ```bash
 NEXT_PUBLIC_API_URL=http://127.0.0.1:8765/v1 pnpm dev
@@ -35,12 +35,12 @@ In hosted mode, the UI expects Rust-owned browser session auth:
 - `POST /auth/logout` clears the browser session
 - `/v1/*` uses same-origin requests with `credentials: 'include'`
 
-For local binary-served UI work, keep the same-origin `/v1` path and start `lab serve` with web auth disabled for the browser surface only:
+For local binary-served UI work, keep the same-origin `/v1` path and start `labby serve` with web auth disabled for the browser surface only:
 
 ```bash
 LAB_WEB_UI_AUTH_DISABLED=true \
 LAB_MCP_HTTP_TOKEN=your-local-dev-token \
-cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+cargo run --bin labby -- serve --host 0.0.0.0 --port 8765
 ```
 
 That mode keeps the MCP/backend token in place while making `/auth/session` and `/v1/*` immediately usable from the exported `/chat` UI on the same origin. Hosted deployments should leave `LAB_WEB_UI_AUTH_DISABLED` unset so browser OAuth remains active. `LAB_WEB_UI_DISABLE_AUTH` is accepted as a legacy alias.
@@ -58,7 +58,7 @@ When the frontend and Rust backend run on different origins during local develop
 ```bash
 LAB_MCP_HTTP_TOKEN=your-local-dev-token \
 LAB_CORS_ORIGINS=http://127.0.0.1:3101 \
-cargo run --bin lab -- serve --host 0.0.0.0 --port 8765
+cargo run --bin labby -- serve --host 0.0.0.0 --port 8765
 ```
 
 ```bash

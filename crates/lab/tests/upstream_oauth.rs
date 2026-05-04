@@ -9,14 +9,14 @@ use std::io;
 use std::sync::{Arc, Mutex};
 
 use base64::Engine;
-use lab::config::{
+use lab_auth::sqlite::SqliteStore;
+use labby::config::{
     UpstreamConfig, UpstreamOauthConfig, UpstreamOauthMode, UpstreamOauthRegistration,
     canonicalize_upstream_url,
 };
-use lab::oauth::upstream::encryption::load_key;
-use lab::oauth::upstream::manager::UpstreamOauthManager;
-use lab::oauth::upstream::types::OauthError;
-use lab_auth::sqlite::SqliteStore;
+use labby::oauth::upstream::encryption::load_key;
+use labby::oauth::upstream::manager::UpstreamOauthManager;
+use labby::oauth::upstream::types::OauthError;
 use serde_json::json;
 use tempfile::TempDir;
 use tracing_subscriber::fmt::MakeWriter;
@@ -61,7 +61,7 @@ struct Harness {
     mock: MockServer,
     _tmp: TempDir,
     sqlite: SqliteStore,
-    key: lab::oauth::upstream::encryption::EncryptionKey,
+    key: labby::oauth::upstream::encryption::EncryptionKey,
 }
 
 impl Harness {
@@ -169,7 +169,7 @@ impl Harness {
                 registration,
                 scopes: Some(vec!["read".into()]),
             }),
-            tool_search: lab::config::ToolSearchConfig::default(),
+            tool_search: labby::config::ToolSearchConfig::default(),
         }
     }
 
@@ -384,7 +384,7 @@ async fn build_auth_client_logs_near_expiry_refresh_lifecycle_without_secrets() 
     let _tracing_lock = TRACING_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let buf = SharedBuf::default();
     let subscriber = tracing_subscriber::registry()
-        .with(EnvFilter::new("lab=info"))
+        .with(EnvFilter::new("labby=info"))
         .with(
             fmt::layer()
                 .json()

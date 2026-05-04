@@ -14,7 +14,7 @@ Purpose:
 - validate reachability quickly
 - provide operator-friendly shell output
 
-It is distinct from the product-level `lab health` surface.
+It is distinct from the product-level `labby health` surface.
 
 It is intended as a repo-local smoke test, not as the canonical SDK-level health API.
 
@@ -37,7 +37,7 @@ LAB_BASE_URL=https://lab.example.com ./scripts/check-oauth.sh
 
 Exit codes: `0` = pass, `1` = one or more failures. Suitable for post-deploy CI gates.
 
-Complements `lab doctor`, which checks internal state (config, file permissions, SQLite) before a server is running. `scripts/check-oauth.sh` is the external black-box probe; `lab doctor` is the internal pre-flight check.
+Complements `labby doctor`, which checks internal state (config, file permissions, SQLite) before a server is running. `scripts/check-oauth.sh` is the external black-box probe; `labby doctor` is the internal pre-flight check.
 
 ### `just mcp-token`
 
@@ -72,19 +72,19 @@ Recovery guidance:
 
 Some MCP clients can pin the OAuth callback port but still redirect the browser to
 `http://127.0.0.1:<port>/...`. When the real callback listener lives on another machine, run
-`lab oauth relay-local` on the browser machine to accept that loopback redirect and forward it to
+`labby oauth relay-local` on the browser machine to accept that loopback redirect and forward it to
 the actual listener.
 
 Named-machine workflow:
 
 ```bash
-lab oauth relay-local --machine dookie --port 38935
+labby oauth relay-local --machine dookie --port 38935
 ```
 
 Ad hoc workflow:
 
 ```bash
-lab oauth relay-local \
+labby oauth relay-local \
   --forward-base http://100.88.16.79:38935/callback/dookie \
   --port 38935
 ```
@@ -109,7 +109,7 @@ default_port = 38935
 ```
 
 2. Start the real OAuth client listener on the remote machine.
-3. Start `lab oauth relay-local` on the browser machine.
+3. Start `labby oauth relay-local` on the browser machine.
 4. Complete the OAuth login flow in the browser before either listener exits.
 
 If you need public redirect URIs for a relay or browser-facing callback domain, remember to
@@ -118,9 +118,9 @@ allowlist them in `lab-auth` with `LAB_AUTH_ALLOWED_REDIRECT_URIS` or
 
 ## Product-Level Health Tooling
 
-### `lab doctor`
+### `labby doctor`
 
-`lab doctor` is the main read-only validation command.
+`labby doctor` is the main read-only validation command.
 
 It should audit:
 
@@ -147,17 +147,17 @@ Typical checks include:
 - auth acceptance
 - version reporting
 
-### `lab health`
+### `labby health`
 
-`lab health` should expose normalized health status using shared service contracts.
+`labby health` should expose normalized health status using shared service contracts.
 
 ## Device Runtime Operations
 
-In the current Linux `x86_64` v1 target, every supported fleet member runs `lab serve` as a node runtime.
+In the current Linux `x86_64` v1 target, every supported fleet member runs `labby serve` as a node runtime.
 
 Setup order:
 
-1. Pick one machine as the master and start it first with `lab serve`.
+1. Pick one machine as the master and start it first with `labby serve`.
 2. If you use bearer auth, set `LAB_MCP_HTTP_TOKEN` on the master before starting it and reuse that same token on every non-master device that reports to it.
 3. On each non-master, set the master machine name in `~/.lab/config.toml`:
 
@@ -166,8 +166,8 @@ Setup order:
 controller = "tootie"
 ```
 
-4. Start each non-master with `lab serve`.
-5. Only use `lab mcp` when you explicitly want a local stdio MCP session instead of the default HTTP runtime.
+4. Start each non-master with `labby serve`.
+5. Only use `labby mcp` when you explicitly want a local stdio MCP session instead of the default HTTP runtime.
 
 Operationally:
 
@@ -178,9 +178,9 @@ Operationally:
 Useful commands:
 
 ```bash
-lab nodes list
-lab nodes get dookie
-lab logs search dookie oauth
+labby nodes list
+labby nodes get dookie
+labby logs search dookie oauth
 ```
 
 Useful HTTP checks:

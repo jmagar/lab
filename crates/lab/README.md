@@ -12,20 +12,20 @@ This crate builds the `lab` binary itself. See [`lab-apis`](../lab-apis/) for th
 cargo build --release --all-features
 ```
 
-Binary lives at `target/release/lab`.
+Binary lives at `target/release/labby`.
 
 ### Run CLI
 
 ```bash
 lab radarr movie.search --query "The Matrix"
-lab extract scan
-lab --help
+labby extract scan
+labby --help
 ```
 
 ### Run MCP Server
 
 ```bash
-lab serve
+labby serve
 ```
 
 Server listens on stdio by default. Connect with any MCP client configured for this binary.
@@ -33,7 +33,7 @@ Server listens on stdio by default. Connect with any MCP client configured for t
 ### Run HTTP API
 
 ```bash
-lab api
+labby api
 ```
 
 Starts axum server on `127.0.0.1:3000` (configurable). Routes:
@@ -71,17 +71,17 @@ UNRAID_NODE2_API_KEY=def456
 ### Logging
 
 ```bash
-LAB_LOG=lab=info,lab_apis=debug cargo run
+LAB_LOG=labby=info,lab_apis=debug cargo run
 LAB_LOG_FORMAT=json cargo run  # newline-delimited JSON
 ```
 
-Default: `lab=info,lab_apis=warn` with ANSI colors on TTY.
+Default: `labby=info,lab_apis=warn` with ANSI colors on TTY.
 
 ### Health Check
 
 ```bash
-lab doctor                      # full audit: env, reachability, auth, versions
-lab doctor --json              # JSON output for CI
+labby doctor                      # full audit: env, reachability, auth, versions
+labby doctor --json              # JSON output for CI
 ```
 
 ## Architecture

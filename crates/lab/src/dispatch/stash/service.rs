@@ -654,7 +654,7 @@ mod tests {
     #[test]
     fn deploy_rejects_known_system_paths() {
         for path in &["/etc/passwd", "/usr/bin/sh", "/proc/cpuinfo", "/dev/null"] {
-            let p = std::path::Path::new(path);
+            let p = Path::new(path);
             // The path may not exist in the test environment, but the denylist
             // check runs on the canonical or parent-canonical form regardless.
             // If it does exist, we expect path_traversal. If it doesn't, we
@@ -677,7 +677,7 @@ mod tests {
     #[test]
     fn deploy_rejects_container_roots() {
         for path in &["/app/config", "/workspace/.ssh", "/data/secrets"] {
-            let p = std::path::Path::new(path);
+            let p = Path::new(path);
             let result = canonicalize_and_reject_system_path(p);
             assert!(
                 result.is_err(),

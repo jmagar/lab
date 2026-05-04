@@ -2818,7 +2818,10 @@ impl GatewayManager {
 }
 
 fn local_cleanup_patterns() -> Vec<String> {
-    vec!["lab mcp".to_string(), "target/debug/lab mcp".to_string()]
+    vec![
+        "labby mcp".to_string(),
+        "target/debug/labby mcp".to_string(),
+    ]
 }
 
 fn upstream_cleanup_patterns(upstream: &UpstreamConfig, aggressive: bool) -> Vec<String> {

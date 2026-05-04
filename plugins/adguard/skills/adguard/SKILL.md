@@ -28,7 +28,7 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ```bash
 lab adguard --help
 lab adguard <action> --help
-lab --json adguard <action> ...
+labby --json adguard <action> ...
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -45,10 +45,10 @@ CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service adguard
+labby doctor service adguard
 ```
 
 ## When NOT to use this skill

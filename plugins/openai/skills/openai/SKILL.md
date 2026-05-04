@@ -1,6 +1,6 @@
 ---
 name: openai
-description: Lab's local wrapper around the OpenAI API — chat completions, embeddings, models, image generation, and audio endpoints. Use when the user asks to call the lab's OpenAI integration or invokes `lab openai` / `mcp__lab__openai`. NOT for: general OpenAI SDK usage in the user's own codebase.
+description: Lab's local wrapper around the OpenAI API — chat completions, embeddings, models, image generation, and audio endpoints. Use when the user asks to call the lab's OpenAI integration or invokes `labby openai` / `mcp__lab__openai`. NOT for: general OpenAI SDK usage in the user's own codebase.
 ---
 
 # OpenAI
@@ -27,9 +27,9 @@ Full action catalog with parameter types and `Destructive` flags:
 ### CLI fallback
 
 ```bash
-lab openai --help                      # subcommand list
-lab openai <action> --help             # parameter help for one action
-lab --json openai <action> ...         # JSON output (parseable)
+labby openai --help                      # subcommand list
+labby openai <action> --help             # parameter help for one action
+labby --json openai <action> ...         # JSON output (parseable)
 ```
 
 CLI mirrors MCP actions; dots become dashes (`model.list` → `model-list`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -44,10 +44,10 @@ CLI mirrors MCP actions; dots become dashes (`model.list` → `model-list`). Ful
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service openai
+labby doctor service openai
 ```
 
 ## Destructive actions

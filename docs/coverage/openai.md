@@ -73,14 +73,14 @@ The `openai` tool is registered in the MCP server and forwards actions to the sh
 
 ### CLI
 ```bash
-lab openai help
-lab openai model.list
-lab openai chat.complete --params '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
-lab openai embed.create --params '{"model":"text-embedding-3-small","input":"Hello world"}'
-lab openai server.health
+labby openai help
+labby openai model.list
+labby openai chat.complete --params '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
+labby openai embed.create --params '{"model":"text-embedding-3-small","input":"Hello world"}'
+labby openai server.health
 ```
 
-The CLI is a flat action+params shim: `lab openai <action> --params <json>`. There are no typed subcommands.
+The CLI is a flat action+params shim: `labby openai <action> --params <json>`. There are no typed subcommands.
 
 ### HTTP API
 ```bash

@@ -25,7 +25,7 @@ pub struct ArtifactProfile {
     pub role: ArtifactRole,
     /// Target triple, e.g. `"x86_64-unknown-linux-gnu"`.
     pub target_triple: String,
-    /// Binary name, e.g. `"lab"`.
+    /// Binary name, e.g. `"labby"`.
     pub bin: String,
     /// Cargo feature list, e.g. `["all"]` or `["node-runtime"]`.
     pub cargo_features: Vec<String>,
@@ -41,7 +41,7 @@ impl ArtifactProfile {
         Self {
             role: ArtifactRole::Controller,
             target_triple: detect_host_triple(),
-            bin: "lab".to_string(),
+            bin: "labby".to_string(),
             cargo_features: vec!["all".to_string()],
             cargo_profile: "controller-deploy".to_string(),
             build_timeout_secs: None,
@@ -53,7 +53,7 @@ impl ArtifactProfile {
         Self {
             role: ArtifactRole::Node,
             target_triple: detect_host_triple(),
-            bin: "lab".to_string(),
+            bin: "labby".to_string(),
             cargo_features: vec!["all".to_string()],
             cargo_profile: "node-deploy".to_string(),
             build_timeout_secs: None,
@@ -213,7 +213,7 @@ pub async fn build_release() -> Result<BuildOutcome, DeployError> {
     let profile = ArtifactProfile {
         role: ArtifactRole::Controller,
         target_triple: detect_host_triple(),
-        bin: "lab".to_string(),
+        bin: "labby".to_string(),
         cargo_features: vec!["all".to_string()],
         cargo_profile: "release".to_string(),
         build_timeout_secs: None,
@@ -401,7 +401,7 @@ mod tests {
     fn sha256_of_known_bytes_is_deterministic() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("artifact");
-        std::fs::write(&path, b"lab-binary-v1").unwrap();
+        std::fs::write(&path, b"labby-binary-v1").unwrap();
         let hex = sha256_file_blocking(&path).unwrap();
         assert_eq!(hex.len(), 64);
         assert_eq!(hex, sha256_file_blocking(&path).unwrap());
@@ -411,11 +411,11 @@ mod tests {
     fn build_target_path_matches_cargo_layout() {
         // Host triple → target/release/<bin> (no triple in path).
         let host = detect_host_triple();
-        let p = expected_artifact_path_for("lab", &host);
+        let p = expected_artifact_path_for("labby", &host);
         let expected = if host.contains("windows") {
-            "target/release/lab.exe"
+            "target/release/labby.exe"
         } else {
-            "target/release/lab"
+            "target/release/labby"
         };
         assert!(p.ends_with(expected), "got {}", p.display());
     }
@@ -430,8 +430,8 @@ mod tests {
         } else {
             "x86_64-unknown-linux-gnu"
         };
-        let p = expected_artifact_path_for("lab", cross);
-        let expected = format!("target/{cross}/release/lab");
+        let p = expected_artifact_path_for("labby", cross);
+        let expected = format!("target/{cross}/release/labby");
         assert!(p.ends_with(&expected), "got {}", p.display());
     }
 
@@ -439,14 +439,18 @@ mod tests {
     fn windows_target_appends_exe_suffix() {
         let host = detect_host_triple();
         let target = "x86_64-pc-windows-msvc";
-        let p = expected_artifact_path_for("lab", target);
+        let p = expected_artifact_path_for("labby", target);
         if host == target {
             // Running on Windows: no triple in path
-            assert!(p.ends_with("target/release/lab.exe"), "got {}", p.display());
+            assert!(
+                p.ends_with("target/release/labby.exe"),
+                "got {}",
+                p.display()
+            );
         } else {
             // Cross-compiling: triple is included in path
             assert!(
-                p.ends_with("target/x86_64-pc-windows-msvc/release/lab.exe"),
+                p.ends_with("target/x86_64-pc-windows-msvc/release/labby.exe"),
                 "got {}",
                 p.display()
             );
@@ -475,7 +479,7 @@ mod tests {
         let controller = ArtifactProfile::controller();
         let p = expected_artifact_path_for_profile(&controller);
         assert!(
-            p.ends_with("target/controller-deploy/lab"),
+            p.ends_with("target/controller-deploy/labby"),
             "got {}",
             p.display()
         );
@@ -485,7 +489,11 @@ mod tests {
     fn node_deploy_profile_path() {
         let node = ArtifactProfile::node();
         let p = expected_artifact_path_for_profile(&node);
-        assert!(p.ends_with("target/node-deploy/lab"), "got {}", p.display());
+        assert!(
+            p.ends_with("target/node-deploy/labby"),
+            "got {}",
+            p.display()
+        );
     }
 
     #[test]
@@ -499,13 +507,13 @@ mod tests {
         let profile = ArtifactProfile {
             role: ArtifactRole::Controller,
             target_triple: cross_triple.to_string(),
-            bin: "lab".to_string(),
+            bin: "labby".to_string(),
             cargo_features: vec!["all".to_string()],
             cargo_profile: "controller-deploy".to_string(),
             build_timeout_secs: None,
         };
         let p = expected_artifact_path_for_profile(&profile);
-        let expected = format!("target/{cross_triple}/controller-deploy/lab");
+        let expected = format!("target/{cross_triple}/controller-deploy/labby");
         assert!(p.ends_with(&expected), "got {}", p.display());
     }
 }

@@ -18,12 +18,12 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use lab::api::{router::build_router, state::AppState};
 use lab_auth::{
     config::{AuthConfig, AuthMode, GoogleConfig},
     state::AuthState,
     types::BrowserSessionRow,
 };
+use labby::api::{router::build_router, state::AppState};
 use serde_json::Value;
 use tempfile::TempDir;
 use tower::ServiceExt;

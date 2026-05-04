@@ -1,6 +1,6 @@
 'use client'
 
-import { Brain, Wrench } from 'lucide-react'
+import { Brain, Clock, Wrench } from 'lucide-react'
 import { ActivityDebugCard } from './activity-debug-card'
 import { ActivityPermissionCard } from './activity-permission-card'
 import { ActivityReviewCard } from './activity-review-card'
@@ -16,6 +16,24 @@ function ThoughtCard({ event }: { event: ActivityItem }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-aurora-text-primary">Reasoning update</p>
           <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-aurora-text-muted">{event.text}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function IdleCompletionCard({ event }: { event: ActivityItem }) {
+  return (
+    <div className="rounded-aurora-2 border border-aurora-warn/30 bg-aurora-warn/12 px-3 py-3">
+      <div className="flex items-start gap-2">
+        <Clock className="mt-0.5 size-4 shrink-0 text-aurora-warn" />
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-medium text-aurora-text-primary">
+            {event.title ?? 'Session paused'}
+          </p>
+          <p className="mt-0.5 text-[12px] leading-[1.45] text-aurora-text-muted">
+            Send a message to continue where the agent left off.
+          </p>
         </div>
       </div>
     </div>
@@ -63,6 +81,10 @@ export function ActivityCard({ event }: { event: ActivityItem }) {
 
   if (event.kind === 'plan') {
     return <ActivityTodoCard event={event} />
+  }
+
+  if (event.kind === 'idle_completion') {
+    return <IdleCompletionCard event={event} />
   }
 
   if (event.kind === 'error' || event.kind === 'debug') {

@@ -1,4 +1,4 @@
-//! `lab docs` — generated documentation artifacts.
+//! `labby docs` — generated documentation artifacts.
 
 use std::process::ExitCode;
 

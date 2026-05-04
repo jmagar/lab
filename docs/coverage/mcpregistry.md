@@ -91,7 +91,7 @@ page only. For full-dataset sort and offline availability, use the local
 
 ### CLI (`crates/lab/src/cli/marketplace.rs`)
 
-Tier-2 shim: `lab marketplace <mcp.* action> [--params '<json>']`.
+Tier-2 shim: `labby marketplace <mcp.* action> [--params '<json>']`.
 
 ### MCP (`crates/lab/src/registry.rs`)
 

@@ -82,7 +82,7 @@ Never hard-link service handlers from the top-level router — always conditiona
 
 ## Auth
 
-`lab serve` enforces a bearer token from `LAB_MCP_HTTP_TOKEN` via router middleware when bearer auth is configured. Handlers stay auth-agnostic — do not bake auth checks into per-service handlers.
+`labby serve` enforces a bearer token from `LAB_MCP_HTTP_TOKEN` via router middleware when bearer auth is configured. Handlers stay auth-agnostic — do not bake auth checks into per-service handlers.
 
 When constructing the router outside the standard serve path, auth remains opt-in via the router middleware entry point in `router.rs`.
 

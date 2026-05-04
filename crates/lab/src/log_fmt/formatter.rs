@@ -1,10 +1,22 @@
 use std::collections::BTreeMap;
 use std::fmt as stdfmt;
 
-use console::Style;
 use jiff::Zoned;
 
 use crate::output::theme::aurora;
+
+// Raw ANSI helpers — used instead of `console::Style` so color output is not
+// gated on `console::colors_enabled()`, which checks the TTY state of stdout
+// independently and ignores tracing's `with_ansi()` flag.
+fn ansi256(n: u8, text: &str) -> String {
+    format!("\x1b[38;5;{n}m{text}\x1b[0m")
+}
+fn ansi256_bold(n: u8, text: &str) -> String {
+    format!("\x1b[1;38;5;{n}m{text}\x1b[0m")
+}
+fn ansi_dim(text: &str) -> String {
+    format!("\x1b[2m{text}\x1b[0m")
+}
 use tracing::{
     Event, Subscriber,
     field::{Field, Visit},
@@ -70,85 +82,51 @@ impl Visit for EventFieldCollector {
 pub(crate) struct PremiumEventFormatter;
 
 fn write_level(writer: &mut Writer<'_>, level: tracing::Level, ansi: bool) -> stdfmt::Result {
-    if ansi {
-        let s = match level {
-            tracing::Level::ERROR => Style::new()
-                .color256(aurora::ERROR)
-                .bold()
-                .apply_to("ERROR")
-                .to_string(),
-            tracing::Level::WARN => Style::new()
-                .color256(aurora::WARN)
-                .bold()
-                .apply_to(" WARN")
-                .to_string(),
-            tracing::Level::INFO => Style::new().apply_to(" INFO").to_string(),
-            tracing::Level::DEBUG => Style::new().dim().apply_to("DEBUG").to_string(),
-            tracing::Level::TRACE => Style::new().dim().apply_to("TRACE").to_string(),
-        };
-        write!(writer, "{s}  ")
+    let s = if ansi {
+        match level {
+            tracing::Level::ERROR => ansi256_bold(aurora::ERROR, "ERROR"),
+            tracing::Level::WARN => ansi256_bold(aurora::WARN, " WARN"),
+            tracing::Level::INFO => " INFO".to_string(),
+            tracing::Level::DEBUG => ansi_dim("DEBUG"),
+            tracing::Level::TRACE => ansi_dim("TRACE"),
+        }
     } else {
-        let s = match level {
-            tracing::Level::ERROR => "ERROR",
-            tracing::Level::WARN => " WARN",
-            tracing::Level::INFO => " INFO",
-            tracing::Level::DEBUG => "DEBUG",
-            tracing::Level::TRACE => "TRACE",
-        };
-        write!(writer, "{s}  ")
-    }
+        match level {
+            tracing::Level::ERROR => "ERROR".to_string(),
+            tracing::Level::WARN => " WARN".to_string(),
+            tracing::Level::INFO => " INFO".to_string(),
+            tracing::Level::DEBUG => "DEBUG".to_string(),
+            tracing::Level::TRACE => "TRACE".to_string(),
+        }
+    };
+    write!(writer, "{s}  ")
 }
 
 /// Semantic accent for structured field values — Aurora palette (ANSI 256).
 fn style_value(key: &str, value: &str, level: tracing::Level) -> String {
     match key {
-        // SERVICE_NAME pink — service identifiers
-        "service" => Style::new()
-            .color256(aurora::SERVICE_NAME)
-            .apply_to(value)
-            .to_string(),
-        // ACCENT_PRIMARY blue — names, addresses, routes
+        "service" => ansi256(aurora::SERVICE_NAME, value),
         "tool" | "prompt" | "resource_uri" | "upstream" | "route" | "action" | "addr"
-        | "instance" | "target" | "capability" => Style::new()
-            .color256(aurora::ACCENT_PRIMARY)
-            .apply_to(value)
-            .to_string(),
-        // TEXT_MUTED — metadata / phase markers
-        "subsystem" | "phase" | "transport" | "operation" => Style::new()
-            .color256(aurora::TEXT_MUTED)
-            .apply_to(value)
-            .to_string(),
-        // status codes: SUCCESS 2xx, WARN 3xx/4xx, ERROR 5xx
+        | "instance" | "target" | "capability" => ansi256(aurora::ACCENT_PRIMARY, value),
+        "subsystem" | "phase" | "transport" | "operation" => ansi256(aurora::TEXT_MUTED, value),
         "status" => {
             if let Ok(n) = value.parse::<u16>() {
-                if n < 300 {
-                    Style::new()
-                        .color256(aurora::SUCCESS)
-                        .apply_to(value)
-                        .to_string()
+                let color = if n < 300 {
+                    aurora::SUCCESS
                 } else if n < 500 {
-                    Style::new()
-                        .color256(aurora::WARN)
-                        .apply_to(value)
-                        .to_string()
+                    aurora::WARN
                 } else {
-                    Style::new()
-                        .color256(aurora::ERROR)
-                        .apply_to(value)
-                        .to_string()
-                }
+                    aurora::ERROR
+                };
+                ansi256(color, value)
             } else {
                 value.to_string()
             }
         }
-        "error" => Style::new()
-            .color256(aurora::ERROR)
-            .apply_to(value)
-            .to_string(),
-        "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => Style::new()
-            .color256(aurora::WARN)
-            .apply_to(value)
-            .to_string(),
+        "error" => ansi256(aurora::ERROR, value),
+        "kind" if matches!(level, tracing::Level::WARN | tracing::Level::ERROR) => {
+            ansi256(aurora::WARN, value)
+        }
         _ => value.to_string(),
     }
 }
@@ -214,7 +192,7 @@ where
         // HH:MM:SS (local time, dim)
         let ts = Zoned::now().strftime("%H:%M:%S").to_string();
         if ansi {
-            write!(writer, "{}  ", Style::new().dim().apply_to(&ts))?;
+            write!(writer, "{}  ", ansi_dim(&ts))?;
         } else {
             write!(writer, "{ts}  ")?;
         }
@@ -229,20 +207,13 @@ where
                     write!(writer, " ")?;
                 }
                 if i == 0 {
-                    write!(
-                        writer,
-                        "{}",
-                        Style::new()
-                            .color256(aurora::SERVICE_NAME)
-                            .bold()
-                            .apply_to(token)
-                    )?;
+                    write!(writer, "{}", ansi256_bold(aurora::SERVICE_NAME, token))?;
                 } else if let Some(eq) = token.find('=') {
                     write!(
                         writer,
                         "{}{}{}",
-                        Style::new().dim().apply_to(&token[..eq]),
-                        Style::new().dim().apply_to("="),
+                        ansi_dim(&token[..eq]),
+                        ansi_dim("="),
                         &token[eq + 1..]
                     )?;
                 } else {
@@ -281,8 +252,8 @@ where
                 write!(
                     writer,
                     "  {}{}{}",
-                    Style::new().dim().apply_to(key),
-                    Style::new().dim().apply_to("="),
+                    ansi_dim(key),
+                    ansi_dim("="),
                     style_value(key, &formatted, level),
                 )
             } else {

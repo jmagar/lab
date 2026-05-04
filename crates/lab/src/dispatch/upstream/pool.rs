@@ -3342,7 +3342,7 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let buf = crate::test_support::SharedBuf::default();
         let subscriber = tracing_subscriber::registry()
-            .with(tracing_subscriber::EnvFilter::new("lab=debug"))
+            .with(tracing_subscriber::EnvFilter::new("labby=debug"))
             .with(
                 tracing_subscriber::fmt::layer()
                     .json()
@@ -4308,7 +4308,7 @@ mod tests {
 
     #[test]
     fn failed_in_process_entry_from_existing_preserves_last_known_good_catalog() {
-        let upstream_name: Arc<str> = Arc::from("lab::github-chat");
+        let upstream_name: Arc<str> = Arc::from("labby::github-chat");
         let schema = Arc::new(serde_json::Map::new());
         let tool = rmcp::model::Tool::new("query_repository", "Query a GitHub repository", schema);
         let mut tools = HashMap::new();

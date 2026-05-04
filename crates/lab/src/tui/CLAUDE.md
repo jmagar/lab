@@ -21,7 +21,7 @@ The TUI has two top-level tabs (see `docs/surfaces/TUI.md` for full spec):
 - Group by `Category` (Media, Servarr, Indexer, Download, Notes, Documents, Network, Notifications, Ai, Bootstrap).
 - Show env var requirements (`required_env` / `optional_env`), masking values where `EnvVar.secret == true`.
 - Toggle enabled/disabled by writing the `lab` entry's `--services` array in `.mcp.json`.
-- Surface `lab doctor` results inline (per-service health dots).
+- Surface `labby doctor` results inline (per-service health dots).
 
 ## Plugins tab — implementation notes
 
@@ -51,7 +51,7 @@ The TUI is the only part of `lab` that writes `.mcp.json`. Rules:
 | "Enable radarr, set env vars" | TUI — Services tab |
 | "Add a Claude Code marketplace" | TUI — Plugins tab |
 | "Run `radarr movie.search matrix` in a script" | CLI |
-| "CI health check of all enabled services" | `lab doctor --json` |
+| "CI health check of all enabled services" | `labby doctor --json` |
 
 If you're adding a flow that automates something, it belongs in the CLI. If you're adding a browse/pick/configure flow, it belongs here.
 

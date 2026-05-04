@@ -2,7 +2,7 @@
 //!
 //! Each service module exposes `pub const META: PluginMeta` describing its
 //! display name, category, docs URL, required/optional env vars, and default
-//! port. Drives the TUI plugin manager, `lab install`, `lab doctor`, and the
+//! port. Drives the TUI plugin manager, `labby install`, `labby doctor`, and the
 //! `.mcp.json` patcher.
 
 use super::plugin_ui::UiSchema;
@@ -24,7 +24,7 @@ pub struct PluginMeta {
     pub required_env: &'static [EnvVar],
     /// Env vars that the service understands but doesn't require.
     pub optional_env: &'static [EnvVar],
-    /// Default upstream port if conventional, used by `lab doctor`.
+    /// Default upstream port if conventional, used by `labby doctor`.
     pub default_port: Option<u16>,
     /// True if this service supports multiple named instances via
     /// `{SERVICE}_{LABEL}_URL` env-var patterns.
@@ -36,7 +36,7 @@ pub struct PluginMeta {
 pub struct EnvVar {
     /// Env var name, e.g. `"RADARR_API_KEY"`.
     pub name: &'static str,
-    /// Description shown in `lab install` prompts and `lab doctor` output.
+    /// Description shown in `labby install` prompts and `labby doctor` output.
     pub description: &'static str,
     /// Example value — never a real credential.
     pub example: &'static str,

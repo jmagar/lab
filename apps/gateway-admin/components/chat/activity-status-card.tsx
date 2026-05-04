@@ -36,10 +36,10 @@ export function ActivityStatusCard({ event }: { event: ActivityItem }) {
             </div>
           ) : null}
           {event.currentMode ? (
-            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.currentMode, null, 2)}</pre>
+            <pre className="aurora-scrollbar mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.currentMode, null, 2)}</pre>
           ) : null}
           {event.configUpdate ? (
-            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.configUpdate.configOptions, null, 2)}</pre>
+            <pre className="aurora-scrollbar mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.configUpdate.configOptions, null, 2)}</pre>
           ) : null}
           {event.commands ? (
             <div className="mt-2 flex flex-wrap gap-1.5">

@@ -312,5 +312,5 @@ The following Memos v1 API endpoints exist upstream but are not implemented in t
 - `MEMOS_TOKEN` is a personal access token from the Memos settings page.
 - Memo identifiers are resource names (`"memos/123"`), not bare integers.
 - `memos.update` uses PATCH semantics — only provided fields are changed.
-- The `health()` SDK method calls `workspace_profile` internally; it is used by `lab doctor` and not exposed as a separate action.
+- The `health()` SDK method calls `workspace_profile` internally; it is used by `labby doctor` and not exposed as a separate action.
 - Built-in `help` and `schema` actions are supported by all surfaces and do not require explicit declaration.

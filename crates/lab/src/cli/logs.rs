@@ -145,7 +145,7 @@ pub async fn run_local(
         LocalLogsCommand::Stats => ("logs.stats".to_string(), json!({})),
         LocalLogsCommand::Stream => {
             return Err(anyhow::anyhow!(
-                "true live log streaming is only available over HTTP SSE at `/v1/logs/stream`; use `lab logs local tail` for bounded follow-up windows"
+                "true live log streaming is only available over HTTP SSE at `/v1/logs/stream`; use `labby logs local tail` for bounded follow-up windows"
             ));
         }
     };

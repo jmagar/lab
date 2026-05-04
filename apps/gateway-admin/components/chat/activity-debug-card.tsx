@@ -11,7 +11,7 @@ export function ActivityDebugCard({ event }: { event: ActivityItem }) {
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-aurora-text-primary">{event.title ?? 'Debug event'}</p>
           {event.text ? <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-aurora-text-muted">{event.text}</p> : null}
-          {event.raw ? <pre className="mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.raw, null, 2)}</pre> : null}
+          {event.raw ? <pre className="aurora-scrollbar mt-2 overflow-x-auto whitespace-pre-wrap rounded border border-aurora-border-default/60 bg-aurora-page-bg px-2 py-2 font-mono text-[11px] text-aurora-text-muted">{JSON.stringify(event.raw, null, 2)}</pre> : null}
         </div>
       </div>
     </div>

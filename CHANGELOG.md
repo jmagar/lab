@@ -8,6 +8,53 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.13.0] — 2026-05-04
+
+| Commit | Change |
+|--------|--------|
+| `60939ce2` | fix(nodes): close only on rejected initialize, not on pre-init method errors |
+| `f619f025` | fix(lab-p760): wrap all sync stash dispatch arms in spawn_blocking |
+| `2270470f` | fix(lab-qytb): provider.pull writes revision meta inside component lock |
+| `5f409c05` | fix(lab-gxhk): target.add marked destructive + path validated at registration |
+| `6ca17048` | fix(lab-n4fb): canonicalize fail-closed for stash deploy path denylist |
+| `35036109` | fix(lab-686q): typed 404 downcast in node_connected, remove redundant log event, add retry assertion |
+| `e5c3361e` | fix(lab-686q): allow dead_code on build_release compat wrapper |
+| `7e9db919` | test(lab-686q.2): replace symbol-check with real behavior tests for node_connected |
+| `e8bd9793` | fix(lab-686q.1): run_impl builds per-role artifacts — no more panic on Node-role hosts |
+| `d9c4a050` | test(lab-686q.3): add tests for wait_for_node_connected retry and timeout logic |
+| `df4bc31f` | test(lab-686q.4): add tests for --role node and config role=node without controller host |
+| `e44249b2` | fix(lab-686q): fix clippy lint warnings — remove unused Duration/jitter_window, allow dead_code on reserved fields |
+| `e7ae7d59` | docs(lab-686q): Task 14 — normalize controller/node naming, document artifact split |
+| `aad75295` | feat(lab-686q): Task 13 — per-role artifact map in deploy runner, DeployArtifactSummary in plan/summary |
+| `c93172a3` | chore(lab-686q): fix extract feature ordering in lab-apis features list |
+| `a4af24a4` | feat(lab-686q): Task 12 — gate lab-apis/extract deps behind extract feature |
+| `8a6766d7` | feat(lab-686q): Task 11 — make clap_complete optional, gate completions behind controller feature |
+| `85ae9017` | feat(lab-686q): Task 10 — feature groups (controller, services-all, node-runtime), gate gateway/marketplace/upstream |
+| `29867ca6` | feat(lab-686q): Tasks 8+9 — readiness contract docs, backup path in recovery result |
+| `9411d92a` | fix(lab-686q): thread config port through verify_local_health (no hardcoded 8765) |
+| `8137a3b2` | feat(lab-686q): Task 7 — role-based nodes update, wait_for_node_connected, multi-artifact build |
+| `df7e13c9` | feat(lab-686q): Task 6 — MasterClient::node_connected for rollout verification |
+| `1f01558e` | feat(lab-686q): Tasks 4+5 — deploy profiles, ArtifactProfile, build_artifact with timeout |
+| `33650f64` | feat(lab-686q): Task 3 — move backoff helpers to net/backoff, add node-runtime feature |
+| `44847e42` | feat(lab-686q): Task 2 — node-mode early return in serve, start_background_tasks, loopback health server |
+| `e7f9ad68` | fix(lab-686q): add resolution source to role.resolved tracing event |
+| `3889b496` | feat(lab-686q): Task 1 — NodeRuntimeRole config, ServeRole CLI, resolve_runtime_role_from_config |
+| `073e1456` | fix(acp): add turn-drain timeout to handle stale messages after idle-completed turns |
+
+### Highlights
+
+- **Node/controller runtime split** — adds explicit node runtime role handling, node-mode serving behavior, controller/node naming docs, and deployment artifacts split by role.
+- **Deploy and readiness hardening** — adds deploy profiles, artifact summaries, local-health port threading, wait-for-node-connected retry behavior, and recovery backup path reporting.
+- **Feature grouping** — gates controller-only and service-heavy code behind feature groups, makes completions optional, and gates extract dependencies behind the extract feature.
+- **ACP and dispatch fixes** — protects ACP multi-turn flows from stale messages and wraps sync stash dispatch paths in `spawn_blocking`.
+
+### Version bumps
+
+- Rust workspace: `0.12.2 → 0.13.0`
+- Gateway admin package: `0.6.0 → 0.13.0`
+
+---
+
 ## [0.12.2] — 2026-05-03
 
 | Commit | Change |

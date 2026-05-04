@@ -1,5 +1,5 @@
-use lab::config::{LabConfig, NodePreferences};
-use lab::node::master_client::MasterClient;
+use labby::config::{LabConfig, NodePreferences};
+use labby::node::master_client::MasterClient;
 use url::Url;
 
 #[tokio::test]
@@ -16,7 +16,7 @@ async fn device_list_command_reads_from_master_api() {
         .await;
 
     let config = config_for_master(&server.uri());
-    let value = lab::cli::nodes::fetch_nodes(&config).await.unwrap();
+    let value = labby::cli::nodes::fetch_nodes(&config).await.unwrap();
     assert_eq!(value.as_array().unwrap().len(), 1);
 }
 
@@ -36,7 +36,7 @@ async fn device_enrollments_list_command_reads_from_master_api() {
         .await;
 
     let config = config_for_master(&server.uri());
-    let value = lab::cli::nodes::fetch_enrollments(&config).await.unwrap();
+    let value = labby::cli::nodes::fetch_enrollments(&config).await.unwrap();
     assert!(value["pending"]["device-1"].is_object());
 }
 
@@ -56,7 +56,7 @@ async fn device_enrollments_approve_command_calls_master_api() {
         .await;
 
     let config = config_for_master(&server.uri());
-    let value = lab::cli::nodes::approve_enrollment(&config, "device-1", Some("ok"))
+    let value = labby::cli::nodes::approve_enrollment(&config, "device-1", Some("ok"))
         .await
         .unwrap();
     assert_eq!(value["node_id"], "device-1");
@@ -80,7 +80,7 @@ async fn device_enrollments_deny_command_calls_master_api() {
         .await;
 
     let config = config_for_master(&server.uri());
-    let value = lab::cli::nodes::deny_enrollment(&config, "device-1", Some("no"))
+    let value = labby::cli::nodes::deny_enrollment(&config, "device-1", Some("no"))
         .await
         .unwrap();
     assert_eq!(value["node_id"], "device-1");
@@ -106,7 +106,7 @@ async fn logs_search_command_reads_from_master_api() {
         .await;
 
     let config = config_for_master(&server.uri());
-    let value = lab::cli::logs::search_logs(&config, "dookie", "hello")
+    let value = labby::cli::logs::search_logs(&config, "dookie", "hello")
         .await
         .unwrap();
     assert_eq!(value.as_array().unwrap().len(), 1);

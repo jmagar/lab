@@ -13,10 +13,10 @@ use base64::engine::general_purpose::STANDARD as B64;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use lab::acp::registry::AcpSessionRegistry;
-use lab::acp::runtime::set_codex_launch_override_for_tests;
-use lab::api::{router::build_router_with_bearer, state::AppState};
-use lab::dispatch::acp::dispatch::{dispatch_with_registry, validate_subscribe_ticket};
+use labby::acp::registry::AcpSessionRegistry;
+use labby::acp::runtime::set_codex_launch_override_for_tests;
+use labby::api::{router::build_router_with_bearer, state::AppState};
+use labby::dispatch::acp::dispatch::{dispatch_with_registry, validate_subscribe_ticket};
 
 fn test_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
@@ -135,7 +135,7 @@ async fn json_body(response: axum::response::Response) -> Value {
 }
 
 fn acp_test_app() -> (Router, Arc<AcpSessionRegistry>) {
-    let state = AppState::from_registry(lab::registry::ToolRegistry::new());
+    let state = AppState::from_registry(labby::registry::ToolRegistry::new());
     let registry = Arc::clone(&state.acp_registry);
     let app = build_router_with_bearer(state, Some("secret-token".to_string()), None);
     (app, registry)

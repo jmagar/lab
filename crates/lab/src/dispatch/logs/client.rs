@@ -67,7 +67,7 @@ pub async fn bootstrap_running_log_system(
     // Run maintenance once at startup to apply retention limits from previous runs.
     if let Err(err) = store.run_maintenance().await {
         tracing::warn!(
-            target: "lab::dispatch::logs",
+            target: "labby::dispatch::logs",
             ?err,
             "startup log maintenance failed"
         );
@@ -84,7 +84,7 @@ pub async fn bootstrap_running_log_system(
             interval.tick().await;
             if let Err(err) = store_for_maintenance.run_maintenance().await {
                 tracing::warn!(
-                    target: "lab::dispatch::logs",
+                    target: "labby::dispatch::logs",
                     ?err,
                     "periodic log maintenance failed"
                 );

@@ -390,6 +390,15 @@ export function bridgeEventFromAcpEvent(event: AcpEvent): BridgeEvent {
                 : undefined,
             raw: event.raw,
           }
+        case 'idle_completion':
+          return {
+            ...bridgeBaseEvent(event, 'idle_completion', event.provider),
+            title:
+              isRecord(event.raw) && typeof event.raw.title === 'string'
+                ? event.raw.title
+                : 'Session paused – provider idle timeout',
+            raw: event.raw,
+          }
         case 'subscriber_backpressure':
           return {
             ...bridgeBaseEvent(event, 'reconnect', event.provider),

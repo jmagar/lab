@@ -1,8 +1,8 @@
-use lab::node::checkin::{NodeHello, NodeStatus};
-use lab::node::log_event::NodeLogEvent;
-use lab::node::queue::NodeOutboundQueue;
-use lab::node::runtime::NodeRuntime;
-use lab::node::store::NodeStore;
+use labby::node::checkin::{NodeHello, NodeStatus};
+use labby::node::log_event::NodeLogEvent;
+use labby::node::queue::NodeOutboundQueue;
+use labby::node::runtime::NodeRuntime;
+use labby::node::store::NodeStore;
 
 fn test_node_status(node_id: &str) -> NodeStatus {
     NodeStatus {
@@ -53,7 +53,7 @@ async fn non_master_runtime_uploads_discovered_ai_cli_inventory() {
     let temp = tempfile::tempdir().unwrap();
     std::fs::write(
         temp.path().join(".claude.json"),
-        r#"{"mcpServers":{"lab":{"command":"lab","args":["serve"]}}}"#,
+        r#"{"mcpServers":{"labby":{"command": "labby","args":["serve"]}}}"#,
     )
     .unwrap();
 

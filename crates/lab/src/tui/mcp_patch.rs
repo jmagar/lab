@@ -221,7 +221,7 @@ mod tests {
         r#"{
   "mcpServers": {
     "lab": {
-      "command": "/usr/local/bin/lab",
+      "command": "/usr/local/bin/labby",
       "args": ["mcp", "--services", "radarr"]
     }
   }
@@ -269,7 +269,7 @@ mod tests {
         let duped = r#"{
   "mcpServers": {
     "lab": {
-      "command": "/usr/local/bin/lab",
+      "command": "/usr/local/bin/labby",
       "args": ["mcp", "--services", "radarr", "radarr", "sonarr"]
     }
   }

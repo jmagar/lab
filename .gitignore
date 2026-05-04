@@ -44,6 +44,8 @@ backups/
 .gemini
 settings.local.json
 .worktrees/
+storage/
+/bin/labby
 
 # ── IDE / editor ─────────────────────────────────────────────────────────────
 .vscode/

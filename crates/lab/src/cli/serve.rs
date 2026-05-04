@@ -1,4 +1,4 @@
-//! `lab serve` — start the MCP server.
+//! `labby serve` — start the MCP server.
 
 #[cfg(target_os = "linux")]
 use std::path::Path;
@@ -37,7 +37,7 @@ use crate::node::store::NodeStore;
 use crate::process::unix::{exe_path, terminate_sigterm};
 use crate::registry::{ToolRegistry, build_default_registry};
 
-/// Role override for `lab serve --role`.
+/// Role override for `labby serve --role`.
 ///
 /// Maps to [`crate::config::NodeRuntimeRole`] at startup; a separate type here
 /// keeps the `clap` dependency out of `config.rs`.
@@ -57,11 +57,11 @@ impl From<ServeRole> for crate::config::NodeRuntimeRole {
     }
 }
 
-/// Transport choices for `lab serve`.
+/// Transport choices for `labby serve`.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 #[value(rename_all = "lowercase")]
 pub enum Transport {
-    /// stdin/stdout framing (available via `lab mcp`).
+    /// stdin/stdout framing (available via `labby mcp`).
     Stdio,
     /// HTTP transport (default) — requires `LAB_MCP_HTTP_TOKEN` or OAuth when exposed remotely.
     Http,
@@ -80,26 +80,26 @@ pub struct McpArgs {
     pub stdio: bool,
 }
 
-/// `lab mcp` arguments.
+/// `labby mcp` arguments.
 #[derive(Debug, Args)]
 pub struct McpServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
     /// Override the log filter level for this process.
-    /// Sets `LAB_LOG=lab=<level>,warn` before tracing init.
+    /// Sets `LAB_LOG=labby=<level>,warn` before tracing init.
     /// Example: `--log-level debug`
     #[arg(long)]
     pub log_level: Option<String>,
 }
 
-/// `lab serve` arguments.
+/// `labby serve` arguments.
 #[derive(Debug, Args)]
 pub struct ServeArgs {
     /// Comma- or space-separated list of services to enable. Empty = all.
     #[arg(long, value_delimiter = ',')]
     pub services: Vec<String>,
-    /// Legacy transport selector. Prefer `lab serve` for HTTP and `lab mcp` for stdio.
+    /// Legacy transport selector. Prefer `labby serve` for HTTP and `labby mcp` for stdio.
     #[arg(long, value_enum, hide = true)]
     pub transport: Option<Transport>,
     /// Bind host for the HTTP transport.
@@ -109,7 +109,7 @@ pub struct ServeArgs {
     #[arg(long)]
     pub port: Option<u16>,
     /// Override the log filter level for this process.
-    /// Sets `LAB_LOG=lab=<level>,warn` before tracing init.
+    /// Sets `LAB_LOG=labby=<level>,warn` before tracing init.
     /// Example: `--log-level debug`
     #[arg(long)]
     pub log_level: Option<String>,
@@ -122,7 +122,7 @@ pub struct ServeArgs {
     pub command: Option<ServeCommand>,
 }
 
-/// Run the top-level `lab mcp` stdio shortcut.
+/// Run the top-level `labby mcp` stdio shortcut.
 pub async fn run_mcp(args: McpServeArgs, config: &LabConfig) -> Result<ExitCode> {
     run(
         ServeArgs {
@@ -176,7 +176,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
         bind_port = port,
         config_path = %config_path.display(),
         requested_service_count = args.services.len(),
-        "starting lab serve bootstrap"
+        "starting labby serve bootstrap"
     );
 
     // ── Role resolution ── must happen BEFORE build_default_registry() so that
@@ -359,6 +359,7 @@ pub async fn run(args: ServeArgs, config: &LabConfig) -> Result<ExitCode> {
     // HTTP modes are mutually exclusive within one process).
     let acp_registry = Arc::new(crate::acp::registry::AcpSessionRegistry::new());
     crate::dispatch::acp::install_registry(Arc::clone(&acp_registry));
+    acp_registry.restore_from_db().await;
     tracing::info!(
         subsystem = "acp",
         phase = "ready",
@@ -764,7 +765,7 @@ fn resolve_transport(
 ) -> Result<Transport> {
     if let Some(ServeCommand::Mcp(args)) = command {
         if !args.stdio {
-            anyhow::bail!("`lab serve mcp` requires `--stdio`");
+            anyhow::bail!("`labby serve mcp` requires `--stdio`");
         }
         return Ok(Transport::Stdio);
     }
@@ -857,7 +858,7 @@ async fn run_http(
     // ── Single-master lock ────────────────────────────────────────────────────
     // Only one HTTP master instance may run per device at a time. Exits
     // immediately with a clear error if the lock is already held by another
-    // process. This guard is NOT applied in stdio/MCP-only mode — `lab serve
+    // process. This guard is NOT applied in stdio/MCP-only mode — `labby serve
     // mcp --stdio` may run freely alongside a running master.
     let _master_lock: std::fs::File = {
         let lock_dir = std::env::var("HOME")
@@ -878,7 +879,7 @@ async fn run_http(
             Err(std::fs::TryLockError::WouldBlock) => {
                 eprintln!(
                     "lab: another master instance is already running on this device \
-                     (lock: {}). Use 'lab mcp' for node/MCP-only mode.",
+                     (lock: {}). Use 'labby mcp' for node/MCP-only mode.",
                     lock_path.display()
                 );
                 std::process::exit(1);
@@ -987,7 +988,7 @@ async fn run_http(
         pid = std::process::id(),
         web_server_enabled = web_assets_enabled,
         mcp_server_enabled = mount_http_mcp,
-        "lab serve ready"
+        "labby serve ready"
     );
     // SIGUSR1 → config reload signal handler (unix only).
     #[cfg(unix)]
@@ -1059,7 +1060,7 @@ async fn run_node_mode(
 ) -> Result<ExitCode> {
     // Stdio mode is not designed for node-mode operation.
     if should_run_stdio(transport, command) {
-        anyhow::bail!("lab serve mcp --stdio is not supported in node mode");
+        anyhow::bail!("labby serve mcp --stdio is not supported in node mode");
     }
 
     tracing::info!(
@@ -1128,7 +1129,7 @@ async fn run_stdio(
         phase = "ready",
         transport = "stdio",
         services = registry.services().len(),
-        "lab serve ready"
+        "labby serve ready"
     );
     let service_count = registry.services().len();
     let server = LabMcpServer {
@@ -1210,7 +1211,7 @@ fn build_mcp_service(
         .with_stateful_mode(stateful);
     tracing::info!(
         surface = "mcp",
-        service = "lab",
+        service = "labby",
         action = "server.init",
         subsystem = "mcp_server",
         phase = "http.mount",
@@ -1233,7 +1234,7 @@ fn build_mcp_service(
             let peers = Arc::clone(&shared_peers);
             tracing::info!(
                 surface = "mcp",
-                service = "lab",
+                service = "labby",
                 action = "session.init",
                 subsystem = "mcp_server",
                 phase = "session.init",

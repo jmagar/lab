@@ -1043,7 +1043,7 @@ fn build_cors_layer(config_origins: &[String]) -> CorsLayer {
         .collect();
 
     // Production loopback origins — always allowed.
-    // 8765 is the default lab serve port; both `127.0.0.1` and `localhost`
+    // 8765 is the default labby serve port; both `127.0.0.1` and `localhost`
     // are needed because some browsers resolve only one variant (lab-bg3e.3).
     let mut origins: Vec<HeaderValue> = vec![
         HeaderValue::from_static("http://localhost"),
@@ -1389,7 +1389,7 @@ mod tests {
     /// `--services`), its `/v1/<service>` routes must NOT be mounted — even if
     /// the feature flag for that service is compiled in.
     ///
-    /// This test uses an empty registry to simulate `lab serve --services <other>`
+    /// This test uses an empty registry to simulate `labby serve --services <other>`
     /// excluding `radarr`, then verifies that `POST /v1/radarr` returns 404 rather
     /// than reaching the handler.
     #[cfg(feature = "radarr")]

@@ -293,7 +293,7 @@ fn effective_target_config(config: &LabConfig, target: &str) -> EffectiveTargetC
     let install_path = host
         .and_then(|entry| entry.remote_path.clone())
         .or_else(|| defaults.and_then(|entry| entry.remote_path.clone()))
-        .unwrap_or_else(|| "/usr/local/bin/lab".to_string());
+        .unwrap_or_else(|| "/usr/local/bin/labby".to_string());
 
     let restart = host
         .and_then(|entry| entry.restart.clone())
@@ -1347,7 +1347,7 @@ mod tests {
                     ..Default::default()
                 }),
                 hosts: {
-                    let mut m = std::collections::BTreeMap::new();
+                    let mut m = BTreeMap::new();
                     m.insert(
                         "mini1".into(),
                         DeployHostOverride {
@@ -1370,8 +1370,8 @@ mod tests {
     /// a backup, the result must carry `backup_path` and a `recovery_hint`.
     #[test]
     fn recovery_result_includes_backup_path_and_hint() {
-        let install_path = PathBuf::from("/usr/local/bin/lab");
-        let backup = PathBuf::from("/usr/local/bin/lab.bak.1234567890");
+        let install_path = PathBuf::from("/usr/local/bin/labby");
+        let backup = PathBuf::from("/usr/local/bin/labby.bak.1234567890");
 
         // Simulate the path taken inside run_local_controller when health fails.
         let backup_path_str = backup.display().to_string();

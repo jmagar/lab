@@ -3,9 +3,8 @@
 /**
  * ChatSessionProvider — 4-context React provider for shared chat session state.
  *
- * Lifts shared session state out of useChatSessionController into the admin layout.
- * Enables the floating chat popover to share session state with the /chat route
- * without duplicating the controller.
+ * Owns the shared chat session state for both the /chat route and the
+ * floating chat popover.
  *
  * 4-context split for re-render isolation:
  * - ChatSessionDataContext: runs, selectedRunId, providers, etc. (changes per interaction)
@@ -45,13 +44,17 @@ import {
   errorMessageFromPayload,
   sameProviderList,
 } from './acp-normalizers'
-import type { ACPAgent, ACPRun, ACPProject } from '@/components/chat/types'
+import type { ACPAgent, ACPRun, ACPProject, ACPMessage } from '@/components/chat/types'
 import type { BridgeSessionSummary, ProviderHealth, BridgeEvent } from '@/lib/acp/types'
 import type { SessionEventConnectionState } from './use-session-events'
 import {
   ACP_AGENT,
   integrateCreatedRun,
+  providerDisplayName,
+  resolveSelectedAgent,
+  sendPromptForSelectedProvider,
   shouldAutoCreateInitialRun,
+  type PromptPayload,
   type CreateSessionFn,
   type CreateSessionOptions,
 } from './use-chat-session-controller'
@@ -76,6 +79,7 @@ export type ChatSessionDataContextValue = {
   providerHealth: ProviderHealth | null
   providers: ProviderHealth[]
   selectedProviderId: string | null
+  selectedAgent: ACPAgent
   agents: ACPAgent[]
   projects: ACPProject[]
   sessionsLoaded: boolean
@@ -85,6 +89,10 @@ export type ChatSessionDataContextValue = {
 export type ChatSessionActionsContextValue = {
   createSession: CreateSessionFn
   selectRun: (runId: string) => void
+  sendPrompt: (
+    payload: PromptPayload,
+    options?: { includePageContext?: boolean; pageContext?: unknown },
+  ) => Promise<void>
   refreshSessions: () => Promise<void>
   refreshProvider: () => Promise<void>
   selectAgent: (providerId: string) => void
@@ -174,6 +182,7 @@ export function ChatSessionProvider({
   const [providerHealth, setProviderHealth] = React.useState<ProviderHealth | null>(null)
   const [providers, setProviders] = React.useState<ProviderHealth[]>([])
   const [selectedProviderId, setSelectedProviderId] = React.useState<string | null>(null)
+  const [optimisticMessages, setOptimisticMessages] = React.useState<ACPMessage[]>([])
   const [pageContext, setPageContext] = React.useState<PageContext>(null)
 
   // SSE state
@@ -210,7 +219,7 @@ export function ChatSessionProvider({
           createdAt: run.createdAt.toISOString(),
           updatedAt: run.updatedAt.toISOString(),
           status: run.status,
-          agentName: ACP_AGENT.name,
+          agentName: providerDisplayName(run.provider),
           agentVersion: ACP_AGENT.version,
         })),
       ),
@@ -222,10 +231,15 @@ export function ChatSessionProvider({
       providers.map((provider) => ({
         ...ACP_AGENT,
         id: provider.provider,
-        name: provider.provider === 'codex-acp' ? 'Codex ACP' : provider.provider,
+        name: providerDisplayName(provider.provider),
         version: ACP_AGENT.version,
       })),
     [providers],
+  )
+
+  const selectedAgent = React.useMemo(
+    () => resolveSelectedAgent(agents, selectedProviderId, selectedRun),
+    [agents, selectedProviderId, selectedRun],
   )
 
   const sessionStatus = React.useMemo(
@@ -338,6 +352,10 @@ export function ChatSessionProvider({
   const selectRun = React.useCallback(
     (runId: string) => {
       setSelectedRunId(runId)
+      const run = runs.find((candidate) => candidate.id === runId)
+      if (run) {
+        setSelectedProviderId(run.provider)
+      }
       try {
         localStorage.setItem('lab.chat.last-session-id', runId)
       } catch {
@@ -347,12 +365,51 @@ export function ChatSessionProvider({
         onSessionPanelClose?.()
       }
     },
-    [isMobileViewport, onSessionPanelClose],
+    [isMobileViewport, onSessionPanelClose, runs],
   )
 
   const selectAgent = React.useCallback((providerId: string) => {
     setSelectedProviderId(providerId)
   }, [])
+
+  const sendPrompt = React.useCallback<ChatSessionActionsContextValue['sendPrompt']>(
+    async (payload, options) => {
+      try {
+        await sendPromptForSelectedProvider({
+          payload,
+          selectedRun,
+          selectedProviderId,
+          createSession,
+          isMobileViewport,
+          fetchAcp,
+          refreshSessions,
+          addOptimisticMessage: (message) => setOptimisticMessages((prev) => [...prev, message]),
+          removeOptimisticMessage: (messageId) =>
+            setOptimisticMessages((prev) => prev.filter((message) => message.id !== messageId)),
+          includePageContext: options?.includePageContext,
+          pageContext: options?.pageContext,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to send prompt to ACP session.'
+        setProviderHealth((current) => ({
+          provider: current?.provider ?? selectedProviderId ?? 'codex-acp',
+          ready: false,
+          command: current?.command ?? '',
+          args: current?.args ?? [],
+          message,
+        }))
+        throw error
+      }
+    },
+    [
+      createSession,
+      fetchAcp,
+      isMobileViewport,
+      refreshSessions,
+      selectedProviderId,
+      selectedRun,
+    ],
+  )
 
   const setPageContextStable = React.useCallback((ctx: PageContext) => {
     setPageContext(ctx)
@@ -531,24 +588,26 @@ export function ChatSessionProvider({
       providerHealth,
       providers,
       selectedProviderId,
+      selectedAgent,
       agents,
       projects,
       sessionsLoaded,
       pageContext,
     }),
-    [runs, selectedRunId, selectedRun, providerHealth, providers, selectedProviderId, agents, projects, sessionsLoaded, pageContext],
+    [runs, selectedRunId, selectedRun, providerHealth, providers, selectedProviderId, selectedAgent, agents, projects, sessionsLoaded, pageContext],
   )
 
   const actionsValue = React.useMemo<ChatSessionActionsContextValue>(
     () => ({
       createSession,
       selectRun,
+      sendPrompt,
       refreshSessions,
       refreshProvider,
       selectAgent,
       setPageContext: setPageContextStable,
     }),
-    [createSession, selectRun, refreshSessions, refreshProvider, selectAgent, setPageContextStable],
+    [createSession, selectRun, sendPrompt, refreshSessions, refreshProvider, selectAgent, setPageContextStable],
   )
 
   const connectionValue = React.useMemo<ChatSessionConnectionContextValue>(
@@ -561,11 +620,16 @@ export function ChatSessionProvider({
 
   const streamValue = React.useMemo<ChatSessionStreamContextValue>(
     () => ({
-      messages: derived.messages,
+      messages:
+        optimisticMessages.length === 0
+          ? derived.messages
+          : [...derived.messages, ...optimisticMessages.filter((message) => message.runId === selectedRunId)].sort(
+              (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+            ),
       events,
       activity: derived.activity,
     }),
-    [derived.messages, events, derived.activity],
+    [derived.messages, events, derived.activity, optimisticMessages, selectedRunId],
   )
 
   return (

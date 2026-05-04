@@ -4,7 +4,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
-use lab::{
+use labby::{
     api::{router::build_router_with_bearer, state::AppState},
     node::checkin::NodeHello,
     node::enrollment::store::{EnrollmentAttempt, EnrollmentStore, TailnetIdentity},

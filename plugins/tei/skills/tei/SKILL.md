@@ -1,6 +1,6 @@
 ---
 name: tei
-description: Lab's Tei integration — HuggingFace Text Embeddings Inference server. Use when the user wants to manage their Tei instance, or invokes `lab tei` / `mcp__lab__tei`. Calls the MCP tool first, falls back to the CLI if MCP is unavailable.
+description: Lab's Tei integration — HuggingFace Text Embeddings Inference server. Use when the user wants to manage their Tei instance, or invokes `labby tei` / `mcp__lab__tei`. Calls the MCP tool first, falls back to the CLI if MCP is unavailable.
 ---
 
 # Tei
@@ -26,9 +26,9 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ### CLI fallback
 
 ```bash
-lab tei --help
-lab tei <action> --help
-lab --json tei <action> ...
+labby tei --help
+labby tei <action> --help
+labby --json tei <action> ...
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -46,10 +46,10 @@ CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service tei
+labby doctor service tei
 ```
 
 ## When NOT to use this skill

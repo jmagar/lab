@@ -40,7 +40,7 @@ The main boundary is simple:
 - MCP envelope construction
 - HTTP error envelope construction
 
-### `lab`
+### `labby`
 
 `lab` owns:
 

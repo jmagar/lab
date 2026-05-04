@@ -1,4 +1,4 @@
-//! `lab extract` — CLI surface for the extract module.
+//! `labby extract` — CLI surface for the extract module.
 #![allow(clippy::print_stderr)]
 //!
 //! Thin shim. All logic lives in `lab_apis::extract::ExtractClient`. This
@@ -18,7 +18,7 @@ use crate::config::{backup_env, env_is_up_to_date, write_env};
 use crate::output::{ColorPolicy, OutputFormat, RenderEnv, print};
 use lab_apis::extract::{ExtractClient, ExtractReport, ScanTarget, Uri};
 
-/// `lab extract [uri] [--apply | --diff] [-y] [--json]`
+/// `labby extract [uri] [--apply | --diff] [-y] [--json]`
 #[derive(Debug, Args)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ExtractCmd {

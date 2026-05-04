@@ -93,7 +93,7 @@ pub fn client_from_env() -> Option<GotifyClient> {
 
 /// Return a management-scoped client or a structured `internal_error` if not configured.
 ///
-/// Intended for callers that need only the management client (e.g. `lab doctor`).
+/// Intended for callers that need only the management client (e.g. `labby doctor`).
 /// The dispatch layer uses `clients_from_env()` + `not_configured_error()` because it
 /// requires all three client roles (`health`, `app`, `client`).
 #[allow(dead_code)]

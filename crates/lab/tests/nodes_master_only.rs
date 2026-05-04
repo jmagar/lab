@@ -4,7 +4,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use lab::{
+use lab_auth::config::{AuthConfig, AuthMode, GoogleConfig};
+use labby::{
     api::{router::build_router_with_bearer, state::AppState},
     config::{LabConfig, NodePreferences, NodeRole, NodeRuntimeRole},
     node::{
@@ -12,7 +13,6 @@ use lab::{
         store::NodeStore,
     },
 };
-use lab_auth::config::{AuthConfig, AuthMode, GoogleConfig};
 use tower::ServiceExt;
 
 #[tokio::test]
@@ -48,7 +48,7 @@ async fn non_master_router_does_not_mount_oauth_metadata_surface() {
         .with_node_store(Arc::new(NodeStore::default()))
         .with_node_role(NodeRole::NonMaster)
         .with_web_assets_dir(dir.path().to_path_buf());
-    let app = lab::api::router::build_router(state, None, Some(fixture.auth_state), None, &[]);
+    let app = labby::api::router::build_router(state, None, Some(fixture.auth_state), None, &[]);
     let response = app
         .oneshot(
             Request::builder()

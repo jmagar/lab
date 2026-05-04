@@ -1,6 +1,6 @@
 #![cfg(feature = "deploy")]
 
-use lab::dispatch::deploy;
+use labby::dispatch::deploy;
 use serde_json::json;
 
 #[test]

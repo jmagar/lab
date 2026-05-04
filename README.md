@@ -27,22 +27,22 @@ control plane.
 | Gateway management | Add, test, reload, and remove upstream MCP servers without hand-editing config. Lab supports exposure filters, `tool_search`/`tool_invoke` helper paths, OAuth-backed upstream credentials, and Labby/CLI/API controls for the proxy pool. |
 | Virtual Lab servers | Expose configured Lab-backed services as virtual gateway servers, toggle CLI/API/MCP/Web UI surfaces, inspect service action metadata, and set MCP action allowlists per virtual server. |
 | Authentication and OAuth | Protect hosted HTTP, MCP, Labby, registry, and gateway-management routes with static bearer auth or Lab's Google-backed OAuth mode. Lab also supports browser sessions, CSRF-protected web UI calls, OAuth metadata/JWKS endpoints, upstream MCP OAuth credential storage, and local or node-started OAuth callback relays. |
-| Fleet nodes | Run `lab serve` on multiple machines, enroll non-controller nodes, approve or deny devices, inspect node inventory and MCP client config metadata, run the local OAuth relay on a node, and route status/log events back to the controller over the fleet WebSocket. |
+| Fleet nodes | Run `labby serve` on multiple machines, enroll non-controller nodes, approve or deny devices, inspect node inventory and MCP client config metadata, run the local OAuth relay on a node, and route status/log events back to the controller over the fleet WebSocket. |
 | Logs and activity | Search persisted local runtime logs, tail bounded history, stream live logs to the Labby `/logs` page over SSE, and forward peer syslog batches into the controller when enabled. |
-| Labby web UI | Serve the admin UI from the same `lab serve` process as the API and MCP endpoint. The UI covers marketplace, gateway management, registry browsing, logs, setup, activity, settings, docs, and design-system/dev previews. |
+| Labby web UI | Serve the admin UI from the same `labby serve` process as the API and MCP endpoint. The UI covers marketplace, gateway management, registry browsing, logs, setup, activity, settings, docs, and design-system/dev previews. |
 | Labby chat | Use the `/chat` web UI as a live ACP client: create/list/resume sessions, send prompts to configured providers, stream session events over SSE, inspect transcript and reasoning/activity lanes, and render tool calls, terminal output, file trees, diffs, code blocks, links, and web previews. |
 | TUI plugin manager | Run `lab plugins` to manage local service/plugin installation from a Ratatui interface that reads service metadata and patches `.mcp.json` entries without requiring hand-written MCP config. |
 | Generated API docs and catalogs | Use `lab help --json`, MCP `lab://catalog`, per-service action resources, `/v1/{service}/actions`, `/v1/openapi.json`, and `/v1/docs` to discover the exact enabled action surface programmatically. |
-| Composable feature set | Pick what Lab exposes at each layer: build only selected integrations with Cargo features, start only selected runtime services with `lab serve --services`, expose only chosen virtual-server surfaces/actions, and deploy only the plugin components you choose to selected devices. |
+| Composable feature set | Pick what Lab exposes at each layer: build only selected integrations with Cargo features, start only selected runtime services with `labby serve --services`, expose only chosen virtual-server surfaces/actions, and deploy only the plugin components you choose to selected devices. |
 | Workspace filesystem browser | Browse and preview files under the configured workspace root through the guarded `fs` service for Labby attachment and editor workflows. |
-| Setup and health audits | Use `lab init`, `lab doctor`, `lab health`, `lab scaffold service`, and `lab audit onboarding` to bootstrap config, validate service reachability/auth, and keep new integrations aligned with the repo contract. |
+| Setup and health audits | Use `labby init`, `labby doctor`, `labby health`, `labby scaffold service`, and `labby audit onboarding` to bootstrap config, validate service reachability/auth, and keep new integrations aligned with the repo contract. |
 | Service operations | Use one action catalog across CLI, MCP, and HTTP to operate Radarr, Sonarr, Plex, UniFi, Unraid, qBittorrent, Gotify, Qdrant, OpenAI-compatible APIs, and the rest of the service integrations. |
-| Credential bootstrap | Scan local or SSH appdata paths with `lab extract`, preview diffs, and apply discovered service URLs/API keys into `~/.lab/.env` with backups and atomic writes. |
-| Deployment and monitors | Build and push the Lab release binary to SSH targets, manage rollout policy, and use monitor definitions from `plugins/monitors/monitors.json` through `lab deploy monitor`. |
+| Credential bootstrap | Scan local or SSH appdata paths with `labby extract`, preview diffs, and apply discovered service URLs/API keys into `~/.lab/.env` with backups and atomic writes. |
+| Deployment and monitors | Build and push the Lab release binary to SSH targets, manage rollout policy, and use monitor definitions from `plugins/monitors/monitors.json` through `labby deploy monitor`. |
 
 These features are exposed consistently:
 
-- **CLI:** operator commands such as `lab marketplace`, `lab gateway`, `lab nodes`, `lab logs`, `lab doctor`, `lab deploy`, and per-service subcommands.
+- **CLI:** operator commands such as `labby marketplace`, `labby gateway`, `labby nodes`, `labby logs`, `labby doctor`, `labby deploy`, and per-service subcommands.
 - **MCP:** compact one-tool-per-service access for agents, with generated action discovery and destructive-action confirmation.
 - **HTTP/API:** `/v1/<service>` action dispatch, OpenAPI docs, OAuth/browser sessions, and same-origin Labby integration.
 - **Web UI:** Labby pages for marketplace, gateways, logs, registry, setup, activity, and live ACP chat workflows.
@@ -52,8 +52,8 @@ These features are exposed consistently:
 Browse and install from the official MCP Registry:
 
 ```bash
-lab marketplace mcp.list --params '{"search":"github","limit":10}'
-lab marketplace mcp.install \
+labby marketplace mcp.list --params '{"search":"github","limit":10}'
+labby marketplace mcp.install \
   --params '{"name":"io.github.example/server","client_targets":[{"node_id":"local","client":"codex"}],"env_values":{"API_TOKEN":"..."},"confirm":true}' \
   -y
 ```
@@ -61,8 +61,8 @@ lab marketplace mcp.install \
 Install or cherry-pick marketplace plugin components to devices:
 
 ```bash
-lab marketplace plugins.list --params '{"runtime":"claude"}'
-lab marketplace plugin.cherry_pick \
+labby marketplace plugins.list --params '{"runtime":"claude"}'
+labby marketplace plugin.cherry_pick \
   --params '{"plugin_id":"ops-pack@homelab","components":["skills/triage/SKILL.md","agents/reviewer.md","commands/deploy.md"],"node_ids":["local","dookie"],"scope":"global","confirm":true}' \
   -y
 ```
@@ -70,25 +70,25 @@ lab marketplace plugin.cherry_pick \
 Edit a plugin through the stash workspace and deploy the saved result:
 
 ```bash
-lab marketplace plugin.workspace --params '{"id":"ops-pack@homelab"}'
-lab marketplace plugin.save --params '{"id":"ops-pack@homelab","path":"skills/triage/SKILL.md","content":"..."}'
-lab marketplace plugin.deploy.preview --params '{"id":"ops-pack@homelab"}'
-lab marketplace plugin.deploy --params '{"id":"ops-pack@homelab","confirm":true}' -y
+labby marketplace plugin.workspace --params '{"id":"ops-pack@homelab"}'
+labby marketplace plugin.save --params '{"id":"ops-pack@homelab","path":"skills/triage/SKILL.md","content":"..."}'
+labby marketplace plugin.deploy.preview --params '{"id":"ops-pack@homelab"}'
+labby marketplace plugin.deploy --params '{"id":"ops-pack@homelab","confirm":true}' -y
 ```
 
 Proxy another MCP server through Lab:
 
 ```bash
-lab gateway add --name remote-lab --url https://lab2.example.com/mcp --bearer-token-env REMOTE_LAB_TOKEN
-lab gateway reload
-lab serve --host 127.0.0.1 --port 8765
+labby gateway add --name remote-lab --url https://lab2.example.com/mcp --bearer-token-env REMOTE_LAB_TOKEN
+labby gateway reload
+labby serve --host 127.0.0.1 --port 8765
 ```
 
 Start Labby and use the web UI:
 
 ```bash
 just web-build
-lab serve --host 127.0.0.1 --port 8765
+labby serve --host 127.0.0.1 --port 8765
 ```
 
 Then open `/marketplace`, `/registry`, `/gateway`, `/logs`, `/setup`, `/activity`,
@@ -97,11 +97,11 @@ Then open `/marketplace`, `/registry`, `/gateway`, `/logs`, `/setup`, `/activity
 Bootstrap and operate a fleet:
 
 ```bash
-lab extract /mnt/appdata --diff
-lab doctor
-lab nodes enrollments list
-lab logs search dookie oauth
-lab deploy plan dookie
+labby extract /mnt/appdata --diff
+labby doctor
+labby nodes enrollments list
+labby logs search dookie oauth
+labby deploy plan dookie
 ```
 
 ## Current Limits
@@ -109,7 +109,7 @@ lab deploy plan dookie
 - Direct `artifact.fork`, `artifact.diff`, and `artifact.patch` actions are cataloged but currently return `not_implemented`; the update/check/preview/apply model and metadata direction are present, but the lower-level fork/patch lifecycle is not complete.
 - ACP agent installs can write controller-local provider config; remote ACP agent installation is limited by the agent distribution and node runtime support, and unsupported remote cases return per-node errors.
 - The product HTTP API manages gateway config through `/v1/gateway`, but arbitrary proxied upstream MCP tool calls are exposed through MCP, not through `/v1/*`.
-- Labby is served by `lab serve` only when exported static assets exist or `LAB_WEB_ASSETS_DIR` points at them; use `just web-build` to create the export.
+- Labby is served by `labby serve` only when exported static assets exist or `LAB_WEB_ASSETS_DIR` points at them; use `just web-build` to create the export.
 - `lab_admin` is compiled by the default `all` feature but remains runtime-gated behind `LAB_ADMIN_ENABLED=1` or `[admin].enabled = true`.
 
 ## Current State
@@ -135,7 +135,7 @@ generated docs registry lists it as runtime-conditional.
 | [crates/lab-apis](./crates/lab-apis) | Pure Rust SDK: typed clients, request/response models, auth, shared HTTP behavior, health contracts, plugin metadata |
 | [crates/lab](./crates/lab) | Product binary: CLI, MCP, HTTP API, TUI, config loading, dispatch, output rendering, catalog generation |
 | [crates/lab-auth](./crates/lab-auth) | HTTP/OAuth auth support used by the hosted runtime |
-| [apps/gateway-admin](./apps/gateway-admin/README.md) | Labby admin UI, exported and served by `lab serve` when static assets exist |
+| [apps/gateway-admin](./apps/gateway-admin/README.md) | Labby admin UI, exported and served by `labby serve` when static assets exist |
 | [docs](./docs/README.md) | Topic-based source-of-truth documentation |
 | [plugins](./plugins) | Lab plugin and monitor assets used by local workflows |
 
@@ -151,7 +151,7 @@ Rust 1.90+.
 git clone git@github.com:jmagar/lab.git
 cd lab
 cargo build --workspace --all-features
-cargo install --path crates/lab --all-features
+cargo install --path crates/lab --bin labby --all-features
 ```
 
 Secrets and endpoint URLs belong in `~/.lab/.env`. Preferences belong in
@@ -204,31 +204,31 @@ configuration contract.
 ```bash
 lab help
 lab help --json
-lab serve
-lab serve --host 127.0.0.1 --port 8765
-lab serve --services radarr,sonarr,plex
-lab mcp
-lab doctor
-lab health
+labby serve
+labby serve --host 127.0.0.1 --port 8765
+labby serve --services radarr,sonarr,plex
+labby mcp
+labby doctor
+labby health
 lab plugins
-lab extract /mnt/appdata --diff
+labby extract /mnt/appdata --diff
 ```
 
-`lab serve` starts the hosted runtime path: the Axum HTTP server for the product API,
+`labby serve` starts the hosted runtime path: the Axum HTTP server for the product API,
 OAuth/auth endpoints when configured, the HTTP MCP surface at `/mcp`, and the Labby web
-UI when exported assets exist. Use `lab mcp` for stdio MCP clients.
+UI when exported assets exist. Use `labby mcp` for stdio MCP clients.
 
 To serve Labby from the same process, build the static export first:
 
 ```bash
 just web-build
-lab serve --host 127.0.0.1 --port 8765
+labby serve --host 127.0.0.1 --port 8765
 ```
 
 Main Labby routes are `/marketplace`, `/registry`, `/gateway`, `/logs`, `/setup`,
 `/activity`, `/chat`, `/settings`, `/docs`, and `/design-system`.
 
-`lab mcp` is the stdio-only MCP path for local editor and desktop clients.
+`labby mcp` is the stdio-only MCP path for local editor and desktop clients.
 It does not start the hosted API or web UI.
 
 ## Auth And OAuth
@@ -251,7 +251,7 @@ Protected route behavior:
 | `/v1/*` product API | Static bearer token, Lab OAuth JWT bearer token, or Labby browser session cookie | Browser session POSTs use CSRF protection. `LAB_WEB_UI_AUTH_DISABLED` bypasses `/v1` auth only for development. |
 | `/mcp` HTTP MCP | Static bearer token or Lab OAuth JWT bearer token | Browser session cookies are not accepted for MCP transport. |
 | `/v0.1/*` MCP Registry compatibility routes | Same as protected `/v1` routes | Mounted when the registry feature is enabled. |
-| Labby web UI | Browser session in OAuth mode, or the configured development bypass | Static assets and SPA paths are served by `lab serve`; data calls still use `/v1`. |
+| Labby web UI | Browser session in OAuth mode, or the configured development bypass | Static assets and SPA paths are served by `labby serve`; data calls still use `/v1`. |
 | `/health`, `/ready` | No auth | Intended for probes. |
 | `/v1/nodes/hello`, `/v1/nodes/ws` | No bearer middleware | Node WebSocket `initialize` validates the enrolled `device_id` and device token before node methods run. |
 
@@ -269,8 +269,8 @@ Lab's auth store and shared by the web UI, CLI, and MCP gateway actions.
 Callback relay helpers cover split-browser/device flows:
 
 ```bash
-lab oauth relay-local --machine dookie --port 38935
-lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+labby oauth relay-local --machine dookie --port 38935
+labby oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
 ```
 
 The same local relay can be started through the node runtime with
@@ -288,26 +288,26 @@ Top-level commands are defined in [crates/lab/src/cli.rs](./crates/lab/src/cli.r
 
 | Command | Purpose |
 | --- | --- |
-| `lab serve` | Start the hosted HTTP runtime |
-| `lab mcp` | Start the stdio MCP server for local MCP clients |
+| `labby serve` | Start the hosted HTTP runtime |
+| `labby mcp` | Start the stdio MCP server for local MCP clients |
 | `lab help` | Print the generated service and action catalog |
-| `lab doctor` | Run comprehensive health audits |
-| `lab health` | Run quick reachability checks |
-| `lab nodes` | Query nodes from the configured controller |
-| `lab logs` | Search fleet or local-master logs |
+| `labby doctor` | Run comprehensive health audits |
+| `labby health` | Run quick reachability checks |
+| `labby nodes` | Query nodes from the configured controller |
+| `labby logs` | Search fleet or local-master logs |
 | `lab plugins` | Open the Ratatui plugin manager |
-| `lab marketplace` | Manage Claude Code, Codex, MCP Registry, and ACP Registry marketplace entries |
-| `lab gateway` | Manage proxied upstream MCP gateways |
-| `lab oauth` | Run local OAuth callback relay helpers |
-| `lab extract` | Scan local or SSH appdata paths and extract service credentials |
-| `lab audit` | Audit service onboarding against the repo contract |
-| `lab scaffold` | Generate a new service onboarding scaffold |
-| `lab install` / `lab uninstall` | Patch `.mcp.json` service entries |
-| `lab init` | Run first-time setup |
+| `labby marketplace` | Manage Claude Code, Codex, MCP Registry, and ACP Registry marketplace entries |
+| `labby gateway` | Manage proxied upstream MCP gateways |
+| `labby oauth` | Run local OAuth callback relay helpers |
+| `labby extract` | Scan local or SSH appdata paths and extract service credentials |
+| `labby audit` | Audit service onboarding against the repo contract |
+| `labby scaffold` | Generate a new service onboarding scaffold |
+| `labby install` / `labby uninstall` | Patch `.mcp.json` service entries |
+| `labby init` | Run first-time setup |
 | `lab completions` | Generate shell completions |
 
 Feature-gated services also expose CLI subcommands such as `lab radarr`, `lab unifi`,
-`lab qdrant`, and `lab deploy`.
+`lab qdrant`, and `labby deploy`.
 
 CLI output is human-readable by default. Use global `--json` for machine-readable output
 and `--color auto|always|never` for human output styling. See [docs/CLI.md](./docs/CLI.md)
@@ -349,7 +349,7 @@ See [docs/MCP.md](./docs/MCP.md), [docs/RMCP.md](./docs/RMCP.md), and
 
 ## HTTP API
 
-`lab serve` mounts the HTTP API under `/v1` and MCP over HTTP at `/mcp` in hosted mode.
+`labby serve` mounts the HTTP API under `/v1` and MCP over HTTP at `/mcp` in hosted mode.
 Protected routes accept configured auth: static bearer tokens, OAuth JWT bearer tokens,
 and browser session cookies on `/v1` routes. Loopback development can run without auth
 when neither bearer nor OAuth auth is configured; non-loopback binds require configured auth.
@@ -501,7 +501,7 @@ runtime-gated.
 Build a subset:
 
 ```bash
-cargo build -p lab --no-default-features --features radarr,sonarr,plex
+cargo build -p labby --no-default-features --features radarr,sonarr,plex
 ```
 
 ## Development
@@ -515,7 +515,7 @@ just test-integration # cargo nextest run --workspace --all-features -- --ignore
 just lint             # cargo clippy --workspace --all-features -- -D warnings; cargo fmt --all -- --check
 just deny             # cargo deny check
 just build            # cargo build --workspace --all-features
-just build-release    # cargo build --workspace --all-features --release; install bin/lab
+just build-release    # cargo build --workspace --all-features --release; install bin/labby
 just web-build        # cd apps/gateway-admin && pnpm build
 just web-watch        # rebuild Labby static assets on frontend changes
 just run -- help      # cargo run --all-features -- <args>
@@ -549,7 +549,7 @@ Start at [docs/README.md](./docs/README.md). Topic ownership:
 | [docs/CONVENTIONS.md](./docs/CONVENTIONS.md) | Locked engineering rules, async style, HTTP, testing, docs, privacy |
 | [docs/SERVICES.md](./docs/SERVICES.md) | Service inventory, feature gates, metadata, multi-instance model |
 | [docs/SERVICE_ONBOARDING.md](./docs/SERVICE_ONBOARDING.md) | End-to-end checklist for adding a service |
-| [docs/SCAFFOLD_AND_AUDIT.md](./docs/SCAFFOLD_AND_AUDIT.md) | `lab scaffold service` and `lab audit onboarding` contract |
+| [docs/SCAFFOLD_AND_AUDIT.md](./docs/SCAFFOLD_AND_AUDIT.md) | `labby scaffold service` and `labby audit onboarding` contract |
 | [docs/CLI.md](./docs/CLI.md) | CLI behavior, command rules, confirmations, operator commands |
 | [docs/design/CLI_DESIGN_SYSTEM.md](./docs/design/CLI_DESIGN_SYSTEM.md) | Human-readable CLI output language and color policy |
 | [docs/design/CLI_OUTPUT_THEME_API.md](./docs/design/CLI_OUTPUT_THEME_API.md) | Proposed Rust API for CLI semantic styling |
@@ -583,7 +583,7 @@ Start at [docs/README.md](./docs/README.md). Topic ownership:
 | [docs/LOCAL_LOGS.md](./docs/LOCAL_LOGS.md) | Local-master runtime log store, `/v1/logs`, SSE streaming |
 | [docs/DEPLOY.md](./docs/DEPLOY.md) | Device-runtime deployment topology and rollout guidance |
 | [docs/DEPLOY_SERVICE.md](./docs/DEPLOY_SERVICE.md) | Deploy service action/API contract |
-| [docs/MONITORS.md](./docs/MONITORS.md) | Claude Code monitor definitions and `lab deploy monitor` |
+| [docs/MONITORS.md](./docs/MONITORS.md) | Claude Code monitor definitions and `labby deploy monitor` |
 | [docs/TUI.md](./docs/TUI.md) | Ratatui plugin manager behavior and `.mcp.json` patching |
 | [apps/gateway-admin/README.md](./apps/gateway-admin/README.md) | Labby frontend workflow and static export model |
 | [docs/design/component-development.md](./docs/design/component-development.md) | Labby component workflow and browser verification |

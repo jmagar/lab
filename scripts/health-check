@@ -151,7 +151,7 @@ collect_results() {
 }
 
 if [ "$SOLO_MODE" -eq 0 ]; then
-    echo "lab health-check  ${D}($ENV_FILE)${N}"
+    echo "labby health-check  ${D}($ENV_FILE)${N}"
     echo
 fi
 

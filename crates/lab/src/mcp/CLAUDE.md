@@ -116,10 +116,10 @@ Existing hard checks (enforced in code):
 Operator-side (not enforced in code) — must be ensured before exposing
 a server that has the `fs` feature enabled:
 
-- `lab serve` (HTTP transport, the default): require
+- `labby serve` (HTTP transport, the default): require
   `LAB_MCP_HTTP_TOKEN` or `LAB_AUTH_MODE=oauth`. Do not relax this
   while `fs` is feature-enabled.
-- `lab mcp`: stdio has no transport-level auth. Ensure
+- `labby mcp`: stdio has no transport-level auth. Ensure
   the process is not reachable by untrusted callers — do not expose it
   through a network proxy without front-side auth.
 

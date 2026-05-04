@@ -4,8 +4,8 @@
 
 This is separate from fleet node log search:
 
-- fleet node log search remains `lab logs search <node> <query>` and `POST /v1/nodes/logs/search`
-- local-master runtime logs live in the shared `dispatch::logs` subsystem and power `lab logs local *`, MCP `logs.*`, `POST /v1/logs`, `GET /v1/logs/stream`, and the gateway-admin `/logs` page
+- fleet node log search remains `labby logs search <node> <query>` and `POST /v1/nodes/logs/search`
+- local-master runtime logs live in the shared `dispatch::logs` subsystem and power `labby logs local *`, MCP `logs.*`, `POST /v1/logs`, `GET /v1/logs/stream`, and the gateway-admin `/logs` page
 
 ## Scope
 
@@ -25,11 +25,11 @@ Not included:
 
 CLI:
 
-- `lab logs local search`
-- `lab logs local tail`
-- `lab logs local stats`
-- `lab logs local stream` — rejected with guidance; use `GET /v1/logs/stream` or `lab logs local tail`
-- `lab logs forward` — peer syslog forwarder; reads journald or `/var/log/syslog` and batches to master
+- `labby logs local search`
+- `labby logs local tail`
+- `labby logs local stats`
+- `labby logs local stream` — rejected with guidance; use `GET /v1/logs/stream` or `labby logs local tail`
+- `labby logs forward` — peer syslog forwarder; reads journald or `/var/log/syslog` and batches to master
 
 MCP:
 
@@ -57,7 +57,7 @@ The shared `LogSystem` runtime owns:
 - retention enforcement
 - the in-process live subscriber hub used by SSE
 
-`main.rs` owns tracing setup and attaches the ingest layer once. `lab serve` bootstraps the long-lived `LogSystem` runtime once and wires it into the shared HTTP/MCP state. One-shot CLI commands open the same on-disk store for bounded queries instead of constructing their own partial live runtime.
+`main.rs` owns tracing setup and attaches the ingest layer once. `labby serve` bootstraps the long-lived `LogSystem` runtime once and wires it into the shared HTTP/MCP state. One-shot CLI commands open the same on-disk store for bounded queries instead of constructing their own partial live runtime.
 
 ## Query And Streaming Rules
 
@@ -78,7 +78,7 @@ Oldest events are evicted first.
 
 Operators can inspect retention state through:
 
-- `lab logs local stats`
+- `labby logs local stats`
 - `logs.stats`
 - `POST /v1/logs` with `{"action":"logs.stats"}`
 - the gateway-admin `/logs` page
@@ -121,7 +121,7 @@ Enable the ingest endpoint on the master:
 LAB_LOGS_INGEST_ENABLED=true
 ```
 
-Auth uses the same shared bearer token already in use for `lab serve`:
+Auth uses the same shared bearer token already in use for `labby serve`:
 
 ```bash
 LAB_MCP_HTTP_TOKEN=<token>
@@ -140,7 +140,7 @@ LAB_NODE_ID=<hostname-or-label>              # falls back to $(hostname)
 ### Running the forwarder
 
 ```bash
-lab logs forward
+labby logs forward
 ```
 
 Reads journald (`journalctl --follow --output=json`) by default, falls back to

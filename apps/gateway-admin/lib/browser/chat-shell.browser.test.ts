@@ -37,17 +37,17 @@ type BrowserEvent = {
   text?: string
 }
 
-function session(id: string, title: string): BrowserSession {
+function session(id: string, title: string, provider = 'codex'): BrowserSession {
   return {
     id,
     providerSessionId: `provider-${id}`,
-    provider: 'codex',
+    provider,
     title,
     cwd: '/home/jmagar/workspace/lab',
     createdAt: '2026-04-23T00:00:00Z',
     updatedAt: '2026-04-23T00:00:00Z',
     status: 'idle',
-    agentName: 'Codex ACP',
+    agentName: provider === 'codex' || provider === 'codex-acp' ? 'Codex ACP' : provider,
     agentVersion: 'live',
     resumable: true,
   }
@@ -109,7 +109,7 @@ async function startPreviewServer() {
 
   previewServer = spawn(
     '/usr/bin/zsh',
-    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_MOCK_DATA=true pnpm exec next build && python3 -m http.server ${PORT} --directory out --bind 127.0.0.1`],
+    ['-lc', `LAB_ALLOWED_DEV_ORIGINS=127.0.0.1 NEXT_PUBLIC_MOCK_DATA=false pnpm exec next build && python3 -m http.server ${PORT} --directory out --bind 127.0.0.1`],
     {
       cwd: APP_DIR,
       stdio: 'ignore',
@@ -119,6 +119,22 @@ async function startPreviewServer() {
 
   previewServerReady = waitForServer(`${BASE_URL}/chat/`)
   await previewServerReady
+}
+
+async function mockAuthenticatedSession(page: import('playwright').Page) {
+  await page.route('**/auth/session', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        authenticated: true,
+        user: { sub: 'browser-user', email: 'browser@example.com' },
+        expires_at: Date.now() + 60_000,
+        csrf_token: 'csrf-token',
+        is_admin: true,
+      }),
+    })
+  })
 }
 
 async function waitForCondition(predicate: () => boolean, timeoutMs = 5_000) {
@@ -164,6 +180,8 @@ test('chat shell sends prompts without bearer auth and resumes session streams f
   const streamSince = new Map<string, string[]>()
   const promptRequests: Array<{ sessionId: string; prompt: string; authorization: string | null }> = []
   const observedAuthorizations: Array<string | null> = []
+
+  await mockAuthenticatedSession(page)
 
   await page.route('**/v1/acp/**', async (route) => {
     const request = route.request()
@@ -229,6 +247,16 @@ test('chat shell sends prompts without bearer auth and resumes session streams f
       return
     }
 
+    const ticketMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/subscribe_ticket$/)
+    if (ticketMatch && request.method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ticket: `ticket-${decodeURIComponent(ticketMatch[1]!)}` }),
+      })
+      return
+    }
+
     const eventMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/events$/)
     if (eventMatch && request.method() === 'GET') {
       const sessionId = decodeURIComponent(eventMatch[1]!)
@@ -264,7 +292,7 @@ test('chat shell sends prompts without bearer auth and resumes session streams f
   await assert.doesNotReject(() => page.getByText('Bootstrap session').first().waitFor())
   await assert.doesNotReject(() => page.getByText('Hello session 1').waitFor())
 
-  await page.getByLabel('Message').fill('Summarize Stage 3 browser coverage')
+  await page.getByRole('textbox', { name: 'Message' }).fill('Summarize Stage 3 browser coverage')
   await page.getByRole('button', { name: 'Send message' }).click()
 
   await waitForCondition(() => promptRequests.length === 1)
@@ -301,6 +329,8 @@ test('chat shell recovers from a failed session stream after switching sessions 
   const sessions: BrowserSession[] = []
   const streamSince = new Map<string, string[]>()
   let sessionOneAttempts = 0
+
+  await mockAuthenticatedSession(page)
 
   await page.route('**/v1/acp/**', async (route) => {
     const request = route.request()
@@ -343,6 +373,16 @@ test('chat shell recovers from a failed session stream after switching sessions 
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({ session: created }),
+      })
+      return
+    }
+
+    const ticketMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/subscribe_ticket$/)
+    if (ticketMatch && request.method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ticket: `ticket-${decodeURIComponent(ticketMatch[1]!)}` }),
       })
       return
     }
@@ -403,4 +443,146 @@ test('chat shell recovers from a failed session stream after switching sessions 
   await assert.doesNotReject(() => page.getByText('Recovered session 1').waitFor())
   assert.deepEqual(streamSince.get('session-1'), ['0', '0'])
   assert.deepEqual(streamSince.get('session-2'), ['0'])
+})
+
+test('chat shell agent picker switches provider and sends through a provider-matched session', { concurrency: false }, async (t) => {
+  await startPreviewServer()
+
+  const browser = await chromium.launch({ headless: true })
+  t.after(async () => {
+    await browser.close()
+  })
+
+  const page = await browser.newPage({ viewport: { width: 1360, height: 960 } })
+  const sessions: BrowserSession[] = []
+  const createRequests: Array<{ provider: string }> = []
+  const promptRequests: Array<{ sessionId: string; prompt: string }> = []
+
+  await mockAuthenticatedSession(page)
+
+  await page.route('**/v1/acp/**', async (route) => {
+    const request = route.request()
+    const url = new URL(request.url())
+
+    if (url.pathname === '/v1/acp/provider') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          providers: [
+            {
+              name: 'codex-acp',
+              available: true,
+              command: 'npx',
+              args: ['@zed-industries/codex-acp'],
+            },
+            {
+              name: 'claude-acp',
+              available: true,
+              command: 'claude-acp',
+              args: [],
+            },
+            {
+              name: 'gemini',
+              available: true,
+              command: 'gemini',
+              args: [],
+            },
+          ],
+        }),
+      })
+      return
+    }
+
+    if (url.pathname === '/v1/acp/sessions' && request.method() === 'GET') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ sessions }),
+      })
+      return
+    }
+
+    if (url.pathname === '/v1/acp/sessions' && request.method() === 'POST') {
+      const payload = JSON.parse(request.postData() ?? '{}') as { provider?: string }
+      const provider = payload.provider ?? 'codex-acp'
+      createRequests.push({ provider })
+      const created = session(`session-${sessions.length + 1}`, `${provider} session`, provider)
+      sessions.unshift(created)
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ session: created }),
+      })
+      return
+    }
+
+    const promptMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/prompt$/)
+    if (promptMatch && request.method() === 'POST') {
+      const payload = JSON.parse(request.postData() ?? '{}') as { prompt?: string }
+      promptRequests.push({
+        sessionId: decodeURIComponent(promptMatch[1]!),
+        prompt: payload.prompt ?? '',
+      })
+
+      await route.fulfill({
+        status: 202,
+        contentType: 'application/json',
+        body: JSON.stringify({ accepted: true }),
+      })
+      return
+    }
+
+    const ticketMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/subscribe_ticket$/)
+    if (ticketMatch && request.method() === 'POST') {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ticket: `ticket-${decodeURIComponent(ticketMatch[1]!)}` }),
+      })
+      return
+    }
+
+    const eventMatch = url.pathname.match(/^\/v1\/acp\/sessions\/([^/]+)\/events$/)
+    if (eventMatch && request.method() === 'GET') {
+      const sessionId = decodeURIComponent(eventMatch[1]!)
+      await route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        body: sseFrame(bridgeEvent(sessionId, 1, { text: `Hello ${sessionId}` })),
+      })
+      return
+    }
+
+    await route.fulfill({
+      status: 404,
+      contentType: 'application/json',
+      body: JSON.stringify({ message: `Unhandled ACP request: ${url.pathname}` }),
+    })
+  })
+
+  await page.goto(`${BASE_URL}/chat/`, { waitUntil: 'networkidle' })
+
+  await assert.doesNotReject(() => page.getByText('codex-acp session').first().waitFor())
+  await page.getByRole('button', { name: 'Selected agent: Codex ACP' }).click()
+  await page.getByRole('option', { name: /Claude ACP/ }).click()
+  await assert.doesNotReject(() =>
+    page.getByRole('button', { name: 'Selected agent: Claude ACP' }).waitFor(),
+  )
+
+  await page.getByRole('textbox', { name: 'Message' }).fill('Use Claude for this')
+  await page.getByRole('button', { name: 'Send message' }).click()
+
+  await waitForCondition(() => promptRequests.length === 1)
+  assert.deepEqual(createRequests, [
+    { provider: 'codex-acp' },
+    { provider: 'claude-acp' },
+  ])
+  assert.deepEqual(promptRequests, [
+    {
+      sessionId: 'session-2',
+      prompt: 'Use Claude for this',
+    },
+  ])
 })

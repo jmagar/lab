@@ -76,7 +76,7 @@ export default function PreflightOne(): React.ReactElement {
           <p className="font-medium">
             {transportError.authRelated
               ? 'Authentication required to run preflight checks.'
-              : 'Could not reach the lab gateway to run preflight checks.'}
+              : 'Could not reach the labby gateway to run preflight checks.'}
           </p>
           <p className="text-xs">
             {transportError.status ? `HTTP ${transportError.status}: ` : ''}
@@ -85,7 +85,7 @@ export default function PreflightOne(): React.ReactElement {
           <p className="text-xs">
             {transportError.authRelated
               ? 'Re-authenticate, then click Re-run. Use Back to revisit core configuration if needed.'
-              : 'Check that lab serve is running and click Re-run, or use Back to revisit core configuration.'}
+              : 'Check that labby serve is running and click Re-run, or use Back to revisit core configuration.'}
           </p>
         </div>
       ) : null}

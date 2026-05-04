@@ -20,8 +20,8 @@ If this skill disagrees with those docs, the docs win.
 
 Bringing a service online means:
 
-- scaffold the service first with `lab scaffold service`
-- audit the onboarding contract with `lab audit onboarding`
+- scaffold the service first with `labby scaffold service`
+- audit the onboarding contract with `labby audit onboarding`
 - prefer `lab_admin` only for read-only onboarding audit access, and only when `LAB_ADMIN_ENABLED=1`
 - `lab-apis` owns the service logic
 - `dispatch/<service>/` is the shared semantic layer
@@ -37,8 +37,8 @@ A service working on only one surface is not done.
 For new onboarding work, the expected order is:
 
 1. verify the upstream spec exists in `docs/upstream-api/` (create or refresh it if not)
-2. scaffold the service shape with `lab scaffold service`
-3. run the onboarding audit with `lab audit onboarding`
+2. scaffold the service shape with `labby scaffold service`
+3. run the onboarding audit with `labby audit onboarding`
 4. fix the remaining contract gaps
 5. finish with `cargo test --all-features` and the targeted smoke checks
 
@@ -87,7 +87,7 @@ Rules:
 - service errors wrap `ApiError`
 - implement `ServiceClient` for health checks
 
-### `lab`
+### `labby`
 
 ```
 crates/lab/src/dispatch/<service>.rs
@@ -354,7 +354,7 @@ For HTTP-backed services, a service is not done until all three surfaces have be
 
 Also verify:
 
-- `lab health`
+- `labby health`
 - request logs
 
 Use `cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features` as the standard test runner.
@@ -389,8 +389,8 @@ The stub registration in `mcp/registry.rs` and `api/services.rs` may already exi
 Use this order:
 
 1. verify or add the upstream spec in `docs/upstream-api/`
-2. scaffold the service shape with `lab scaffold service`
-3. run the onboarding audit with `lab audit onboarding`
+2. scaffold the service shape with `labby scaffold service`
+3. run the onboarding audit with `labby audit onboarding`
 4. create `lab-apis` files
 5. implement client methods
 6. implement observability and health

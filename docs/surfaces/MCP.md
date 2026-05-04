@@ -8,13 +8,13 @@ The RMCP SDK integration contract that underpins this surface lives in [RMCP.md]
 
 `lab` exposes two MCP entrypoints:
 
-- `lab mcp`: local stdio child-process MCP clients such as Claude Desktop and `.mcp.json`
-- `lab serve`: hosted HTTP runtime, including streamable HTTP MCP at `/mcp`
+- `labby mcp`: local stdio child-process MCP clients such as Claude Desktop and `.mcp.json`
+- `labby serve`: hosted HTTP runtime, including streamable HTTP MCP at `/mcp`
 
 Rules:
 
-- `lab serve` starts the hosted HTTP runtime by default
-- `lab mcp` is the explicit child-process stdio entrypoint
+- `labby serve` starts the hosted HTTP runtime by default
+- `labby mcp` is the explicit child-process stdio entrypoint
 - HTTP supports `LAB_AUTH_MODE=bearer|oauth`
 - bearer mode preserves `LAB_MCP_HTTP_TOKEN`
 - oauth mode requires `LAB_PUBLIC_URL` and Google client credentials
@@ -25,7 +25,7 @@ When the process resolves as a non-controller node, MCP is not exposed at all. N
 
 ## Server Capabilities
 
-`lab serve` advertises these MCP capabilities:
+`labby serve` advertises these MCP capabilities:
 
 - tools
 - resources
@@ -38,7 +38,7 @@ support must reflect the running server, not a partial or hypothetical build.
 
 ## HTTP Auth Surface
 
-When `lab serve` is active, `lab` exposes two auth modes:
+When `labby serve` is active, `lab` exposes two auth modes:
 
 - `LAB_AUTH_MODE=bearer`
   `LAB_MCP_HTTP_TOKEN` remains the only credential. This preserves existing HTTP deployments.

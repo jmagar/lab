@@ -112,7 +112,7 @@ use crate::output::{ColorPolicy, OutputFormat, RenderEnv};
 
 /// `lab` — pluggable homelab CLI + MCP server SDK.
 #[derive(Debug, Parser)]
-#[command(name = "lab", version, about, long_about = None, disable_help_subcommand = true)]
+#[command(name = "labby", version, about, long_about = None, disable_help_subcommand = true)]
 pub struct Cli {
     /// Emit JSON instead of human-readable tables.
     #[arg(long, global = true)]

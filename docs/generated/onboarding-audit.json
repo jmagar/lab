@@ -821,9 +821,153 @@
       "service": "extract",
       "checks": [
         [
-          "onboarding.scope",
+          "crates/lab-apis/src/extract.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab-apis/src/extract/client.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab-apis/src/extract/types.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab-apis/src/extract/error.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab/src/dispatch/extract.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab/src/dispatch/extract/catalog.rs",
           {
-            "Skip": "always-on synthetic/internal service; scaffold audit is not applicable"
+            "Fail": "missing crates/lab/src/dispatch/extract/catalog.rs"
+          }
+        ],
+        [
+          "crates/lab/src/dispatch/extract/client.rs",
+          {
+            "Fail": "missing crates/lab/src/dispatch/extract/client.rs"
+          }
+        ],
+        [
+          "crates/lab/src/dispatch/extract/dispatch.rs",
+          {
+            "Fail": "missing crates/lab/src/dispatch/extract/dispatch.rs"
+          }
+        ],
+        [
+          "crates/lab/src/dispatch/extract/params.rs",
+          {
+            "Fail": "missing crates/lab/src/dispatch/extract/params.rs"
+          }
+        ],
+        [
+          "crates/lab/src/cli/extract.rs",
+          "Pass"
+        ],
+        [
+          "crates/lab/src/api/services/extract.rs",
+          "Pass"
+        ],
+        [
+          "feature.lab-apis",
+          "Pass"
+        ],
+        [
+          "feature.lab",
+          "Pass"
+        ],
+        [
+          "lib.rs",
+          "Pass"
+        ],
+        [
+          "cli.rs",
+          "Pass"
+        ],
+        [
+          "registry.rs",
+          {
+            "Fail": "missing token `register_service!(reg, \"extract\"`"
+          }
+        ],
+        [
+          "api.services.rs",
+          {
+            "Fail": "missing token `#[cfg(feature = \"extract\")] pub mod extract;`"
+          }
+        ],
+        [
+          "api.router.rs",
+          {
+            "Fail": "missing token `mount_if_enabled!(v1, state, \"extract\", \"extract\"`"
+          }
+        ],
+        [
+          "dispatch.clients.rs",
+          {
+            "Fail": "missing token `pub extract: Option<`"
+          }
+        ],
+        [
+          "tui.metadata.rs",
+          {
+            "Fail": "missing token `spawn_health!(\"extract\", client)`"
+          }
+        ],
+        [
+          "dispatch.clients.load",
+          {
+            "Skip": "state client mapping is not yet threaded"
+          }
+        ],
+        [
+          "metadata.supports_multi_instance",
+          "Pass"
+        ],
+        [
+          "metadata.ui_schema",
+          "Pass"
+        ],
+        [
+          "metadata.help_url",
+          "Pass"
+        ],
+        [
+          "dispatch.entrypoint",
+          {
+            "Fail": "missing token `client_from_env`"
+          }
+        ],
+        [
+          "dispatch.client",
+          {
+            "Fail": "missing token `client_from_env()`"
+          }
+        ],
+        [
+          "tests.sdk",
+          {
+            "Skip": "not yet present: ./crates/lab-apis/tests/extract_client.rs"
+          }
+        ],
+        [
+          "impl.dispatch",
+          {
+            "Skip": "not yet present: ./crates/lab/src/dispatch/extract/dispatch.rs"
+          }
+        ],
+        [
+          "impl.api",
+          "Pass"
+        ],
+        [
+          "docs.coverage",
+          {
+            "Fail": "missing ./docs/coverage/extract.md"
           }
         ]
       ]

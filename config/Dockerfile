@@ -50,15 +50,15 @@ RUN mkdir -p \
       crates/lab-apis/tests/openacp_client.rs \
       crates/lab-apis/tests/jellyfin_client.rs \
       crates/lab-auth/src/lib.rs \
- && cargo build --release -p 'lab@0.12.1' \
+ && cargo build --release -p labby \
  && rm -rf \
       crates/*/src \
       crates/lab-apis/tests \
       apps/gateway-admin/out \
-      target/release/lab \
+      target/release/labby \
       target/release/liblab_apis* \
       target/release/liblab_auth* \
-      "target/release/.fingerprint/lab-"* \
+      "target/release/.fingerprint/labby-"* \
       "target/release/.fingerprint/lab_apis-"* \
       "target/release/.fingerprint/lab_auth-"*
 
@@ -69,7 +69,7 @@ RUN mkdir -p \
 # apps/gateway-admin/out is sent in the build context.)
 COPY apps/gateway-admin/out apps/gateway-admin/out
 COPY crates/ crates/
-RUN cargo build --release -p 'lab@0.12.1'
+RUN cargo build --release -p labby
 
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM debian:trixie-slim AS runtime
@@ -90,7 +90,7 @@ RUN mkdir -p \
       /home/lab/.local/share/lab \
  && chown -R 1000:1000 /home/lab
 
-COPY --from=builder /build/target/release/lab /usr/local/bin/lab
+COPY --from=builder /build/target/release/labby /usr/local/bin/labby
 
 ENV HOME=/home/lab
 USER 1000:1000
@@ -99,7 +99,7 @@ WORKDIR /home/lab
 # Default HTTP port.  Override with LAB_MCP_HTTP_PORT env var or config.toml.
 EXPOSE 8765
 
-ENTRYPOINT ["/usr/local/bin/lab"]
+ENTRYPOINT ["/usr/local/bin/labby"]
 # Master HTTP mode by default.
 # Override CMD to ["serve","mcp","--stdio"] for the stdio-only MCP node.
 CMD ["serve"]

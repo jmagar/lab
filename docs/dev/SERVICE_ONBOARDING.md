@@ -24,7 +24,7 @@ The service is not considered done if only one surface works.
 
 For new service work, prefer the onboarding scaffold first and then run the
 onboarding audit before claiming the service is aligned with repo conventions.
-`lab scaffold service` should generate the initial shape; `lab audit onboarding`
+`labby scaffold service` should generate the initial shape; `labby audit onboarding`
 should verify it; `cargo nextest run --manifest-path crates/lab/Cargo.toml --all-features` is the final gate.
 
 ## Source Of Truth
@@ -76,7 +76,7 @@ Use the standard module shape:
 
 If the service needs shared primitives, add them in the service module tree rather than smearing them across CLI or transport code.
 
-### `lab`
+### `labby`
 
 Surface code lives in:
 
@@ -501,7 +501,7 @@ Do not treat observability as cleanup or post-implementation polish. Add it befo
 
 ## Step 4: Add Health
 
-Every service must implement a health surface for `lab doctor` and `lab health`.
+Every service must implement a health surface for `labby doctor` and `labby health`.
 
 Use the lightest request that proves:
 
@@ -763,7 +763,7 @@ Verify that:
 
 ### Required: Live MCP Smoke Tests (via mcporter)
 
-`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`lab mcp --services <service>`), then use `mcporter call` to invoke tools:
+`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`labby mcp --services <service>`), then use `mcporter call` to invoke tools:
 
 
 ```bash
@@ -779,7 +779,7 @@ Verify that:
 
 ### Required: Live API Smoke Tests (via curl)
 
-Start the hosted lab runtime (`lab serve --services <service>`) and hit each service endpoint:
+Start the hosted lab runtime (`labby serve --services <service>`) and hit each service endpoint:
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>
@@ -819,7 +819,7 @@ Verify that:
 
 ### Required: Live MCP Smoke Tests (via mcporter)
 
-`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`lab mcp --services <service>`), then use `mcporter call` to invoke tools:
+`mcporter` is a standalone CLI tool for calling MCP tools against a running `lab` MCP server. It is not part of the `lab` binary. Start the lab stdio MCP server first (`labby mcp --services <service>`), then use `mcporter call` to invoke tools:
 
 
 ```bash
@@ -835,7 +835,7 @@ Verify that:
 
 ### Required: Live API Smoke Tests (via curl)
 
-Start the hosted lab runtime (`lab serve --services <service>`) and hit each service endpoint:
+Start the hosted lab runtime (`labby serve --services <service>`) and hit each service endpoint:
 
 ```bash
 TOKEN=<LAB_MCP_HTTP_TOKEN from ~/.lab/.env>

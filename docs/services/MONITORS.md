@@ -1,6 +1,6 @@
 # Monitors
 
-This document covers the Claude Code monitor definitions shipped by the `lab` plugin and the supporting `lab deploy monitor` CLI command.
+This document covers the Claude Code monitor definitions shipped by the `lab` plugin and the supporting `labby deploy monitor` CLI command.
 
 ## What Monitors Are
 
@@ -31,17 +31,17 @@ User-configurable placeholders are declared under `userConfig` in `plugin.json` 
 ```jsonc
 {
   "name": "deploy-host-monitor",
-  "command": "lab deploy monitor ${user_config.deploy_targets} --interval 60",
+  "command": "labby deploy monitor ${user_config.deploy_targets} --interval 60",
   "description": "SSH host reachability — notifies when a deployed host goes online or offline"
 }
 ```
 
 `deploy_targets` is a space-separated list of SSH aliases (e.g. `tootie shart vivobook-wsl`) configured per user in the plugin settings UI.
 
-## `lab deploy monitor` Command
+## `labby deploy monitor` Command
 
 ```
-lab deploy monitor <targets...> [--interval SECS] [--timeout SECS]
+labby deploy monitor <targets...> [--interval SECS] [--timeout SECS]
 ```
 
 | Flag | Default | Meaning |
@@ -78,7 +78,7 @@ This means a healthy fleet generates exactly one burst of events at startup and 
 
 ### Single-instance lock
 
-`lab deploy monitor` writes its PID to a lock file before entering the watch loop:
+`labby deploy monitor` writes its PID to a lock file before entering the watch loop:
 
 ```
 ~/.lab/run/deploy-monitor.lock
@@ -109,11 +109,11 @@ Only do this if `ps -p <pid>` confirms the named process is gone. The stale-PID 
 ### Verify the monitor is running
 
 ```bash
-ps -ef | grep "lab deploy monitor" | grep -v grep
+ps -ef | grep "labby deploy monitor" | grep -v grep
 cat ~/.lab/run/deploy-monitor.lock
 ```
 
-The PID in the lock file should match exactly one running `lab deploy monitor` process.
+The PID in the lock file should match exactly one running `labby deploy monitor` process.
 
 ### Stop the monitor
 

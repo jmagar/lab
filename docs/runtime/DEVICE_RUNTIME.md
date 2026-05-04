@@ -1,6 +1,6 @@
 # Node Runtime
 
-`lab serve` is the always-on node runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
+`labby serve` is the always-on node runtime for every Linux `x86_64` machine that participates in a `lab` fleet.
 
 One machine is the configured controller. It owns the operator control plane:
 
@@ -24,7 +24,7 @@ If `[node].controller` is missing, the local host resolves itself as the control
 
 Container deployments must resolve the host machine identity, not Docker's
 ephemeral container hostname. The bundled Compose file mounts host
-`/etc/hostname` at `/run/host/hostname`; `lab serve` checks that file before
+`/etc/hostname` at `/run/host/hostname`; `labby serve` checks that file before
 falling back to the process `HOSTNAME`. Operators can also set
 `LAB_HOST_HOSTNAME` explicitly for runtimes that cannot mount the host hostname
 file.
@@ -36,11 +36,11 @@ Example:
 controller = "tootie"
 ```
 
-On `tootie`, `lab serve` runs as the controller. On any other host, it runs as a non-controller node and reports to `tootie`.
+On `tootie`, `labby serve` runs as the controller. On any other host, it runs as a non-controller node and reports to `tootie`.
 
 ## Startup Behavior
 
-When `lab serve` starts, it resolves the local hostname and node role, creates the in-process node runtime, and then:
+When `labby serve` starts, it resolves the local hostname and node role, creates the in-process node runtime, and then:
 
 - on the controller:
   - creates the shared fleet state store
@@ -137,9 +137,9 @@ Enrollment is controller-owned and durable.
 Operator surfaces:
 
 - CLI:
-  - `lab nodes enrollments list`
-  - `lab nodes enrollments approve <node_id> [--note ...]`
-  - `lab nodes enrollments deny <node_id> [--reason ...]`
+  - `labby nodes enrollments list`
+  - `labby nodes enrollments approve <node_id> [--note ...]`
+  - `labby nodes enrollments deny <node_id> [--reason ...]`
 - HTTP:
   - `GET /v1/nodes/enrollments`
   - `POST /v1/nodes/enrollments/{node_id}/approve`
@@ -168,7 +168,7 @@ Request body:
 }
 ```
 
-This starts the same local loopback forwarder used by `lab oauth relay-local`, but initiated through the node runtime on the target machine.
+This starts the same local loopback forwarder used by `labby oauth relay-local`, but initiated through the node runtime on the target machine.
 
 ## Auth Expectations
 

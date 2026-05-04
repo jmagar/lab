@@ -28,7 +28,7 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ```bash
 lab pihole --help
 lab pihole <action> --help
-lab --json pihole <action> ...
+labby --json pihole <action> ...
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -53,10 +53,10 @@ pihole exposes 4 destructive action(s): `blocking.set`, `adlist.add`, `adlist.re
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service pihole
+labby doctor service pihole
 ```
 
 ## When NOT to use this skill

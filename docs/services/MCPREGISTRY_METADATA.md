@@ -125,9 +125,9 @@ These filter only on Lab-owned metadata and do not affect upstream official fiel
 Registry metadata is operated through the unified Marketplace CLI surface:
 
 ```bash
-lab marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'
-lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'
-lab marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'
+labby marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'
+labby marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'
+labby marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'
 ```
 
 For advanced cases, include the full metadata object in `--params`.

@@ -21,14 +21,14 @@ pub(crate) struct InstalledLogSystemGuard;
 impl InstalledLogSystemGuard {
     #[must_use]
     pub(crate) fn new() -> Self {
-        lab::dispatch::logs::client::clear_installed_log_system_for_test();
+        labby::dispatch::logs::client::clear_installed_log_system_for_test();
         Self
     }
 }
 
 impl Drop for InstalledLogSystemGuard {
     fn drop(&mut self) {
-        lab::dispatch::logs::client::clear_installed_log_system_for_test();
+        labby::dispatch::logs::client::clear_installed_log_system_for_test();
     }
 }
 

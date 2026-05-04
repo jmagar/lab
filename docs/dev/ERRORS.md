@@ -389,7 +389,7 @@ surfaced via `DeployError::kind()` in `lab-apis/src/deploy/error.rs`:
 | `validation_failed` | 422 | Bad input (host alias, remote_path allowlist, etc.). _(shared kind)_ |
 | `auth_failed` | 401 | `LAB_DEPLOY_TOKEN` missing or headless `confirm: true` rejected. _(shared kind)_ |
 | `ssh_unreachable` | 502 | SSH connection or auth failed for a target. |
-| `build_failed` | 502 | Local `cargo build --release --all-features -p lab` failed. |
+| `build_failed` | 502 | Local `cargo build --release --all-features -p labby` failed. |
 | `preflight_failed` | 502 | Remote arch probe, writable-dir check, or sha256 probe failed. |
 | `transfer_failed` | 502 | Streaming the artifact to the remote failed. |
 | `install_failed` | 502 | Atomic rename/backup on the remote failed. |

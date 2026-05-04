@@ -6,22 +6,22 @@ The current implementation is only partway there. It already has a WebSocket-fir
 
 ## Roles
 
-Every `lab serve` process runs in exactly one role:
+Every `labby serve` process runs in exactly one role:
 
 - `controller`: owns the operator control plane and fleet coordination.
 - `node`: runs on managed machines and connects outbound to the controller.
 
 Target role selection is resolved in this order:
 
-1. explicit CLI flag, for example `lab serve --role node`
+1. explicit CLI flag, for example `labby serve --role node`
 2. config value, for example `[node].role = "node"`
 3. hostname comparison against `[node].controller`
 
-If role resolution is ambiguous, `lab serve` must fail with a clear configuration error rather than starting the full controller surface accidentally.
+If role resolution is ambiguous, `labby serve` must fail with a clear configuration error rather than starting the full controller surface accidentally.
 
 Current implementation note:
 
-- `lab serve` does not yet have `--role`.
+- `labby serve` does not yet have `--role`.
 - `[node].role` does not yet exist.
 - `serve` currently resolves role from local hostname compared with `[device].master` (legacy config key); if no master is configured, the local host resolves as `DeviceRole::Master` (Rust enum variant).
 - `[node].controller` exists for newer node/deploy paths, but it is not yet the `serve` role selector.
@@ -82,7 +82,7 @@ Node mode must not start:
 Current implementation note:
 
 - Non-controller route mounting blocks many controller HTTP surfaces, including service routes, gateway APIs, Web UI serving, OAuth metadata, and `/mcp`.
-- `lab serve` still uses one startup path for both roles. Before route gating, non-controller processes can still build the default registry, resolve controller auth, initialize upstream OAuth runtime, run upstream gateway discovery, install a gateway manager, check or build Web UI assets, and open marketplace registry state.
+- `labby serve` still uses one startup path for both roles. Before route gating, non-controller processes can still build the default registry, resolve controller auth, initialize upstream OAuth runtime, run upstream gateway discovery, install a gateway manager, check or build Web UI assets, and open marketplace registry state.
 - The implementation target is to move those initializations behind a controller-only branch.
 
 The node process communicates with the controller by opening an outbound WebSocket to:
@@ -119,7 +119,7 @@ Current implementation note:
 - Non-controller HTTP is not health-only today.
 - `/v1/nodes/*` is mounted in the shared router and includes compatibility routes such as `/v1/nodes/hello`, `/v1/nodes/status`, `/v1/nodes/metadata`, `/v1/nodes/syslog/batch`, and `/v1/nodes/oauth/relay/start`.
 - Some controller-only routes fail closed on non-controller nodes, but the routes still exist.
-- Node health uses the shared `lab serve` host binding today; it is not forced to `127.0.0.1` yet.
+- Node health uses the shared `labby serve` host binding today; it is not forced to `127.0.0.1` yet.
 
 ## Build Artifacts
 
@@ -157,7 +157,7 @@ cargo build --release --all-features --manifest-path crates/lab/Cargo.toml
 ```
 
 - `nodes update` currently builds one artifact and deploys that same artifact to remote nodes and the local controller.
-- Artifact reuse is currently one shared mtime check against `target/release/lab`, not a per-role or per-profile cache.
+- Artifact reuse is currently one shared mtime check against `target/release/labby`, not a per-role or per-profile cache.
 
 ## Startup Invariants
 

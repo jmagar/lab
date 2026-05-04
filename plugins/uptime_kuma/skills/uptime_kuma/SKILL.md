@@ -28,7 +28,7 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ```bash
 lab uptime-kuma --help
 lab uptime-kuma <action> --help
-lab --json uptime-kuma <action> ...
+labby --json uptime-kuma <action> ...
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -52,10 +52,10 @@ uptime-kuma exposes 5 destructive action(s): `monitor.create`, `monitor.update`,
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service uptime-kuma
+labby doctor service uptime-kuma
 ```
 
 ## When NOT to use this skill

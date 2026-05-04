@@ -1,4 +1,4 @@
-//! `lab install` / `lab uninstall` / `lab init`.
+//! `labby install` / `labby uninstall` / `labby init`.
 //!
 //! These subcommands mutate the user's `.mcp.json` and/or `~/.lab/.env`.
 //! Real logic lives in later plans — stubs return a clear not-implemented error.
@@ -6,7 +6,7 @@
 use anyhow::Result;
 use clap::Args;
 
-/// `lab install` arguments.
+/// `labby install` arguments.
 #[derive(Debug, Args)]
 pub struct InstallArgs {
     /// Services to install.
@@ -14,7 +14,7 @@ pub struct InstallArgs {
     pub services: Vec<String>,
 }
 
-/// `lab uninstall` arguments.
+/// `labby uninstall` arguments.
 #[derive(Debug, Args)]
 pub struct UninstallArgs {
     /// Services to uninstall.
@@ -22,26 +22,26 @@ pub struct UninstallArgs {
     pub services: Vec<String>,
 }
 
-/// Run `lab install`. Stub.
+/// Run `labby install`. Stub.
 ///
 /// # Errors
 /// Always returns a not-yet-implemented error.
 pub fn run_install(_args: &InstallArgs) -> Result<()> {
-    anyhow::bail!("lab install: not yet implemented")
+    anyhow::bail!("labby install: not yet implemented")
 }
 
-/// Run `lab uninstall`. Stub.
+/// Run `labby uninstall`. Stub.
 ///
 /// # Errors
 /// Always returns a not-yet-implemented error.
 pub fn run_uninstall(_args: &UninstallArgs) -> Result<()> {
-    anyhow::bail!("lab uninstall: not yet implemented")
+    anyhow::bail!("labby uninstall: not yet implemented")
 }
 
-/// Run `lab init` setup wizard. Stub.
+/// Run `labby init` setup wizard. Stub.
 ///
 /// # Errors
 /// Always returns a not-yet-implemented error.
 pub fn run_init() -> Result<()> {
-    anyhow::bail!("lab init: setup wizard not yet implemented")
+    anyhow::bail!("labby init: setup wizard not yet implemented")
 }

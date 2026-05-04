@@ -1,6 +1,6 @@
 ---
 name: apprise
-description: Lab's Apprise integration — universal notification dispatcher — 100+ services behind one URL scheme. Use when the user wants to manage their Apprise instance, or invokes `lab apprise` / `mcp__lab__apprise`. Calls the MCP tool first, falls back to the CLI if MCP is unavailable.
+description: Lab's Apprise integration — universal notification dispatcher — 100+ services behind one URL scheme. Use when the user wants to manage their Apprise instance, or invokes `labby apprise` / `mcp__lab__apprise`. Calls the MCP tool first, falls back to the CLI if MCP is unavailable.
 ---
 
 # Apprise
@@ -27,9 +27,9 @@ Full action catalog with parameter types and `Destructive` flags:
 ### CLI fallback
 
 ```bash
-lab apprise --help                      # subcommand list
-lab apprise <action> --help             # parameter help for one action
-lab --json apprise <action> ...         # JSON output (parseable)
+labby apprise --help                      # subcommand list
+labby apprise <action> --help             # parameter help for one action
+labby --json apprise <action> ...         # JSON output (parseable)
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -48,10 +48,10 @@ CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service apprise
+labby doctor service apprise
 ```
 
 ## Destructive actions

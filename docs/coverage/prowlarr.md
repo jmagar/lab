@@ -24,7 +24,7 @@ The source spec is the contract. This document is the implementation planning ai
 - **MCP:** One tool `prowlarr` with action dispatch. Service-specific dispatch is forwarded from the dispatch layer.
 - **API:** `POST /v1/prowlarr { "action": "...", "params": {...} }`. Destructive actions require `"confirm": true` in params.
 - **Auth:** `PROWLARR_URL` + `PROWLARR_API_KEY` env vars; key sent as `X-Api-Key` header.
-- **Health check:** The SDK has a `probe()` method used internally by `lab doctor`. No `health` dispatch action; use `system.health` action instead for API health checks.
+- **Health check:** The SDK has a `probe()` method used internally by `labby doctor`. No `health` dispatch action; use `system.health` action instead for API health checks.
 
 ## Implemented Action Catalog
 

@@ -13,7 +13,7 @@ if [[ "$mode" == "kill" || "$mode" == "--kill" ]]; then
 fi
 
 patterns=(
-  'target/debug/lab serve mcp --stdio'
+  'target/debug/labby serve mcp --stdio'
   'noxa mcp'
   'uv tool uvx github-chat-mcp'
   '/github-chat-mcp'

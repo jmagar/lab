@@ -28,7 +28,7 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ```bash
 lab qdrant --help
 lab qdrant <action> --help
-lab --json qdrant <action> ...
+labby --json qdrant <action> ...
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -50,10 +50,10 @@ qdrant exposes 1 destructive action(s): `collection.delete`. These mutate state 
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service qdrant
+labby doctor service qdrant
 ```
 
 ## When NOT to use this skill

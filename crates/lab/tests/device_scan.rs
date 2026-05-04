@@ -4,7 +4,7 @@ fn scans_claude_codex_and_gemini_configs_when_present() {
     std::fs::create_dir_all(temp.path().join(".codex")).unwrap();
     std::fs::write(
         temp.path().join(".claude.json"),
-        r#"{"mcpServers":{"lab":{"command":"lab","args":["serve"]}}}"#,
+        r#"{"mcpServers":{"labby":{"command": "labby","args":["serve"]}}}"#,
     )
     .unwrap();
     std::fs::write(
@@ -17,11 +17,11 @@ command = "lab"
     std::fs::create_dir_all(temp.path().join(".gemini")).unwrap();
     std::fs::write(
         temp.path().join(".gemini/settings.json"),
-        r#"{"mcpServers":{"lab":{"url":"http://127.0.0.1:8765/mcp"}}}"#,
+        r#"{"mcpServers":{"labby":{"url":"http://127.0.0.1:8765/mcp"}}}"#,
     )
     .unwrap();
 
-    let inventory = lab::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
+    let inventory = labby::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
     assert_eq!(inventory.len(), 3);
     assert!(inventory.iter().all(|entry| !entry.content_hash.is_empty()));
     assert_eq!(
@@ -45,6 +45,6 @@ fn skips_non_file_ai_cli_config_paths() {
     std::fs::create_dir_all(temp.path().join(".claude.json")).unwrap();
     std::fs::create_dir_all(temp.path().join(".codex/config.toml")).unwrap();
 
-    let inventory = lab::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
+    let inventory = labby::node::config_scan::discover_ai_cli_configs(temp.path()).unwrap();
     assert!(inventory.is_empty());
 }

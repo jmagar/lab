@@ -73,12 +73,12 @@ fn compose_plugin_check() -> Finding {
 
 /// Run all local system probes: env-var checks, config files, Docker, disk.
 ///
-/// Order: env-var checks first (preserves current `lab doctor` output), then
+/// Order: env-var checks first (preserves current `labby doctor` output), then
 /// system-level checks.
 pub fn run_system_checks() -> Vec<Finding> {
     let mut findings: Vec<Finding> = Vec::new();
 
-    // --- Env var checks (current lab doctor behaviour; preserved for output parity) ---
+    // --- Env var checks (current labby doctor behaviour; preserved for output parity) ---
     for (service_name, required_env) in service_env_checks() {
         for env in required_env {
             let present = std::env::var(env.name).is_ok_and(|v| !v.is_empty());

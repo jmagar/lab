@@ -11,12 +11,21 @@ import { SessionSidebar } from './session-sidebar'
 import { MessageThread } from './message-thread'
 import { ChatInput } from './chat-input'
 import { SettingsPanel } from './settings-panel'
-import { useChatSessionController } from '@/lib/chat/use-chat-session-controller'
+import {
+  useChatSessionData,
+  useChatSessionActions,
+  useChatSessionConnection,
+  useChatSessionStream,
+} from '@/lib/chat/chat-session-provider'
 
 export {
   createSessionForIntent,
   ensurePromptRunId,
+  ensurePromptRunIdForProvider,
   integrateCreatedRun,
+  providerDisplayName,
+  resolveSelectedAgent,
+  sendPromptForSelectedProvider,
   sessionCreationOptionsForIntent,
   shouldAutoCreateInitialRun,
 } from '@/lib/chat/use-chat-session-controller'
@@ -28,25 +37,32 @@ export function ChatShell() {
   const [systemPrompt, setSystemPrompt] = React.useState('')
   const [temperature, setTemperature] = React.useState(0.7)
   const [maxTokens, setMaxTokens] = React.useState(8192)
-  const {
-    runs,
-    selectedRun,
-    selectedRunId,
-    providerHealth,
-    selectedAgent,
-    agents,
-    projects,
-    messages,
-    connectionState,
-    selectRun,
-    createRun,
-    sendPrompt,
-    selectAgent,
-  } = useChatSessionController({
-    isMobileViewport,
-    onSessionPanelClose: React.useCallback(() => setSessionPanelOpen(false), []),
-  })
+  const { runs, selectedRun, selectedRunId, providerHealth, selectedAgent, agents, projects } =
+    useChatSessionData()
+  const { selectRun, createSession, sendPrompt, selectAgent } = useChatSessionActions()
+  const { messages } = useChatSessionStream()
+  const { connectionState } = useChatSessionConnection()
   const providerReady = Boolean(providerHealth?.ready)
+  const providerUnavailableMessage = providerReady ? null : providerHealth?.message?.trim() || null
+
+  const createRun = React.useCallback(async () => {
+    try {
+      await createSession({ closeSessionPanel: isMobileViewport })
+    } catch {
+      // Provider health carries the failure detail.
+    }
+  }, [createSession, isMobileViewport])
+
+  const handleSendPrompt = React.useCallback(
+    async (payload: Parameters<typeof sendPrompt>[0]) => {
+      try {
+        await sendPrompt(payload)
+      } catch {
+        // Provider health carries the failure detail.
+      }
+    },
+    [sendPrompt],
+  )
 
   React.useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
@@ -117,7 +133,7 @@ export function ChatShell() {
 
           <div
             className="flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-1.5 py-0.5 sm:px-2"
-            title={providerReady ? 'ACP live' : 'ACP unavailable'}
+            title={providerReady ? 'ACP live' : (providerUnavailableMessage ?? 'ACP unavailable')}
           >
             <Zap className="size-3 text-aurora-accent-primary/70" />
             <span className="hidden text-[11px] text-aurora-text-muted sm:inline">
@@ -180,10 +196,17 @@ export function ChatShell() {
         )}
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {providerUnavailableMessage && (
+            <div className="shrink-0 border-b border-aurora-warn/30 bg-aurora-warn/10 px-3 py-2 text-[12px] text-aurora-text-primary sm:px-4">
+              <span className="font-semibold">ACP provider unavailable:</span>{' '}
+              <span className="text-aurora-text-muted">{providerUnavailableMessage}</span>
+            </div>
+          )}
           <MessageThread run={selectedRun} messages={messages} connectionState={connectionState} />
           <ChatInput
-            onSend={sendPrompt}
+            onSend={handleSendPrompt}
             disabled={!providerReady}
+            disabledReason={providerUnavailableMessage ?? undefined}
             selectedAgent={selectedAgent}
             agents={agents.length > 0 ? agents : [selectedAgent]}
             onSelectAgent={selectAgent}

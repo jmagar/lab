@@ -1,6 +1,6 @@
 ---
 name: tei
-description: Lab's wrapper for Hugging Face Text Embeddings Inference (TEI) — embeddings/reranking server (embed text, rerank candidates, tokenize). Use when the user asks to embed/rerank/tokenize via the lab TEI service or invokes `lab tei` / `mcp__rag__tei`. NOT for: 'teach/team' typos, or the Text Encoding Initiative XML standard.
+description: Lab's wrapper for Hugging Face Text Embeddings Inference (TEI) — embeddings/reranking server (embed text, rerank candidates, tokenize). Use when the user asks to embed/rerank/tokenize via the lab TEI service or invokes `labby tei` / `mcp__rag__tei`. NOT for: 'teach/team' typos, or the Text Encoding Initiative XML standard.
 ---
 
 # Hugging Face Text Embeddings Inference
@@ -13,7 +13,7 @@ Embeddings/reranking server — embed text, rerank candidates, tokenize. Exposes
 
 ### MCP (preferred)
 
-The `rag` plugin's `.mcp.json` runs `lab mcp --services qdrant,tei`, so TEI is exposed as `mcp__rag__tei`. Dispatch shape: `{ "action": "<name>", "params": {...} }`.
+The `rag` plugin's `.mcp.json` runs `labby mcp --services qdrant,tei`, so TEI is exposed as `mcp__rag__tei`. Dispatch shape: `{ "action": "<name>", "params": {...} }`.
 
 Discover actions live (always check before calling unfamiliar actions):
 ```json
@@ -26,9 +26,9 @@ Full action catalog: [`references/mcp.md`](references/mcp.md).
 ### CLI fallback
 
 ```bash
-lab tei --help                      # subcommand list
-lab tei <action> --help             # parameter help for one action
-lab --json tei <action> ...         # JSON output (parseable)
+labby tei --help                      # subcommand list
+labby tei <action> --help             # parameter help for one action
+labby --json tei <action> ...         # JSON output (parseable)
 ```
 
 CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`). Full CLI surface: [`references/cli.md`](references/cli.md).
@@ -47,10 +47,10 @@ CLI mirrors MCP actions; dots become dashes (`server.health` → `server-health`
 ## Configuration
 
 Credentials and base URLs live in `~/.lab/.env`. Onboard / re-extract with
-`lab extract scan` and `lab extract apply`. Verify connectivity:
+`labby extract scan` and `labby extract apply`. Verify connectivity:
 
 ```bash
-lab doctor service tei
+labby doctor service tei
 ```
 
 ## Destructive actions

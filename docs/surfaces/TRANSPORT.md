@@ -9,14 +9,14 @@ Stdio is the explicit child-process transport. Use it for Claude Desktop, IDE ex
 No authentication is required — security is provided by process-level isolation. The parent process owns the stdio pipes and controls access.
 
 ```bash
-lab mcp
-lab mcp --services plex
+labby mcp
+labby mcp --services plex
 ```
 
 No network listener is opened. No host, port, or auth configuration is needed.
 
 This shortcut is contractual: code, CLI help, tests, and operator docs must all
-agree that `lab mcp` is the stdio child-process entrypoint unless changed intentionally in one
+agree that `labby mcp` is the stdio child-process entrypoint unless changed intentionally in one
 coordinated update.
 
 ## Streamable HTTP (Default)
@@ -26,8 +26,8 @@ REST API at `/v1/*`. When exported Labby assets are available, the same server a
 from `/`.
 
 ```bash
-lab serve
-lab serve --services plex
+labby serve
+labby serve --services plex
 ```
 
 ### Configuration
@@ -43,7 +43,7 @@ lab serve --services plex
 | `LAB_MCP_ALLOWED_HOSTS` | — | Comma-separated hostnames for DNS rebinding protection. |
 | `LAB_PUBLIC_URL` | — | Public URL of this lab instance. Its host is added to the allowed-host list in OAuth mode. |
 | `LAB_CORS_ORIGINS` | — | Comma-separated CORS origin allowlist. |
-| `LAB_WEB_ASSETS_DIR` | auto-detect | Optional path to exported Labby assets served by `lab serve`. |
+| `LAB_WEB_ASSETS_DIR` | auto-detect | Optional path to exported Labby assets served by `labby serve`. |
 
 Config TOML equivalents (env vars take precedence):
 
@@ -167,7 +167,7 @@ path/auth matrix:
 
 ```bash
 # Bind to localhost, no auth needed when neither static bearer nor OAuth is configured
-lab serve
+labby serve
 # → listening on 127.0.0.1:8765
 
 curl http://localhost:8765/health
@@ -186,7 +186,7 @@ LAB_MCP_HTTP_PORT=8765
 LAB_MCP_HTTP_TOKEN=$(openssl rand -hex 32)
 LAB_PUBLIC_URL=https://lab.example.com
 
-lab serve
+labby serve
 ```
 
 ```bash

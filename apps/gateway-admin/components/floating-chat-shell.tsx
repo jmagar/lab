@@ -27,13 +27,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { SessionSidebar } from '@/components/chat/session-sidebar'
 import { MessageThread } from '@/components/chat/message-thread'
 import { ChatInput } from '@/components/chat/chat-input'
-import { ACP_AGENT, ensurePromptRunId } from '@/lib/chat/use-chat-session-controller'
-import {
-  errorMessageFromPayload,
-  readJsonSafe,
-  type ErrorPayload,
-} from '@/lib/chat/acp-normalizers'
-import { createAcpFetcher } from '@/lib/acp/fetch'
 import {
   useChatSessionData,
   useChatSessionActions,
@@ -42,7 +35,6 @@ import {
 } from '@/lib/chat/chat-session-provider'
 import type { ChatConfig } from '@/components/floating-chat-popover'
 import type { ChatInputPayload } from '@/components/chat/chat-input'
-import type { AttachmentRef } from '@/lib/fs/types'
 
 export type FloatingChatShellProps = {
   config?: ChatConfig
@@ -52,85 +44,42 @@ export function FloatingChatShell({
   config,
 }: FloatingChatShellProps) {
   // ---- Context consumers ----
-  const { runs, selectedRun, selectedRunId, providerHealth, agents, projects, pageContext } =
+  const { runs, selectedRun, selectedRunId, providerHealth, selectedAgent, agents, projects, pageContext } =
     useChatSessionData()
-  const { createSession, selectRun, refreshSessions, selectAgent } = useChatSessionActions()
+  const { createSession, selectRun, sendPrompt: sendPromptAction, selectAgent } = useChatSessionActions()
   const { connectionState } = useChatSessionConnection()
   const { messages } = useChatSessionStream()
 
   // ---- Local state ----
   const [sessionPanelOpen, setSessionPanelOpen] = React.useState(false)
-  const [isMobileViewport, setIsMobileViewport] = React.useState(false)
   const [lastActionError, setLastActionError] = React.useState<string | null>(null)
 
   const providerReady = Boolean(providerHealth?.ready)
   const visibleError = lastActionError ?? (!providerReady ? providerHealth?.message : null)
-
-  const selectedAgent = selectedRun
-    ? (agents.find((agent) => agent.id === selectedRun.provider) ?? {
-        ...ACP_AGENT,
-        id: selectedRun.provider,
-        name: selectedRun.provider,
-      })
-    : (agents[0] ?? ACP_AGENT)
-
-  // ---- Mobile viewport detection ----
-  React.useEffect(() => {
-    const media = window.matchMedia('(max-width: 767px)')
-    const sync = () => {
-      setIsMobileViewport(media.matches)
-      setSessionPanelOpen((open) => (media.matches ? false : open))
-    }
-    sync()
-    media.addEventListener('change', sync)
-    return () => media.removeEventListener('change', sync)
-  }, [])
 
   // ---- sendPrompt (reads pageContext from provider + config) ----
   const sendPrompt = React.useCallback(
     async (payload: ChatInputPayload) => {
       setLastActionError(null)
       try {
-        const runId = await ensurePromptRunId(selectedRunId, createSession, isMobileViewport)
-        const fetchAcp = createAcpFetcher()
-
-        // Include pageContext only if config.sendPageContext is true AND context is non-null
-        const includePageContext = config?.sendPageContext && pageContext !== null
-
-        const body: {
-          prompt: string
-          attachments?: AttachmentRef[]
-          pageContext?: NonNullable<typeof pageContext>
-        } = {
-          prompt: payload.text,
-          ...(payload.attachments.length > 0 && { attachments: payload.attachments }),
-          ...(includePageContext && pageContext && { pageContext }),
-        }
-
-        const response = await fetchAcp(`/sessions/${runId}/prompt`, {
-          method: 'POST',
-          body: JSON.stringify(body),
-        })
-
-        if (!response.ok) {
-          const errorPayload = await readJsonSafe<ErrorPayload>(response)
-          const message = errorMessageFromPayload(
-            errorPayload,
-            'Failed to send prompt to ACP session.',
-          )
-          setLastActionError(message)
-          toast.error(message)
-          return
-        }
-
-        await refreshSessions()
+        await sendPromptAction(
+          payload,
+          {
+            pageContext,
+            includePageContext: Boolean(config?.sendPageContext),
+          },
+        )
       } catch (error) {
         const message = messageFromUnknownError(error, 'Failed to send prompt to ACP session.')
         setLastActionError(message)
         toast.error(message)
       }
     },
-    [config?.sendPageContext, createSession, isMobileViewport, pageContext, refreshSessions, selectedRunId],
+    [
+      config?.sendPageContext,
+      pageContext,
+      sendPromptAction,
+    ],
   )
 
   const createRun = React.useCallback(async () => {
@@ -197,11 +146,38 @@ export function FloatingChatShell({
             className="flex items-center gap-1 rounded-full border border-aurora-border-default bg-aurora-control-surface px-1.5 py-0.5"
             title={providerReady ? 'ACP live' : 'ACP unavailable'}
           >
-            <Zap className="size-3 text-aurora-accent-primary/70" />
+            <Zap
+              className={cn(
+                'size-3',
+                providerReady ? 'text-aurora-accent-primary/70' : 'text-aurora-text-muted/40',
+              )}
+            />
             <span className="text-[11px] text-aurora-text-muted">
               {providerReady ? 'ACP' : '—'}
             </span>
           </div>
+
+          {(connectionState === 'connecting' || connectionState === 'error') && (
+            <div
+              title={connectionState === 'error' ? 'Stream disconnected — reconnecting…' : 'Connecting…'}
+              className={cn(
+                'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px]',
+                connectionState === 'error'
+                  ? 'border-aurora-error/30 bg-aurora-error/12 text-aurora-error'
+                  : 'border-aurora-accent-primary/18 bg-aurora-accent-deep/12 text-aurora-text-muted',
+              )}
+            >
+              <span
+                className={cn(
+                  'size-1.5 rounded-full',
+                  connectionState === 'error'
+                    ? 'bg-aurora-error'
+                    : 'animate-pulse bg-aurora-accent-primary',
+                )}
+              />
+              <span>{connectionState === 'error' ? 'reconnecting' : 'connecting'}</span>
+            </div>
+          )}
 
         </div>
       </header>

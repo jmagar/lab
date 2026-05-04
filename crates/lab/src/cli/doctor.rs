@@ -1,11 +1,11 @@
-//! `lab doctor` — focused health checks and full audit.
+//! `labby doctor` — focused health checks and full audit.
 //!
 //! Subcommands:
-//!   lab doctor              — full audit (system + auth + all service probes)
-//!   lab doctor system       — local system checks only
-//!   lab doctor auth         — auth/OAuth configuration checks
-//!   lab doctor service NAME — probe a single service
-//!   lab doctor services     — probe all configured services
+//!   labby doctor              — full audit (system + auth + all service probes)
+//!   labby doctor system       — local system checks only
+//!   labby doctor auth         — auth/OAuth configuration checks
+//!   labby doctor service NAME — probe a single service
+//!   labby doctor services     — probe all configured services
 //!
 //! Exit codes: 0 = ok, 1 = warnings, 2 = failures.
 

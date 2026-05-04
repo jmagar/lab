@@ -72,9 +72,9 @@ Examples:
 - `lab sonarr series.list`
 - `lab plex library.list`
 - `lab unraid system.array`
-- `lab openai models`
+- `labby openai models`
 - `lab qdrant collections.list`
-- `lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
+- `labby marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
 
 The CLI must not invent a second semantic model that drifts from MCP or the SDK.
 
@@ -106,19 +106,19 @@ Examples:
 
 ```bash
 # default interactive behavior
-lab doctor
+labby doctor
 
 # force plain text even on a TTY
-lab doctor --color=plain
+labby doctor --color=plain
 
 # force styling for pagers like less -R
-lab doctor --color=color | less -R
+labby doctor --color=color | less -R
 
 # pipes stay plain by default in auto mode
-lab doctor | jq
+labby doctor | jq
 
 # NO_COLOR still disables styling unless the user explicitly forces color
-NO_COLOR=1 lab doctor
+NO_COLOR=1 labby doctor
 ```
 
 Rules:
@@ -152,9 +152,9 @@ lab unraid array status --instance shart
 
 If there is a clear default instance, that can be used implicitly. Otherwise the command must fail loudly and ask for an instance.
 
-## `lab doctor`
+## `labby doctor`
 
-`lab doctor` is a read-only audit command.
+`labby doctor` is a read-only audit command.
 
 It checks:
 
@@ -177,15 +177,15 @@ Exit semantics:
 - `1` for warnings
 - `2` for failures
 
-## `lab health`
+## `labby health`
 
-`lab health` is the product-level health-check surface. It is distinct from repo-level shell helpers.
+`labby health` is the product-level health-check surface. It is distinct from repo-level shell helpers.
 
 It must expose normalized service health results using the shared `ServiceStatus` model.
 
-## `lab serve`
+## `labby serve`
 
-`lab serve` is the node runtime entrypoint on every fleet machine.
+`labby serve` is the node runtime entrypoint on every fleet machine.
 
 Rules:
 
@@ -194,43 +194,43 @@ Rules:
 - a non-controller node exposes only `/health`, `/ready`, and `/v1/nodes/*`
 - non-controller startup queues metadata and bootstrap logs, then opens a long-lived fleet websocket session to the controller
 
-## `lab nodes`
+## `labby nodes`
 
-`lab nodes` is the fleet inventory command group. It routes to the configured controller.
+`labby nodes` is the fleet inventory command group. It routes to the configured controller.
 
 Commands:
 
-- `lab nodes list`
-- `lab nodes get <node_id>`
-- `lab nodes enrollments list`
-- `lab nodes enrollments approve <node_id> [--note <text>]`
-- `lab nodes enrollments deny <node_id> [--reason <text>]`
+- `labby nodes list`
+- `labby nodes get <node_id>`
+- `labby nodes enrollments list`
+- `labby nodes enrollments approve <node_id> [--note <text>]`
+- `labby nodes enrollments deny <node_id> [--reason <text>]`
 
-## `lab logs`
+## `labby logs`
 
-`lab logs` now has two additive paths:
+`labby logs` now has two additive paths:
 
 - fleet search routed to the configured controller
 - controller-local log search and bounded follow-up queries against the embedded runtime store
 
 Commands:
 
-- `lab logs search <node_id> <query>`
-- `lab logs local search [--subsystem <name>] [--level <level>] [--text <needle>] [--limit <n>]`
-- `lab logs local tail [--after-ts <unix_ms>] [--since-event-id <id>] [--limit <n>]`
-- `lab logs local stats`
-- `lab logs local stream` — exits with guidance to use `GET /v1/logs/stream` or `lab logs local tail`
+- `labby logs search <node_id> <query>`
+- `labby logs local search [--subsystem <name>] [--level <level>] [--text <needle>] [--limit <n>]`
+- `labby logs local tail [--after-ts <unix_ms>] [--since-event-id <id>] [--limit <n>]`
+- `labby logs local stats`
+- `labby logs local stream` — exits with guidance to use `GET /v1/logs/stream` or `labby logs local tail`
 
 Rules:
 
-- `lab logs search <node_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/nodes/logs/search`
-- `lab logs local *` is strictly controller-local and uses the shared `dispatch::logs` contract
+- `labby logs search <node_id> <query>` keeps the existing fleet behavior and continues to use `POST /v1/nodes/logs/search`
+- `labby logs local *` is strictly controller-local and uses the shared `dispatch::logs` contract
 - true live streaming is not a CLI capability in v1; operators should use `GET /v1/logs/stream` or the gateway-admin `/logs` page
 - CLI local log commands stay thin adapters; normalization, retention, search, and tail semantics are owned by `dispatch::logs`
 
 ## Install and Uninstall
 
-`lab install` and `lab uninstall` handle:
+`labby install` and `labby uninstall` handle:
 
 - env validation and prompting
 - `.mcp.json` patching
@@ -254,9 +254,9 @@ Lab-owned MCP Registry metadata now lives under the unified Marketplace surface.
 
 Commands:
 
-- `lab marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'`
-- `lab marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
-- `lab marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'`
+- `labby marketplace mcp.meta.get --params '{"name":"io.github.user/server","version":"latest"}'`
+- `labby marketplace mcp.meta.set --params '{"name":"io.github.user/server","metadata":{"curation":{"featured":true},"trust":{"reviewed":true}}}'`
+- `labby marketplace mcp.meta.delete --params '{"name":"io.github.user/server","version":"latest"}'`
 
 Rules:
 
@@ -271,16 +271,16 @@ See [MCPREGISTRY_METADATA.md](./MCPREGISTRY_METADATA.md) for the contract and al
 
 The CLI must generate completions rather than hand-maintaining shell-specific assets.
 
-## `lab oauth relay-local`
+## `labby oauth relay-local`
 
-`lab oauth relay-local` is a browser-side transport helper for OAuth clients that redirect to a
+`labby oauth relay-local` is a browser-side transport helper for OAuth clients that redirect to a
 loopback callback but keep the real OAuth listener on another machine.
 
 Supported forms:
 
 ```bash
-lab oauth relay-local --machine dookie --port 38935
-lab oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
+labby oauth relay-local --machine dookie --port 38935
+labby oauth relay-local --forward-base http://100.88.16.79:38935/callback/dookie --port 38935
 ```
 
 Flags:

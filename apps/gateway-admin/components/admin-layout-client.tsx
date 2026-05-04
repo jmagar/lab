@@ -65,7 +65,7 @@ export function AdminLayoutClient({
   const openModals = React.useRef<Set<string>>(new Set())
 
   const pathname = usePathname()
-  const isOnChatPage = pathname === '/chat'
+  const isOnChatPage = pathname === '/chat' || pathname === '/chat/'
 
   // Only auto-bootstrap a session when the chat surface is actually visible.
   // Without this gate the provider would mint an empty session on every admin
@@ -99,19 +99,23 @@ export function AdminLayoutClient({
     <ChatSessionProvider isMobileViewport={isMobileViewport} autoBootstrap={autoBootstrap}>
       <PageContextSync />
       {children}
-      <FloatingChatFab
-        open={open}
-        onToggle={handleToggle}
-        openModals={openModals}
-      />
-      <FloatingChatPopover
-        open={open}
-        onClose={handleClose}
-        config={config}
-        onConfigChange={setConfig}
-      >
-        <FloatingChatShell config={config} />
-      </FloatingChatPopover>
+      {!isOnChatPage && (
+        <>
+          <FloatingChatFab
+            open={open}
+            onToggle={handleToggle}
+            openModals={openModals}
+          />
+          <FloatingChatPopover
+            open={open}
+            onClose={handleClose}
+            config={config}
+            onConfigChange={setConfig}
+          >
+            <FloatingChatShell config={config} />
+          </FloatingChatPopover>
+        </>
+      )}
     </ChatSessionProvider>
   )
 }

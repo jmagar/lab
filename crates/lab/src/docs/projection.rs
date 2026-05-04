@@ -195,7 +195,7 @@ fn build_feature_matrix(repo_root: &Path) -> Result<FeatureMatrix> {
             if !lab_all.contains(feature.as_str()) {
                 mismatches.push(FeatureMismatch {
                     feature: feature.clone(),
-                    message: "service feature missing from lab all".to_string(),
+                    message: "service feature missing from labby all".to_string(),
                 });
             }
             if !api_all.contains(feature.as_str()) {
@@ -206,7 +206,7 @@ fn build_feature_matrix(repo_root: &Path) -> Result<FeatureMatrix> {
             }
         }
         features.push(FeatureDoc {
-            crate_name: "lab".to_string(),
+            crate_name: "labby".to_string(),
             feature: feature.clone(),
             dependencies: deps.clone(),
             included_in_default: lab_default.contains(feature.as_str()),
@@ -234,7 +234,7 @@ fn build_feature_matrix(repo_root: &Path) -> Result<FeatureMatrix> {
             classification,
             mapped_crate_feature: lab_features
                 .contains_key(feature.as_str())
-                .then(|| format!("lab/{feature}")),
+                .then(|| format!("labby/{feature}")),
             exception_reason: exception_reason(classification).map(str::to_string),
         });
     }
@@ -375,12 +375,28 @@ struct CargoManifest {
 }
 
 fn feature_set(features: &BTreeMap<String, Vec<String>>, name: &str) -> BTreeSet<String> {
-    features
-        .get(name)
-        .into_iter()
-        .flatten()
-        .map(|dep| dep.strip_prefix("lab-apis/").unwrap_or(dep).to_string())
-        .collect()
+    let mut out = BTreeSet::new();
+    collect_feature_set(features, name, &mut out, &mut BTreeSet::new());
+    out
+}
+
+fn collect_feature_set(
+    features: &BTreeMap<String, Vec<String>>,
+    name: &str,
+    out: &mut BTreeSet<String>,
+    seen: &mut BTreeSet<String>,
+) {
+    if !seen.insert(name.to_string()) {
+        return;
+    }
+
+    for dep in features.get(name).into_iter().flatten() {
+        let normalized = dep.strip_prefix("lab-apis/").unwrap_or(dep);
+        out.insert(normalized.to_string());
+        if features.contains_key(normalized) {
+            collect_feature_set(features, normalized, out, seen);
+        }
+    }
 }
 
 fn classify_lab_feature(
@@ -449,7 +465,7 @@ fn service_feature(service: &str, matrix: &FeatureMatrix) -> Option<String> {
         .features
         .iter()
         .find(|feature| {
-            feature.crate_name == "lab"
+            feature.crate_name == "labby"
                 && feature.feature == service
                 && matches!(
                     feature.classification,

@@ -1,4 +1,4 @@
-use lab::node::queue::{NodeOutboundQueue, QueuedEnvelope};
+use labby::node::queue::{NodeOutboundQueue, QueuedEnvelope};
 
 #[tokio::test]
 async fn queue_persists_and_reloads_entries() {

@@ -1,6 +1,6 @@
 ---
 name: using-lab-cli
-description: This skill should be used when the user wants to run lab CLI commands, operate any homelab service through the lab binary (Radarr, Sonarr, UniFi, Unraid, Linkding, Paperless, Gotify, SABnzbd, Qdrant, Prowlarr, Bytestash, Apprise, TEI), manage the lab MCP server (lab serve, lab install, lab uninstall), configure credentials in ~/.lab/.env, scan for credentials with lab extract, check service health with lab doctor, scaffold a new service with lab scaffold, or perform any action dispatch against a homelab service using the action + params pattern.
+description: This skill should be used when the user wants to run labby CLI commands, operate any homelab service through the labby binary (Radarr, Sonarr, UniFi, Unraid, Linkding, Paperless, Gotify, SABnzbd, Qdrant, Prowlarr, Bytestash, Apprise, TEI), manage the labby MCP server (labby serve, labby install, labby uninstall), configure credentials in ~/.lab/.env, scan for credentials with labby extract, check service health with labby doctor, scaffold a new service with labby scaffold, or perform any action dispatch against a homelab service using the action + params pattern.
 ---
 
 # Using the `lab` CLI
@@ -11,26 +11,26 @@ description: This skill should be used when the user wants to run lab CLI comman
 
 ```bash
 lab help               # Full service + action catalog
-lab doctor             # Audit all configured services (health, auth, reachability)
-lab health             # Quick reachability check
+labby doctor             # Audit all configured services (health, auth, reachability)
+labby health             # Quick reachability check
 lab <service> --help   # Per-service subcommands
-lab --json <command>   # Machine-readable output for any command
+labby --json <command>   # Machine-readable output for any command
 ```
 
 ## Top-Level Commands
 
 | Command | Purpose |
 |---------|---------|
-| `lab serve` | Start MCP server (stdio or HTTP transport) |
-| `lab doctor` | Full health audit: env vars, reachability, auth, version |
-| `lab health` | Quick reachability check for all configured services |
+| `labby serve` | Start MCP server (stdio or HTTP transport) |
+| `labby doctor` | Full health audit: env vars, reachability, auth, version |
+| `labby health` | Quick reachability check for all configured services |
 | `lab plugins` | Open plugin manager TUI |
-| `lab audit onboarding` | Audit service onboarding against repo contract |
-| `lab install <service>` | Install service into `.mcp.json` |
-| `lab uninstall <service>` | Remove service from `.mcp.json` |
-| `lab init` | First-time setup wizard |
+| `labby audit onboarding` | Audit service onboarding against repo contract |
+| `labby install <service>` | Install service into `.mcp.json` |
+| `labby uninstall <service>` | Remove service from `.mcp.json` |
+| `labby init` | First-time setup wizard |
 | `lab help` | Service + action catalog |
-| `lab scaffold service <name>` | Generate new service onboarding scaffold |
+| `labby scaffold service <name>` | Generate new service onboarding scaffold |
 | `lab completions` | Generate shell completions |
 
 ## Available Services
@@ -41,7 +41,7 @@ For current service status, see [references/service-catalog.md](references/servi
 
 **Stub services** (not yet implemented): `sonarr`, `plex`, `tautulli`, `qbittorrent`, `tailscale`, `memos`, `arcane`, `overseerr`, `openai`
 
-If asked to use a stub service, inform the user it is not yet implemented and suggest `lab doctor` to see what is actually configured.
+If asked to use a stub service, inform the user it is not yet implemented and suggest `labby doctor` to see what is actually configured.
 
 ## CLI vs MCP Naming
 
@@ -72,7 +72,7 @@ lab paperless document-search --query invoice
 ```bash
 lab radarr movie-delete --id 42 --yes
 lab sabnzbd queue-purge --yes
-lab extract apply --yes          # writes to ~/.lab/.env (backs up first)
+labby extract apply --yes          # writes to ~/.lab/.env (backs up first)
 ```
 
 `extract apply` merges found credentials into `~/.lab/.env`. It backs up the file before writing. Use `--force` to overwrite on key conflicts instead of the default skip-and-warn.
@@ -95,7 +95,7 @@ UNRAID_NODE2_URL=http://tower2.local
 
 ```bash
 lab radarr movie-list --json | jq '.[].title'
-lab doctor --json          # CI-friendly audit
+labby doctor --json          # CI-friendly audit
 ```
 
 ## Scaffolding a New Service
@@ -103,8 +103,8 @@ lab doctor --json          # CI-friendly audit
 When onboarding a new service, always scaffold first and audit second:
 
 ```bash
-lab scaffold service <name>    # generates module stubs in the correct locations
-lab audit onboarding           # checks all services against the repo contract
+labby scaffold service <name>    # generates module stubs in the correct locations
+labby audit onboarding           # checks all services against the repo contract
 ```
 
 `scaffold` produces the required files (`client.rs`, `types.rs`, `error.rs`, module declaration, CLI shim, MCP dispatch) in the right crate locations. `audit onboarding` verifies the scaffold matches the contract before wiring it into the build.
@@ -126,18 +126,18 @@ Each service uses:
 **Bootstrap from existing configs:**
 
 ```bash
-lab extract scan              # Find credentials in local config files
-lab extract scan --ssh user@host  # Scan remote host
-lab extract apply --yes       # Write found credentials to ~/.lab/.env
+labby extract scan              # Find credentials in local config files
+labby extract scan --ssh user@host  # Scan remote host
+labby extract apply --yes       # Write found credentials to ~/.lab/.env
 ```
 
 ## MCP Server Mode
 
 ```bash
-lab serve                     # stdio (for Claude Desktop, claude.ai)
-lab serve --http              # HTTP with bearer auth
-lab install radarr            # Add radarr tool to .mcp.json
-lab install --all             # Install all available services
+labby serve                     # stdio (for Claude Desktop, claude.ai)
+labby serve --http              # HTTP with bearer auth
+labby install radarr            # Add radarr tool to .mcp.json
+labby install --all             # Install all available services
 ```
 
 Each service exposes one MCP tool with `action` + `params` dispatch:
@@ -160,7 +160,7 @@ just run        # cargo run --all-features -- <args>
 
 ## Troubleshooting
 
-- **Service not found**: set `{SERVICE}_URL` in `~/.lab/.env`, then run `lab doctor`
+- **Service not found**: set `{SERVICE}_URL` in `~/.lab/.env`, then run `labby doctor`
 - **Auth errors**: set `{SERVICE}_API_KEY` or `{SERVICE}_TOKEN` for the service
-- **Stub service**: not yet implemented — inform the user and run `lab doctor` to show what is configured
-- **All services**: run `lab doctor` for a comprehensive health report; exit code reflects worst severity
+- **Stub service**: not yet implemented — inform the user and run `labby doctor` to show what is configured
+- **All services**: run `labby doctor` for a comprehensive health report; exit code reflects worst severity

@@ -1,4 +1,4 @@
-//! `lab scaffold` — generate a new service onboarding skeleton.
+//! `labby scaffold` — generate a new service onboarding skeleton.
 
 use std::io::IsTerminal;
 use std::process::ExitCode;
@@ -9,21 +9,21 @@ use clap::{Args, Subcommand};
 use crate::output::{OutputFormat, print, render_scaffold_result};
 use crate::scaffold::{ScaffoldConfig, ScaffoldKind};
 
-/// `lab scaffold` arguments.
+/// `labby scaffold` arguments.
 #[derive(Debug, Args)]
 pub struct ScaffoldArgs {
     #[command(subcommand)]
     pub command: ScaffoldCommand,
 }
 
-/// `lab scaffold` subcommands.
+/// `labby scaffold` subcommands.
 #[derive(Debug, Subcommand)]
 pub enum ScaffoldCommand {
     /// Scaffold one service.
     Service(ServiceArgs),
 }
 
-/// `lab scaffold service` arguments.
+/// `labby scaffold service` arguments.
 #[derive(Debug, Args)]
 pub struct ServiceArgs {
     /// Service name.
@@ -42,7 +42,7 @@ pub struct ServiceArgs {
     pub yes: bool,
 }
 
-/// Run `lab scaffold`.
+/// Run `labby scaffold`.
 pub fn run(args: ScaffoldArgs, format: OutputFormat) -> Result<ExitCode> {
     match args.command {
         ScaffoldCommand::Service(args) => run_service(args, format),

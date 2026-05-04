@@ -119,7 +119,7 @@ export function FloatingChatPopover({
   onConfigChange,
 }: FloatingChatPopoverProps) {
   const pathname = usePathname()
-  const isOnChatPage = pathname === '/chat'
+  const isOnChatPage = pathname === '/chat' || pathname === '/chat/'
 
   // ---- Local state ----
   const [isMobileViewport, setIsMobileViewport] = React.useState(false)

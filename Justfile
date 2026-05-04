@@ -13,11 +13,11 @@ test:
 
 # Regenerate code-owned documentation inventories
 docs-generate:
-    cargo run --package lab@0.12.1 --all-features -- docs generate
+    cargo run --package labby --all-features -- docs generate
 
 # Verify generated documentation inventories are fresh
 docs-check:
-    cargo run --package lab@0.12.1 --all-features -- docs check
+    cargo run --package labby --all-features -- docs check
 
 # Run integration tests (requires running services)
 test-integration:
@@ -39,11 +39,11 @@ build:
 # Build release binary with all features
 build-release:
     cargo build --workspace --all-features --release
-    install -D -m 755 target/release/lab bin/lab
+    install -D -m 755 target/release/labby bin/labby
 
-# Install release binary to ~/.local/bin/lab (updates the host CLI)
+# Install release binary to ~/.local/bin/labby (updates the host CLI)
 install: build-release
-    install -D -m 755 bin/lab ~/.local/bin/lab
+    install -D -m 755 bin/labby ~/.local/bin/labby
 
 # Start the dev container for the first time (or after docker-compose changes)
 dev-up:
@@ -57,11 +57,15 @@ dev: build-release
 # Uses nightly toolchain — RUSTFLAGS explicitly includes mold since env var overrides config.toml.
 dev-debug:
     RUSTFLAGS="-C link-arg=-fuse-ld=mold -Z codegen-backend=cranelift" \
-        cargo +nightly build -p 'lab@0.12.1' --all-features
-    install -D -m 755 target/debug/lab bin/lab
+        cargo +nightly build -p labby --all-features
+    install -D -m 755 target/debug/labby bin/labby
     docker compose -f docker-compose.yml -f docker-compose.dev.yml restart
 
-# Rebuild static Labby web assets served by lab serve
+# Verify Docker ACP provider config, provider health, and a minimal Codex ACP prompt.
+acp-smoke *ARGS:
+    scripts/acp-smoke-check {{ARGS}}
+
+# Rebuild static Labby web assets served by labby serve
 web-build:
     cd apps/gateway-admin && pnpm build
 
@@ -101,7 +105,7 @@ chat-local:
     export LAB_MCP_HTTP_TOKEN="${LAB_MCP_HTTP_TOKEN:-dev-token}"
     export LAB_CORS_ORIGINS="${LAB_CORS_ORIGINS:-http://dookie:3000,http://127.0.0.1:3000,http://localhost:3000}"
     export LAB_CHAT_LOCAL_PORT="${LAB_CHAT_LOCAL_PORT:-8766}"
-    cargo run --all-features --bin lab -- serve --host 0.0.0.0 --port "${LAB_CHAT_LOCAL_PORT}"
+    cargo run --all-features --bin labby -- serve --host 0.0.0.0 --port "${LAB_CHAT_LOCAL_PORT}"
 
 # Format all code
 fmt:

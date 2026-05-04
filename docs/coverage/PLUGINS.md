@@ -20,7 +20,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/adguard/SKILL.md` |
-| .mcp.json | `adguard` → `lab mcp --services adguard` |
+| .mcp.json | `adguard` → `labby mcp --services adguard` |
 
 ---
 
@@ -37,7 +37,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/apprise/SKILL.md` |
-| .mcp.json | `apprise` → `lab mcp --services apprise` |
+| .mcp.json | `apprise` → `labby mcp --services apprise` |
 
 ---
 
@@ -47,7 +47,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | hook | `hooks/hooks.json` |
 | skill | `skills/arcane/SKILL.md` |
-| .mcp.json | `arcane` → `lab mcp --services arcane` |
+| .mcp.json | `arcane` → `labby mcp --services arcane` |
 
 ---
 
@@ -88,7 +88,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/bytestash/SKILL.md` |
-| .mcp.json | `bytestash` → `lab mcp --services bytestash` |
+| .mcp.json | `bytestash` → `labby mcp --services bytestash` |
 
 ---
 
@@ -133,7 +133,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | skill | `skills/qbittorrent/SKILL.md` |
 | skill | `skills/sabnzbd/SKILL.md` |
-| .mcp.json | `download-stack` → `lab mcp --services sabnzbd,qbittorrent` |
+| .mcp.json | `download-stack` → `labby mcp --services sabnzbd,qbittorrent` |
 
 ---
 
@@ -142,7 +142,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/dozzle/SKILL.md` |
-| .mcp.json | `dozzle` → `lab mcp --services dozzle` |
+| .mcp.json | `dozzle` → `labby mcp --services dozzle` |
 
 ---
 
@@ -151,7 +151,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/freshrss/SKILL.md` |
-| .mcp.json | `freshrss` → `lab mcp --services freshrss` |
+| .mcp.json | `freshrss` → `labby mcp --services freshrss` |
 
 ---
 
@@ -178,7 +178,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/glances/SKILL.md` |
-| .mcp.json | `glances` → `lab mcp --services glances` |
+| .mcp.json | `glances` → `labby mcp --services glances` |
 
 ---
 
@@ -196,7 +196,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | hook | `hooks/hooks.json` |
 | skill | `skills/gotify/SKILL.md` |
-| .mcp.json | `gotify` → `lab mcp --services gotify` |
+| .mcp.json | `gotify` → `labby mcp --services gotify` |
 
 ---
 
@@ -215,7 +215,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/immich/SKILL.md` |
-| .mcp.json | `immich` → `lab mcp --services immich` |
+| .mcp.json | `immich` → `labby mcp --services immich` |
 
 ---
 
@@ -236,7 +236,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | skill | `skills/lab-service-onboarding/SKILL.md` |
 | skill | `skills/using-lab-cli/SKILL.md` |
-| .mcp.json | `lab` → `lab mcp` (all services) |
+| .mcp.json | `lab` → `labby mcp` (all services) |
 
 ---
 
@@ -245,7 +245,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/linkding/SKILL.md` |
-| .mcp.json | `linkding` → `lab mcp --services linkding` |
+| .mcp.json | `linkding` → `labby mcp --services linkding` |
 
 ---
 
@@ -254,7 +254,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/loggifly/SKILL.md` |
-| .mcp.json | `loggifly` → `lab mcp --services loggifly` |
+| .mcp.json | `loggifly` → `labby mcp --services loggifly` |
 
 ---
 
@@ -278,7 +278,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | skill | `skills/radarr/SKILL.md` |
 | skill | `skills/sonarr/SKILL.md` |
 | skill | `skills/tautulli/SKILL.md` |
-| .mcp.json | `media-stack` → `lab mcp --services sonarr,radarr,prowlarr,overseerr,plex,tautulli` |
+| .mcp.json | `media-stack` → `labby mcp --services sonarr,radarr,prowlarr,overseerr,plex,tautulli` |
 
 ---
 
@@ -287,7 +287,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/memos/SKILL.md` |
-| .mcp.json | `memos` → `lab mcp --services memos` |
+| .mcp.json | `memos` → `labby mcp --services memos` |
 
 ---
 
@@ -296,7 +296,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/navidrome/SKILL.md` |
-| .mcp.json | `navidrome` → `lab mcp --services navidrome` |
+| .mcp.json | `navidrome` → `labby mcp --services navidrome` |
 
 ---
 
@@ -305,7 +305,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/neo4j/SKILL.md` |
-| .mcp.json | `neo4j` → `lab mcp --services neo4j` |
+| .mcp.json | `neo4j` → `labby mcp --services neo4j` |
 
 ---
 
@@ -314,7 +314,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/notebooklm/SKILL.md` |
-| .mcp.json | `notebooklm` → `lab mcp --services notebooklm` |
+| .mcp.json | `notebooklm` → `labby mcp --services notebooklm` |
 
 ---
 
@@ -334,7 +334,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/openai/SKILL.md` |
-| .mcp.json | `openai` → `lab mcp --services openai` |
+| .mcp.json | `openai` → `labby mcp --services openai` |
 
 ---
 
@@ -343,7 +343,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/paperless-ngx/SKILL.md` |
-| .mcp.json | `paperless` → `lab mcp --services paperless` |
+| .mcp.json | `paperless` → `labby mcp --services paperless` |
 
 ---
 
@@ -352,7 +352,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/pihole/SKILL.md` |
-| .mcp.json | `pihole` → `lab mcp --services pihole` |
+| .mcp.json | `pihole` → `labby mcp --services pihole` |
 
 ---
 
@@ -361,7 +361,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/qdrant/SKILL.md` |
-| .mcp.json | `qdrant` → `lab mcp --services qdrant` |
+| .mcp.json | `qdrant` → `labby mcp --services qdrant` |
 
 ---
 
@@ -379,7 +379,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/radicale/SKILL.md` |
-| .mcp.json | `radicale` → `lab mcp --services radicale` |
+| .mcp.json | `radicale` → `labby mcp --services radicale` |
 
 ---
 
@@ -390,7 +390,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | skill | `skills/qdrant-quality/SKILL.md` |
 | skill | `skills/qdrant-vector-search/SKILL.md` |
 | skill | `skills/tei/SKILL.md` |
-| .mcp.json | `rag` → `lab mcp --services qdrant,tei` |
+| .mcp.json | `rag` → `labby mcp --services qdrant,tei` |
 
 ---
 
@@ -442,7 +442,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/scrutiny/SKILL.md` |
-| .mcp.json | `scrutiny` → `lab mcp --services scrutiny` |
+| .mcp.json | `scrutiny` → `labby mcp --services scrutiny` |
 
 ---
 
@@ -488,7 +488,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/tailscale/SKILL.md` |
-| .mcp.json | `tailscale` → `lab mcp --services tailscale` |
+| .mcp.json | `tailscale` → `labby mcp --services tailscale` |
 
 ---
 
@@ -497,7 +497,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/tei/SKILL.md` |
-| .mcp.json | `tei` → `lab mcp --services tei` |
+| .mcp.json | `tei` → `labby mcp --services tei` |
 
 ---
 
@@ -518,7 +518,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | hook | `hooks/hooks.json` |
 | skill | `skills/unifi/SKILL.md` |
-| .mcp.json | `unifi` → `lab mcp --services unifi` |
+| .mcp.json | `unifi` → `labby mcp --services unifi` |
 
 ---
 
@@ -528,7 +528,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 |------|--------|
 | hook | `hooks/hooks.json` |
 | skill | `skills/unraid/SKILL.md` |
-| .mcp.json | `unraid` → `lab mcp --services unraid` |
+| .mcp.json | `unraid` → `labby mcp --services unraid` |
 
 ---
 
@@ -537,7 +537,7 @@ All plugins in `plugins/` with their registered components. Each plugin lives at
 | Type | Detail |
 |------|--------|
 | skill | `skills/uptime_kuma/SKILL.md` |
-| .mcp.json | `uptime_kuma` → `lab mcp --services uptime_kuma` |
+| .mcp.json | `uptime_kuma` → `labby mcp --services uptime_kuma` |
 
 ---
 

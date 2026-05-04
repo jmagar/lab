@@ -20,12 +20,20 @@ export interface ChatInputPayload {
 interface ChatInputProps {
   onSend: (payload: ChatInputPayload) => void | Promise<void>
   disabled?: boolean
+  disabledReason?: string
   selectedAgent: ACPAgent | null
   agents: ACPAgent[]
   onSelectAgent: (agentId: string) => void
 }
 
-export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onSelectAgent }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled = false,
+  disabledReason,
+  selectedAgent,
+  agents,
+  onSelectAgent,
+}: ChatInputProps) {
   const [value, setValue] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [agentPickerOpen, setAgentPickerOpen] = React.useState(false)
@@ -177,8 +185,8 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
       <div
         className={cn(
           'relative flex flex-col gap-0 rounded-aurora-2 border border-aurora-border-strong',
-          'bg-aurora-control-surface shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-highlight-medium)]',
-          'transition-shadow focus-within:shadow-[0_8px_24px_rgba(0,0,0,0.24),var(--aurora-active-glow)]',
+          'bg-aurora-control-surface shadow-[var(--aurora-shadow-medium),var(--aurora-highlight-medium)]',
+          'transition-shadow focus-within:shadow-[var(--aurora-shadow-medium),var(--aurora-active-glow)]',
           'focus-within:border-aurora-accent-primary/40',
         )}
       >
@@ -206,7 +214,7 @@ export function ChatInput({ onSend, disabled = false, selectedAgent, agents, onS
           onKeyDown={handleKeyDown}
           disabled={disabled || sending}
           aria-label="Message"
-          placeholder={disabled ? 'ACP provider unavailable…' : 'Message the assistant… (Shift+Enter for newline)'}
+          placeholder={disabled ? (disabledReason ?? 'ACP provider unavailable…') : 'Message the assistant… (Shift+Enter for newline)'}
           rows={1}
           className={cn(
             'w-full resize-none overflow-hidden bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',

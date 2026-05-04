@@ -4,7 +4,7 @@
 # A ./config.toml in the working directory also works as a per-repo override.
 #
 # Docker: docker-compose.yml mounts ${HOME}/.lab/config.toml directly, so
-# Docker and local `lab serve` share the same config.
+# Docker and local `labby serve` share the same config.
 #
 # Secrets (API keys, tokens, passwords, URLs) belong in ~/.lab/.env.
 # Everything else belongs here. All values below can still be overridden
@@ -83,9 +83,9 @@
 # ── Web UI ───────────────────────────────────────────────────────────────────
 
 [web]
-# Path to the exported Labby assets directory served by `lab serve --transport http`.
+# Path to the exported Labby assets directory served by `labby serve --transport http`.
 # Override with LAB_WEB_ASSETS_DIR.
-# If unset, `lab serve` auto-detects the repo-local fallback at apps/gateway-admin/out.
+# If unset, `labby serve` auto-detects the repo-local fallback at apps/gateway-admin/out.
 # assets_dir = "/srv/labby/out"
 
 # Disable /v1/* auth for the hosted web UI. Only for trusted reverse-proxy setups.

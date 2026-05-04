@@ -50,6 +50,7 @@ const DEFAULT_PROMPT_IDLE_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_PERMISSION_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_PROVIDER_STDERR_CHARS: usize = 2_048;
 const SESSION_COMMAND_QUEUE_CAPACITY: usize = 8;
+const CODEX_DOCKER_SAFE_SANDBOX_MODE: &str = "danger-full-access";
 
 // See `docs/acp/README.md` ("Provider prompt idle timeout") for the
 // operator-facing description of this knob.
@@ -496,12 +497,16 @@ pub fn codex_provider_health() -> AcpProviderHealth {
 
 fn health_for_provider_entry(provider: &AcpProviderEntry) -> AcpProviderHealth {
     let launch = launch_from_provider_entry(provider);
-    let available = command_available(&launch.command);
+    let sandbox_message = codex_sandbox_incompatibility_message(provider);
+    let command_available = command_available(&launch.command);
+    let available = command_available && sandbox_message.is_none();
     AcpProviderHealth {
         provider: provider.id.clone(),
         available,
         version: Some(provider.version.clone()),
-        message: if available {
+        message: if let Some(message) = sandbox_message {
+            Some(message)
+        } else if command_available {
             None
         } else {
             Some(format!(
@@ -880,6 +885,139 @@ fn resolve_provider_launch(provider: Option<&str>) -> Result<ProviderLaunch, Str
         .find(|entry| entry.id == provider_id)
         .map(|entry| launch_from_provider_entry(&entry))
         .ok_or_else(|| format!("ACP provider `{provider_id}` is not installed"))
+}
+
+pub fn warn_if_acp_provider_sandbox_is_incompatible() {
+    for warning in acp_provider_sandbox_warnings() {
+        tracing::warn!(
+            surface = "acp",
+            service = "provider",
+            action = "preflight",
+            kind = "container_sandbox_incompatible",
+            provider = %warning.provider_id,
+            sandbox_mode = %warning.sandbox_mode.as_deref().unwrap_or("unknown"),
+            "Codex ACP provider sandbox mode is incompatible with this container runtime; \
+             use sandbox_mode=\"danger-full-access\" or run the container with nested namespace privileges",
+        );
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AcpSandboxWarning {
+    provider_id: String,
+    sandbox_mode: Option<String>,
+}
+
+fn acp_provider_sandbox_warnings() -> Vec<AcpSandboxWarning> {
+    if !running_in_container() {
+        return Vec::new();
+    }
+
+    read_providers()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|provider| normalize_provider_id(Some(&provider.id)) == "codex-acp")
+        .filter_map(|provider| {
+            let sandbox_mode = codex_sandbox_mode_for_provider(&provider);
+            if sandbox_mode.as_deref() == Some(CODEX_DOCKER_SAFE_SANDBOX_MODE) {
+                None
+            } else {
+                Some(AcpSandboxWarning {
+                    provider_id: provider.id,
+                    sandbox_mode,
+                })
+            }
+        })
+        .collect()
+}
+
+fn running_in_container() -> bool {
+    std::env::var_os("LAB_CONTAINER_RUNTIME").is_some()
+        || Path::new("/.dockerenv").exists()
+        || Path::new("/run/.containerenv").exists()
+        || std::fs::read_to_string("/proc/1/cgroup")
+            .map(|cgroup| cgroup_mentions_container_runtime(&cgroup))
+            .unwrap_or(false)
+}
+
+fn cgroup_mentions_container_runtime(cgroup: &str) -> bool {
+    cgroup.contains("/docker/")
+        || cgroup.contains("docker-")
+        || cgroup.contains("kubepods")
+        || cgroup.contains("containerd")
+        || cgroup.contains("libpod")
+}
+
+fn codex_sandbox_mode_for_provider(provider: &AcpProviderEntry) -> Option<String> {
+    codex_sandbox_mode_from_args(&provider.args).or_else(|| {
+        provider
+            .env
+            .get("CODEX_HOME")
+            .and_then(|home| codex_sandbox_mode_from_config(Path::new(home).join("config.toml")))
+    })
+}
+
+fn codex_sandbox_incompatibility_message(provider: &AcpProviderEntry) -> Option<String> {
+    codex_sandbox_incompatibility_message_for_runtime(provider, running_in_container())
+}
+
+fn codex_sandbox_incompatibility_message_for_runtime(
+    provider: &AcpProviderEntry,
+    in_container: bool,
+) -> Option<String> {
+    if normalize_provider_id(Some(&provider.id)) != "codex-acp" || !in_container {
+        return None;
+    }
+
+    let sandbox_mode = codex_sandbox_mode_for_provider(provider);
+    if sandbox_mode.as_deref() == Some(CODEX_DOCKER_SAFE_SANDBOX_MODE) {
+        return None;
+    }
+
+    Some(format!(
+        "Codex ACP sandbox mode `{}` is incompatible with this container runtime; use sandbox_mode=\"danger-full-access\" or restart with nested namespace privileges.",
+        sandbox_mode.as_deref().unwrap_or("unknown")
+    ))
+}
+
+fn codex_sandbox_mode_from_args(args: &[String]) -> Option<String> {
+    let mut iter = args.iter();
+    while let Some(arg) = iter.next() {
+        if (arg == "-c" || arg == "--config")
+            && let Some(value) = iter.next()
+            && let Some(mode) = parse_sandbox_config_override(value)
+        {
+            return Some(mode);
+        }
+    }
+    None
+}
+
+fn parse_sandbox_config_override(value: &str) -> Option<String> {
+    let (key, raw_value) = value.split_once('=')?;
+    if key.trim() != "sandbox_mode" {
+        return None;
+    }
+    Some(unquote_config_value(raw_value.trim()))
+}
+
+fn codex_sandbox_mode_from_config(path: impl AsRef<Path>) -> Option<String> {
+    let text = std::fs::read_to_string(path).ok()?;
+    text.lines().find_map(|line| {
+        let line = line.trim();
+        if line.starts_with('#') {
+            return None;
+        }
+        parse_sandbox_config_override(line)
+    })
+}
+
+fn unquote_config_value(value: &str) -> String {
+    value
+        .strip_prefix('"')
+        .and_then(|value| value.strip_suffix('"'))
+        .unwrap_or(value)
+        .to_string()
 }
 
 fn provider_subprocess_env<I>(vars: I) -> Vec<(String, String)>
@@ -2032,6 +2170,70 @@ mod tests {
         // session cwd and the bare allowlist.
         assert!(launch.cwd.is_none());
         assert!(launch.env.is_empty());
+    }
+
+    #[test]
+    fn codex_sandbox_mode_is_read_from_structured_config_args() {
+        let args = vec![
+            "-y".to_string(),
+            "@zed-industries/codex-acp@0.12.0".to_string(),
+            "-c".to_string(),
+            "sandbox_mode=\"danger-full-access\"".to_string(),
+        ];
+
+        assert_eq!(
+            codex_sandbox_mode_from_args(&args).as_deref(),
+            Some("danger-full-access")
+        );
+    }
+
+    #[test]
+    fn codex_sandbox_mode_detects_workspace_write_as_unsafe_in_container() {
+        let args = vec![
+            "--config".to_string(),
+            "sandbox_mode=\"workspace-write\"".to_string(),
+        ];
+
+        assert_eq!(
+            codex_sandbox_mode_from_args(&args).as_deref(),
+            Some("workspace-write")
+        );
+    }
+
+    #[test]
+    fn codex_sandbox_health_message_explains_container_mismatch() {
+        let entry = AcpProviderEntry {
+            id: "codex-acp".into(),
+            name: "Codex".into(),
+            version: "0.12.0".into(),
+            distribution: "npx".into(),
+            command: "npx".into(),
+            args: vec!["-c".into(), "sandbox_mode=\"workspace-write\"".into()],
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            installed_at: "2026-05-04T00:00:00Z".into(),
+            sha256: None,
+        };
+
+        let message = codex_sandbox_incompatibility_message_for_runtime(&entry, true)
+            .expect("container sandbox mismatch message");
+        assert!(message.contains("workspace-write"));
+        assert!(message.contains("danger-full-access"));
+
+        assert!(codex_sandbox_incompatibility_message_for_runtime(&entry, false).is_none());
+    }
+
+    #[test]
+    fn cgroup_detection_recognizes_docker_and_containerd() {
+        assert!(cgroup_mentions_container_runtime(
+            "0::/system.slice/docker-2d52.scope"
+        ));
+        assert!(cgroup_mentions_container_runtime(
+            "0::/kubepods.slice/containerd/io.containerd.runtime.v2.task"
+        ));
+        assert!(!cgroup_mentions_container_runtime(
+            "0::/user.slice/user-1000.slice"
+        ));
     }
 
     fn text_chunk(text: &str) -> ContentChunk {
