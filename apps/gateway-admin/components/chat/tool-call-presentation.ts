@@ -391,9 +391,13 @@ export function getToolPresentation(toolCall: TranscriptToolCall, artifact: Tool
   }
 
   if (hasKeyword(title, ['skill', 'guidance'])) {
+    const skillName =
+      toolCall.title.match(/^"([^"]+)"/)?.[1] ??
+      toolCall.title.split(':')[0]?.replace(/^["']|["']$/g, '').trim() ??
+      toolCall.title
     return {
       icon: BookOpen,
-      label: 'Reading workflow guidance',
+      label: skillName,
       category: 'skill',
       accentClassName: 'text-sky-400',
     }

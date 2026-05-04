@@ -55,9 +55,16 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
           </span>
           <div className="min-w-0 flex-1 rounded-aurora-1 px-1 py-0.5 transition-colors group-hover:bg-aurora-hover-bg/30">
             <div className="flex min-w-0 items-start gap-2">
-              <span className="flex-1 text-[14px] leading-[1.45] text-aurora-text-primary">
-                {presentation.label}
-              </span>
+              <div className="min-w-0 flex-1">
+                <span className="text-[14px] leading-[1.45] text-aurora-text-primary">
+                  {presentation.label}
+                </span>
+                {toolCall.locations.length > 0 && (
+                  <p className="mt-0.5 truncate text-[11px] leading-[1.45] text-aurora-text-muted/70" title={toolCall.locations[0]}>
+                    {toolCall.locations[0]}
+                  </p>
+                )}
+              </div>
               <span className="mt-0.5 shrink-0">{statusIcon}</span>
               {open ? (
                 <ChevronDown className="mt-0.5 size-3.5 shrink-0 text-aurora-text-muted/50" />
@@ -65,30 +72,6 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                 <ChevronRight className="mt-0.5 size-3.5 shrink-0 text-aurora-text-muted/50" />
               )}
             </div>
-            <div className="mt-1">
-              <span className={cn(AURORA_MUTED_LABEL, 'text-aurora-text-muted/55')}>
-                {presentation.category}
-                {' · '}
-                {toolCall.status === 'completed'
-                  ? 'completed'
-                  : toolCall.status === 'failed'
-                    ? 'failed'
-                    : 'running'}
-              </span>
-            </div>
-            {toolCall.locations.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {toolCall.locations.map((location) => (
-                  <span
-                    key={location}
-                    className="max-w-full truncate rounded-full border border-aurora-border-default bg-aurora-control-surface px-2.5 py-1 text-[11px] text-aurora-text-primary"
-                    title={location}
-                  >
-                    {location}
-                  </span>
-                ))}
-              </div>
-            )}
             {artifact.commands.length > 0 && (
               <div className="mt-2 space-y-1.5">
                 {artifact.commands.slice(0, 2).map((command, index) => (
@@ -120,25 +103,6 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                 ))}
               </div>
             )}
-            {artifact.filePreview ? (
-              <div className="mt-2 overflow-hidden rounded-aurora-2 border border-aurora-border-default/70 bg-aurora-control-surface">
-                <div className="border-b border-aurora-border-default/60 px-2.5 py-2">
-                  <p className="text-[12px] font-medium text-aurora-text-primary">
-                    {artifact.filePreview.title}
-                  </p>
-                  {artifact.filePreview.path ? (
-                    <p className="mt-1 truncate text-[11px] leading-[1.45] text-aurora-text-muted">
-                      {artifact.filePreview.path}
-                    </p>
-                  ) : null}
-                </div>
-                {artifact.filePreview.snippet ? (
-                  <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap px-2.5 py-2 font-mono text-[11px] leading-[1.5] text-aurora-text-muted">
-                    {artifact.filePreview.snippet}
-                  </pre>
-                ) : null}
-              </div>
-            ) : null}
             {artifact.diffPreview ? (
               <div className="mt-2 overflow-hidden rounded-aurora-2 border border-aurora-warn/18 bg-aurora-warn/12">
                 <div className="border-b border-aurora-warn/18 px-2.5 py-2">
@@ -187,24 +151,25 @@ export function ToolCallDisplay({ toolCall }: ToolCallDisplayProps) {
                 />
               </div>
             ) : null}
-            {artifact.summary ? (
-              <p
-                className={cn(
-                  'mt-2 rounded-aurora-1 border border-aurora-border-default/70 px-2.5 py-2 text-[12px] leading-[1.55] text-aurora-text-muted',
-                  presentation.category === 'review' && 'bg-aurora-warn/12',
-                  presentation.category === 'media' && 'bg-aurora-accent-deep/12',
-                  presentation.category === 'source' && 'bg-aurora-success/12',
-                )}
-              >
-                {artifact.summary}
-              </p>
-            ) : null}
           </div>
         </button>
       </CollapsibleTrigger>
 
+
       <CollapsibleContent>
         <div className="relative ml-2 mt-1 border-l border-aurora-border-default/70 pl-5">
+          {artifact.summary ? (
+            <p
+              className={cn(
+                'mb-2 rounded-aurora-1 border border-aurora-border-default/70 px-2.5 py-2 text-[12px] leading-[1.55] text-aurora-text-muted',
+                presentation.category === 'review' && 'bg-aurora-warn/12',
+                presentation.category === 'media' && 'bg-aurora-accent-deep/12',
+                presentation.category === 'source' && 'bg-aurora-success/12',
+              )}
+            >
+              {artifact.summary}
+            </p>
+          ) : null}
           <div className="overflow-hidden rounded-aurora-1 border border-aurora-border-default bg-aurora-control-surface">
             <div className="border-b border-aurora-border-default/60 px-3 py-2">
               <p className={cn(AURORA_MUTED_LABEL, 'mb-1.5 text-aurora-text-muted/60')}>

@@ -8,6 +8,19 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [0.13.1] — 2026-05-04
+
+### Highlights
+
+- **gateway-admin chat UI**: agent tool calls are now compact by default — summary text, file preview snippets, and category/status labels moved behind the expand chevron; file paths shown inline under the label instead of as chips; skill labels now show the skill name rather than full description text
+
+| Commit | Change |
+|--------|--------|
+| `d62b33bf` | fix: validate acp smoke stream output |
+| *(this)* | fix(gateway-admin): compact agent action tool calls — collapse summary/preview by default, inline paths, extract skill name from label |
+
+---
+
 ## [0.13.0] — 2026-05-04
 
 | Commit | Change |
