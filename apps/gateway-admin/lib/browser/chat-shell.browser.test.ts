@@ -35,6 +35,7 @@ type BrowserEvent = {
   createdAt: string
   role?: 'user' | 'assistant' | 'thinking'
   text?: string
+  messageId?: string
 }
 
 function session(id: string, title: string, provider = 'codex'): BrowserSession {
@@ -223,7 +224,11 @@ test('chat page keeps the header visible while the mobile message thread scrolls
     if (eventMatch && request.method() === 'GET') {
       const sessionId = decodeURIComponent(eventMatch[1]!)
       const body = Array.from({ length: 40 }, (_, index) =>
-        sseFrame(bridgeEvent(sessionId, index + 1, { text: `Mobile message ${index + 1}` })),
+        sseFrame(bridgeEvent(sessionId, index + 1, {
+          messageId: `mobile-message-${index + 1}`,
+          role: index % 2 === 0 ? 'user' : 'assistant',
+          text: `Mobile message ${index + 1}`,
+        })),
       ).join('')
 
       await route.fulfill({
@@ -247,22 +252,41 @@ test('chat page keeps the header visible while the mobile message thread scrolls
 
   const header = page.getByRole('banner').first()
   const input = page.getByRole('textbox', { name: 'Message' })
-  const scrollViewport = page.locator('[data-slot="scroll-area-viewport"]').first()
+  const scrollViewport = page.locator('[data-slot="scroll-area-viewport"]').last()
 
   const before = await header.boundingBox()
   assert.ok(before, 'header should be measurable before scroll')
 
-  await scrollViewport.evaluate((node) => {
-    node.scrollTop = Math.max(0, node.scrollHeight / 2)
+  const scrollMetrics = await scrollViewport.evaluate((node) => {
+    node.scrollTop = 0
+    const before = node.scrollTop
+    node.scrollTop = Math.max(1, node.scrollHeight / 2)
     node.dispatchEvent(new Event('scroll', { bubbles: true }))
+    return {
+      before,
+      after: node.scrollTop,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+    }
   })
+  assert.ok(
+    scrollMetrics.scrollHeight > scrollMetrics.clientHeight,
+    'message viewport should have scrollable overflow for sticky-header coverage',
+  )
+  assert.ok(
+    scrollMetrics.after > scrollMetrics.before,
+    `message viewport should scroll before measuring sticky header, got ${scrollMetrics.before} -> ${scrollMetrics.after}`,
+  )
 
   const after = await header.boundingBox()
   const inputBox = await input.boundingBox()
   assert.ok(after, 'header should be measurable after scroll')
   assert.ok(inputBox, 'input should be measurable after scroll')
   assert.ok(after.y >= 0, `header should stay within the viewport, got y=${after.y}`)
-  assert.ok(after.y < inputBox.y, 'header must not overlap the prompt input')
+  assert.ok(
+    after.y + after.height <= inputBox.y,
+    `header must not overlap the prompt input, header bottom=${after.y + after.height}, input top=${inputBox.y}`,
+  )
   assert.equal(Math.round(after.height), Math.round(before.height))
 })
 
