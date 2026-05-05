@@ -35,6 +35,16 @@ interface ChatInputProps {
   onSelectModel: (modelId: string) => void
 }
 
+export const CHAT_INPUT_MAX_HEIGHT_PX = 200
+const CHAT_INPUT_MIN_HEIGHT_PX = 44
+
+export function resizeChatPromptTextarea(el: HTMLTextAreaElement) {
+  el.style.height = 'auto'
+  const nextHeight = Math.min(el.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX)
+  el.style.height = `${nextHeight}px`
+  el.style.overflowY = el.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? 'auto' : 'hidden'
+}
+
 export function ChatInput({
   onSend,
   disabled = false,
@@ -111,6 +121,8 @@ export function ChatInput({
       setAttachments([])
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto'
+        textareaRef.current.style.overflowY = 'hidden'
+        textareaRef.current.scrollTop = 0
       }
     } finally {
       sendingRef.current = false
@@ -164,9 +176,7 @@ export function ChatInput({
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setValue(e.target.value)
-    const el = e.target
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+    resizeChatPromptTextarea(e.target)
   }
 
   React.useEffect(() => {
@@ -372,11 +382,11 @@ export function ChatInput({
           placeholder={disabled ? (disabledReason ?? 'ACP provider unavailable…') : 'Message the assistant… (Shift+Enter for newline)'}
           rows={1}
           className={cn(
-            'w-full resize-none overflow-hidden bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',
+            'w-full resize-none bg-transparent px-3 pt-2.5 pb-1.5 text-[13px] leading-[1.55] sm:px-4 sm:pt-3 sm:pb-2',
             'text-aurora-text-primary placeholder:text-aurora-text-muted/50',
             'outline-none disabled:opacity-50',
           )}
-          style={{ minHeight: '44px', maxHeight: '200px' }}
+          style={{ minHeight: `${CHAT_INPUT_MIN_HEIGHT_PX}px`, maxHeight: `${CHAT_INPUT_MAX_HEIGHT_PX}px` }}
         />
 
         <div className="flex items-center gap-2 px-2.5 pb-2 sm:gap-2.5 sm:px-3">
