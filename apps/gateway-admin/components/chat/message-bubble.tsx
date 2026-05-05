@@ -288,7 +288,7 @@ function MessageBubbleComponent({
     <div
       data-message-id={message.id}
       className={cn('group/bubble flex min-w-0 gap-3', isUser && 'flex-row-reverse')}
-      onPointerDown={(event) => {
+      onClick={(event) => {
         const target = event.target as HTMLElement
         if (target.closest('button,a,input,textarea,select,[role="button"]')) return
         onSelect?.(message.id)
@@ -355,29 +355,27 @@ function MessageBubbleComponent({
         )}
 
         {message.text && (
-          <>
-            <div className={messageContentClass}>
-              {!isUser && (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
-                />
-              )}
-              {isUser ? (
-                <p className="min-w-0 whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere]">
-                  {message.text}
-                  {message.isStreaming ? <StreamingCursor /> : null}
-                </p>
-              ) : (
-                <AssistantMarkdown text={message.text} isStreaming={isStreaming} />
-              )}
-              <div className="absolute right-2 top-2">
-                <CopyButton text={getMessageCopyText(message)} />
-              </div>
+          <div className={messageContentClass}>
+            {!isUser && (
+              <span
+                aria-hidden="true"
+                className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
+              />
+            )}
+            {isUser ? (
+              <p className="min-w-0 whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere]">
+                {message.text}
+                {message.isStreaming ? <StreamingCursor /> : null}
+              </p>
+            ) : (
+              <AssistantMarkdown text={message.text} isStreaming={isStreaming} />
+            )}
+            <div className="absolute right-2 top-2">
+              <CopyButton text={getMessageCopyText(message)} />
             </div>
-            <MessageTimestamp message={message} selected={selected} />
-          </>
+          </div>
         )}
+        <MessageTimestamp message={message} selected={selected} />
       </div>
     </div>
   )
@@ -395,7 +393,7 @@ export function areMessageBubblePropsEqual(
     previous.selected === next.selected &&
     prev.role === current.role &&
     prev.text === current.text &&
-    prev.createdAt.getTime() === current.createdAt.getTime() &&
+    Object.is(prev.createdAt.getTime(), current.createdAt.getTime()) &&
     prev.isStreaming === current.isStreaming &&
     prev.version === current.version &&
     prev.thoughts.length === current.thoughts.length &&

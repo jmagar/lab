@@ -244,6 +244,30 @@ test('renders timestamp row after message content without overlapping copy actio
   )
 })
 
+test('renders timestamp for assistant messages with only tool activity', () => {
+  const markup = renderToStaticMarkup(
+    <MessageBubble
+      message={assistantMessage({
+        text: '',
+        isStreaming: false,
+        thoughts: [],
+        toolCalls: [
+          {
+            id: 'tool-only',
+            title: 'Read file',
+            status: 'completed',
+            locations: ['README.md'],
+          },
+        ],
+        createdAt: new Date('2026-05-04T12:45:00Z'),
+      })}
+    />,
+  )
+
+  assert.match(markup, /data-message-timestamp/)
+  assert.match(markup, /12:45 PM UTC/)
+})
+
 test('selected message renders timestamp as visible for touch interaction', () => {
   const markup = renderToStaticMarkup(<MessageBubble message={userMessage()} selected />)
 
@@ -262,6 +286,16 @@ test('message bubble memo comparison includes timestamp and selected state', () 
   assert.equal(
     areMessageBubblePropsEqual({ message: base, selected: false }, { message: base, selected: true }),
     false,
+  )
+})
+
+test('message bubble memo comparison treats invalid timestamps as stable', () => {
+  const invalid = userMessage({ createdAt: new Date(Number.NaN) })
+  const nextInvalid = { ...invalid, createdAt: new Date(Number.NaN) }
+
+  assert.equal(
+    areMessageBubblePropsEqual({ message: invalid, selected: false }, { message: nextInvalid, selected: false }),
+    true,
   )
 })
 

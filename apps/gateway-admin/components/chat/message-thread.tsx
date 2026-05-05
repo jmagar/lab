@@ -76,6 +76,26 @@ export function shouldShowWorkingAssistantBubble(
   return !hasStreamingAssistantMessage
 }
 
+export type MessageTimestampSelectionAction =
+  | { type: 'select'; messageId: string }
+  | { type: 'dismiss' }
+  | { type: 'run-change'; runId: string | null }
+
+export function reduceSelectedMessageId(
+  selectedMessageId: string | null,
+  action: MessageTimestampSelectionAction,
+): string | null {
+  switch (action.type) {
+    case 'select':
+      return action.messageId
+    case 'dismiss':
+    case 'run-change':
+      return null
+    default:
+      return selectedMessageId
+  }
+}
+
 export function MessageThread({ run, messages, connectionState }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
   const threadRef = React.useRef<HTMLDivElement>(null)
@@ -86,12 +106,18 @@ export function MessageThread({ run, messages, connectionState }: MessageThreadP
   }, [messages])
 
   React.useEffect(() => {
+    setSelectedMessageId((current) => reduceSelectedMessageId(current, { type: 'run-change', runId: run?.id ?? null }))
+  }, [run?.id])
+
+  React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setSelectedMessageId(null)
+      if (event.key === 'Escape') {
+        setSelectedMessageId((current) => reduceSelectedMessageId(current, { type: 'dismiss' }))
+      }
     }
     const handlePointerDown = (event: PointerEvent) => {
       if (!threadRef.current?.contains(event.target as Node)) {
-        setSelectedMessageId(null)
+        setSelectedMessageId((current) => reduceSelectedMessageId(current, { type: 'dismiss' }))
       }
     }
 
@@ -119,7 +145,9 @@ export function MessageThread({ run, messages, connectionState }: MessageThreadP
             key={message.id}
             message={message}
             selected={selectedMessageId === message.id}
-            onSelect={setSelectedMessageId}
+            onSelect={(messageId) =>
+              setSelectedMessageId((current) => reduceSelectedMessageId(current, { type: 'select', messageId }))
+            }
           />
         ))}
         {shouldShowWorkingAssistantBubble(run, messages, connectionState) ? (

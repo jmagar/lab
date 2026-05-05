@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { MessageThread, shouldShowWorkingAssistantBubble } from './message-thread'
+import { MessageThread, reduceSelectedMessageId, shouldShowWorkingAssistantBubble } from './message-thread'
 import type { ACPMessage, ACPRun } from './types'
 
 function run(): ACPRun {
@@ -21,7 +21,15 @@ function run(): ACPRun {
   }
 }
 
-function message(id: string, text: string, minute: string): ACPMessage {
+function runWithId(id: string): ACPRun {
+  return {
+    ...run(),
+    id,
+    providerSessionId: `provider-${id}`,
+  }
+}
+
+function message(id: string, text: string, minute: string, overrides: Partial<ACPMessage> = {}): ACPMessage {
   return {
     id,
     runId: 'run-1',
@@ -32,6 +40,7 @@ function message(id: string, text: string, minute: string): ACPMessage {
     thoughts: [],
     toolCalls: [],
     version: 1,
+    ...overrides,
   }
 }
 
@@ -51,7 +60,12 @@ test('message thread renders timestamp-ready bubbles with stable message ids', (
 })
 
 test('working assistant bubble logic remains unchanged for running sessions', () => {
+  assert.equal(shouldShowWorkingAssistantBubble(null, [], 'open'), false)
+  assert.equal(shouldShowWorkingAssistantBubble({ ...run(), status: 'idle' }, [], 'open'), false)
+  assert.equal(shouldShowWorkingAssistantBubble({ ...run(), status: 'waiting_for_permission' }, [], 'open'), false)
+  assert.equal(shouldShowWorkingAssistantBubble({ ...run(), status: 'running' }, [], 'connecting'), true)
   assert.equal(shouldShowWorkingAssistantBubble({ ...run(), status: 'running' }, [], 'open'), true)
+  assert.equal(shouldShowWorkingAssistantBubble({ ...run(), status: 'running' }, [], 'error'), false)
   assert.equal(
     shouldShowWorkingAssistantBubble(
       { ...run(), status: 'running' },
@@ -60,4 +74,20 @@ test('working assistant bubble logic remains unchanged for running sessions', ()
     ),
     false,
   )
+})
+
+test('timestamp selection state handles tap selection and dismiss paths', () => {
+  assert.equal(reduceSelectedMessageId(null, { type: 'select', messageId: 'm1' }), 'm1')
+  assert.equal(reduceSelectedMessageId('m1', { type: 'select', messageId: 'm2' }), 'm2')
+  assert.equal(reduceSelectedMessageId('m1', { type: 'dismiss' }), null)
+  assert.equal(reduceSelectedMessageId('m1', { type: 'run-change', runId: runWithId('run-2').id }), null)
+
+  const selectedMarkup = renderToStaticMarkup(
+    <MessageThread
+      run={runWithId('run-2')}
+      messages={[message('shared-id', 'Second run', '20', { runId: 'run-2' })]}
+      connectionState="open"
+    />,
+  )
+  assert.doesNotMatch(selectedMarkup, /\sopacity-100"/)
 })
