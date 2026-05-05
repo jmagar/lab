@@ -135,10 +135,13 @@ async fn list_sessions(
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateSessionBody {
     provider: Option<String>,
     cwd: Option<String>,
     title: Option<String>,
+    model: Option<String>,
+    model_id: Option<String>,
 }
 
 async fn create_session(
@@ -154,6 +157,7 @@ async fn create_session(
         "provider": body.provider,
         "cwd": body.cwd,
         "title": body.title,
+        "model": body.model.or(body.model_id),
         "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.start", params).await {
@@ -178,6 +182,8 @@ struct PromptBody {
     prompt: String,
     /// Optional structured page context. Passed to dispatch; injection is handled there.
     page_context: Option<PageContextBody>,
+    model: Option<String>,
+    model_id: Option<String>,
 }
 
 async fn prompt_session(
@@ -224,6 +230,7 @@ async fn prompt_session(
         "session_id": session_id,
         "text": body.prompt.trim(),
         "page_context": page_context_value,
+        "model": body.model.or(body.model_id),
         "principal": principal,
     });
     match dispatch_with_registry(&state.acp_registry, "session.prompt", params).await {

@@ -133,6 +133,9 @@ pub async fn dispatch_with_registry(
                         "available": health.available,
                         "version": health.version,
                         "error": health.message,
+                        "models": health.models,
+                        "defaultModelId": health.default_model_id,
+                        "currentModelId": health.current_model_id,
                     })
                 })
                 .collect();
@@ -157,6 +160,9 @@ pub async fn dispatch_with_registry(
                 "available": health.available,
                 "version": health.version,
                 "error": health.message,
+                "models": health.models,
+                "defaultModelId": health.default_model_id,
+                "currentModelId": health.current_model_id,
             }))
         }
 
@@ -211,6 +217,9 @@ pub async fn dispatch_with_registry(
             let provider = opt_str(&params, "provider").map(|s| s.to_string());
             let title = opt_str(&params, "title").map(|s| s.to_string());
             let cwd = opt_str(&params, "cwd").unwrap_or("").to_string();
+            let model_id = opt_str(&params, "model")
+                .or_else(|| opt_str(&params, "model_id"))
+                .map(str::to_string);
 
             let input = StartSessionInput {
                 provider,
@@ -221,6 +230,7 @@ pub async fn dispatch_with_registry(
                 } else {
                     Some(principal.to_string())
                 },
+                model_id,
             };
             let summary = registry.create_session(input, principal).await?;
             to_json(summary)
@@ -250,9 +260,10 @@ pub async fn dispatch_with_registry(
                 });
             let effective_text = build_prompt_with_context(session_id, raw_text, page_ctx.as_ref());
             ensure_prompt_size(&effective_text)?;
+            let model_id = opt_str(&params, "model").or_else(|| opt_str(&params, "model_id"));
 
             registry
-                .prompt_session(session_id, &effective_text, principal)
+                .prompt_session(session_id, &effective_text, principal, model_id)
                 .await?;
             to_json(json!({ "ok": true, "session_id": session_id }))
         }

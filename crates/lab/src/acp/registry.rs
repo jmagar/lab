@@ -19,7 +19,9 @@ use futures::{Stream, StreamExt, stream};
 use tokio::sync::{Mutex, OnceCell, RwLock, mpsc};
 
 use lab_apis::acp::persistence::AcpPersistence;
-use lab_apis::acp::types::{AcpEvent, AcpProviderHealth, AcpSessionState, AcpSessionSummary};
+use lab_apis::acp::types::{
+    AcpEvent, AcpModelOption, AcpProviderHealth, AcpSessionState, AcpSessionSummary,
+};
 
 use crate::dispatch::acp::persistence::SqliteAcpPersistence;
 use crate::dispatch::error::ToolError;
@@ -132,6 +134,7 @@ pub struct AcpSessionRegistry {
     shutting_down: Arc<AtomicBool>,
     /// Idle timeout — configurable for tests.
     idle_timeout: Duration,
+    provider_models: Arc<RwLock<HashMap<String, Vec<AcpModelOption>>>>,
 }
 
 impl AcpSessionRegistry {
@@ -150,6 +153,7 @@ impl AcpSessionRegistry {
             recent_creations: Arc::new(Mutex::new(VecDeque::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             idle_timeout: Duration::from_secs(SESSION_IDLE_TIMEOUT_MINS * 60),
+            provider_models: Arc::new(RwLock::new(HashMap::new())),
         };
         Self::spawn_health_reporter(Arc::clone(&registry.sessions));
         Self::spawn_idle_reaper(registry.clone(), IDLE_REAPER_INTERVAL_SECS);
@@ -178,6 +182,15 @@ impl AcpSessionRegistry {
             .ok_or_else(|| not_found("unknown ACP session"))
     }
 
+    async fn provider_model_options(&self, provider: &str) -> Vec<AcpModelOption> {
+        self.provider_models
+            .read()
+            .await
+            .get(provider)
+            .cloned()
+            .unwrap_or_default()
+    }
+
     fn check_principal(session: &Session, principal: &str) -> Result<(), ToolError> {
         if principal.trim().is_empty() || session.principal.trim().is_empty() {
             return Err(ToolError::Sdk {
@@ -198,7 +211,17 @@ impl AcpSessionRegistry {
 
     #[must_use]
     pub fn provider_healths(&self) -> Vec<AcpProviderHealth> {
-        provider_healths()
+        let mut healths = provider_healths();
+        if let Ok(models) = self.provider_models.try_read() {
+            for health in &mut healths {
+                if let Some(provider_models) = models.get(&health.provider) {
+                    health.models = provider_models.clone();
+                    health.default_model_id = provider_models.first().map(|model| model.id.clone());
+                    health.current_model_id = health.default_model_id.clone();
+                }
+            }
+        }
+        healths
     }
 
     pub async fn list_sessions(&self, principal: &str) -> Vec<AcpSessionSummary> {
@@ -334,6 +357,7 @@ impl AcpSessionRegistry {
                 cwd: cwd.clone(),
                 title: input.title.clone(),
                 principal: input.principal.clone(),
+                model_id: input.model_id.clone(),
             },
             event_tx.clone(),
         )
@@ -351,6 +375,9 @@ impl AcpSessionRegistry {
         })?;
 
         let provider = normalize_provider_id(input.provider.as_deref());
+        let options = self.provider_model_options(&provider).await;
+        let (model_id, model_name) =
+            resolve_model_selection(&provider, input.model_id.as_deref(), &options, started.model_id.as_deref())?;
         let summary = AcpSessionSummary {
             id: session_id.clone(),
             provider,
@@ -367,6 +394,9 @@ impl AcpSessionRegistry {
             provider_session_id: Some(started.provider_session_id),
             agent_name: Some(started.agent_name),
             agent_version: Some(started.agent_version),
+            model_id,
+            model_name: model_name.or(started.model_name),
+            config_options: started.config_options,
         };
 
         let session = Session::new(session_id.clone(), principal.to_string(), summary.clone());
@@ -406,9 +436,28 @@ impl AcpSessionRegistry {
         session_id: &str,
         prompt: &str,
         principal: &str,
+        model_id: Option<&str>,
     ) -> Result<(), ToolError> {
         let session = self.get_session_arc(session_id).await?;
         Self::check_principal(&session, principal)?;
+        let (selected_model_id, selected_model_name) = {
+            let summary = session.summary.read().await;
+            let options = if summary.config_options.is_empty() {
+                self.provider_model_options(&summary.provider).await
+            } else {
+                summary
+                    .config_options
+                    .iter()
+                    .flat_map(|option| option.options.clone())
+                    .collect()
+            };
+            resolve_model_selection(
+                &summary.provider,
+                model_id,
+                &options,
+                summary.model_id.as_deref(),
+            )?
+        };
 
         {
             let state = session.state.read().await;
@@ -432,6 +481,10 @@ impl AcpSessionRegistry {
             }
             summary.state = AcpSessionState::Running;
             summary.updated_at = jiff::Timestamp::now().to_string();
+            if model_id.is_some() {
+                summary.model_id = selected_model_id.clone();
+                summary.model_name = selected_model_name.clone();
+            }
         }
         // Touch activity timestamp so idle reaper leaves this session alone.
         {
@@ -464,7 +517,7 @@ impl AcpSessionRegistry {
                 .ok_or_else(|| internal("ACP runtime unavailable"))?
         };
         runtime
-            .prompt(prompt.to_string())
+            .prompt(prompt.to_string(), selected_model_id)
             .await
             .map_err(session_command_error)?;
 
@@ -988,6 +1041,7 @@ impl AcpSessionRegistry {
                 cwd,
                 title: Some(title),
                 principal: None,
+                model_id: None,
             },
             event_tx.clone(),
         )
@@ -1175,6 +1229,26 @@ impl AcpSessionRegistry {
             recent_creations: Arc::new(Mutex::new(VecDeque::new())),
             shutting_down: Arc::new(AtomicBool::new(false)),
             idle_timeout,
+            provider_models: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn new_for_test_with_provider_models(
+        provider_models: Vec<(String, Vec<AcpModelOption>)>,
+    ) -> Self {
+        let models = provider_models
+            .into_iter()
+            .map(|(provider, models)| (normalize_provider_id(Some(&provider)), models))
+            .collect();
+        Self {
+            sessions: Arc::new(RwLock::new(HashMap::new())),
+            persistence: Arc::new(OnceCell::new()),
+            default_cwd: ".".to_string(),
+            recent_creations: Arc::new(Mutex::new(VecDeque::new())),
+            shutting_down: Arc::new(AtomicBool::new(false)),
+            idle_timeout: Duration::from_millis(100),
+            provider_models: Arc::new(RwLock::new(models)),
         }
     }
 
@@ -1204,6 +1278,9 @@ impl AcpSessionRegistry {
             provider_session_id: Some("fake-provider-session".to_string()),
             agent_name: Some("test-agent".to_string()),
             agent_version: Some("0.0.1".to_string()),
+            model_id: None,
+            model_name: None,
+            config_options: Vec::new(),
         };
         let session = Session::new(
             session_id.to_string(),
@@ -1262,6 +1339,9 @@ impl AcpSessionRegistry {
             provider_session_id: Some("fake-provider-session".to_string()),
             agent_name: Some("test-agent".to_string()),
             agent_version: Some("0.0.1".to_string()),
+            model_id: None,
+            model_name: None,
+            config_options: Vec::new(),
         };
         let session = Session::new(
             session_id.to_string(),
@@ -1475,6 +1555,38 @@ fn not_found(message: &str) -> ToolError {
     }
 }
 
+fn resolve_model_selection(
+    provider: &str,
+    requested: Option<&str>,
+    options: &[AcpModelOption],
+    current: Option<&str>,
+) -> Result<(Option<String>, Option<String>), ToolError> {
+    let selected = requested.or(current);
+    let Some(selected) = selected
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok((None, None));
+    };
+    if options.is_empty() {
+        return if requested.is_some() {
+            Err(ToolError::InvalidParam {
+                message: format!("provider `{provider}` does not expose switchable models"),
+                param: "model".to_string(),
+            })
+        } else {
+            Ok((Some(selected.to_string()), None))
+        };
+    }
+    let Some(option) = options.iter().find(|option| option.id == selected) else {
+        return Err(ToolError::InvalidParam {
+            message: format!("model `{selected}` is not valid for provider `{provider}`"),
+            param: "model".to_string(),
+        });
+    };
+    Ok((Some(option.id.clone()), Some(option.name.clone())))
+}
+
 fn should_replace_prompt_title(title: &str) -> bool {
     title.trim().is_empty() || title.trim() == "New session"
 }
@@ -1666,7 +1778,7 @@ mod tests {
             .await;
 
         let err = registry
-            .prompt_session("saturated-sess", "hello", "alice")
+            .prompt_session("saturated-sess", "hello", "alice", None)
             .await
             .expect_err("full command queue must be rejected");
 
@@ -1686,6 +1798,7 @@ mod tests {
                 "title-sess",
                 "Context: route=/chat\n\nInvestigate empty ACP sessions",
                 "alice",
+                None,
             )
             .await
             .expect("prompt dispatch");

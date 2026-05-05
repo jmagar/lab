@@ -112,9 +112,9 @@ pub struct RuntimeHandle {
 }
 
 impl RuntimeHandle {
-    pub async fn prompt(&self, prompt: String) -> Result<(), String> {
+    pub async fn prompt(&self, prompt: String, model_id: Option<String>) -> Result<(), String> {
         self.command_tx
-            .try_send(SessionCommand::Prompt(prompt))
+            .try_send(SessionCommand::Prompt(PromptCommand { prompt, model_id }))
             .map_err(session_command_send_error)
     }
 
@@ -139,8 +139,13 @@ impl RuntimeHandle {
 }
 
 enum SessionCommand {
-    Prompt(String),
+    Prompt(PromptCommand),
     Cancel,
+}
+
+struct PromptCommand {
+    prompt: String,
+    model_id: Option<String>,
 }
 
 fn session_command_send_error(error: mpsc::error::TrySendError<SessionCommand>) -> String {
@@ -440,6 +445,9 @@ pub async fn launch_codex_runtime(
             provider_session_id: started.provider_session_id,
             agent_name: started.agent_name,
             agent_version: started.agent_version,
+            model_id: None,
+            model_name: None,
+            config_options: Vec::new(),
         },
     ))
 }
@@ -492,6 +500,9 @@ pub fn codex_provider_health() -> AcpProviderHealth {
                     .to_string(),
             )
         },
+        models: Vec::new(),
+        default_model_id: None,
+        current_model_id: None,
     }
 }
 
@@ -514,6 +525,9 @@ fn health_for_provider_entry(provider: &AcpProviderEntry) -> AcpProviderHealth {
                 launch.command
             ))
         },
+        models: Vec::new(),
+        default_model_id: None,
+        current_model_id: None,
     }
 }
 
@@ -1290,7 +1304,8 @@ async fn run_codex_session(
 
                     while let Some(command) = command_rx.recv().await {
                         match command {
-                            SessionCommand::Prompt(prompt) => {
+                            SessionCommand::Prompt(command) => {
+                                let PromptCommand { prompt, model_id } = command;
                                 prompt_lifecycle.start();
 
                                 if previous_turn_idle {
@@ -1388,6 +1403,7 @@ async fn run_codex_session(
                                             json!({
                                                 "type": "prompt_started",
                                                 "title": "Prompt started",
+                                                "model_id": model_id,
                                                 "text": prompt.clone(),
                                             }),
                                         ))
@@ -2934,7 +2950,10 @@ pub fn fake_handle_for_tests() -> (RuntimeHandle, mpsc::Receiver<AcpEvent>) {
 pub fn saturated_fake_handle_for_tests() -> (RuntimeHandle, mpsc::Receiver<AcpEvent>) {
     let (command_tx, command_rx) = mpsc::channel::<SessionCommand>(1);
     command_tx
-        .try_send(SessionCommand::Prompt("already queued".to_string()))
+        .try_send(SessionCommand::Prompt(PromptCommand {
+            prompt: "already queued".to_string(),
+            model_id: None,
+        }))
         .expect("prefill command queue");
     tokio::spawn(async move {
         let _command_rx = command_rx;
