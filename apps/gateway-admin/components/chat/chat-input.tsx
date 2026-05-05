@@ -23,6 +23,7 @@ interface ChatInputProps {
   disabledReason?: string
   draftText?: string
   onDraftTextChange?: (value: string) => void
+  attachmentsResetToken?: number
   selectedAgent: ACPAgent | null
   agents: ACPAgent[]
   onSelectAgent: (agentId: string) => void
@@ -34,6 +35,7 @@ export function ChatInput({
   disabledReason,
   draftText,
   onDraftTextChange,
+  attachmentsResetToken,
   selectedAgent,
   agents,
   onSelectAgent,
@@ -126,6 +128,10 @@ export function ChatInput({
     textareaRef.current.style.height = 'auto'
     textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`
   }, [value])
+
+  React.useEffect(() => {
+    setAttachments([])
+  }, [attachmentsResetToken])
 
   React.useEffect(() => {
     if (!agentPickerOpen) return

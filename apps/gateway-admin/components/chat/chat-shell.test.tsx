@@ -249,16 +249,17 @@ test('sendPromptForSelectedProvider removes optimistic message and throws normal
   assert.deepEqual(optimisticIds, [])
 })
 
-test('retry payload uses selected message text without inventing attachments', async () => {
+test('retry payload preserves the original message text and attachments', async () => {
   const sent: unknown[] = []
   await retryMessageText(
     {
       text: 'retry this',
+      attachments: [{ kind: 'file', path: '/tmp/original.txt' }],
     },
     async (payload) => {
       sent.push(payload)
     },
   )
 
-  assert.deepEqual(sent, [{ text: 'retry this', attachments: [] }])
+  assert.deepEqual(sent, [{ text: 'retry this', attachments: [{ kind: 'file', path: '/tmp/original.txt' }] }])
 })

@@ -20,10 +20,10 @@ import {
 } from '@/lib/chat/chat-session-provider'
 
 export async function retryMessageText(
-  message: Pick<ACPMessage, 'text'>,
+  message: Pick<ACPMessage, 'text'> & { attachments?: ChatInputPayload['attachments'] },
   send: (payload: ChatInputPayload) => Promise<void>,
 ) {
-  await send({ text: message.text, attachments: [] })
+  await send({ text: message.text, attachments: message.attachments ?? [] })
 }
 
 export {
@@ -46,6 +46,7 @@ export function ChatShell() {
   const [temperature, setTemperature] = React.useState(0.7)
   const [maxTokens, setMaxTokens] = React.useState(8192)
   const [draftText, setDraftText] = React.useState('')
+  const [attachmentsResetToken, setAttachmentsResetToken] = React.useState(0)
   const { runs, selectedRun, selectedRunId, providerHealth, selectedAgent, agents, projects } =
     useChatSessionData()
   const { selectRun, createSession, sendPrompt, selectAgent } = useChatSessionActions()
@@ -63,9 +64,9 @@ export function ChatShell() {
   }, [createSession, isMobileViewport])
 
   const handleSendPrompt = React.useCallback(
-    async (payload: Parameters<typeof sendPrompt>[0]) => {
+    async (payload: Parameters<typeof sendPrompt>[0], options?: Parameters<typeof sendPrompt>[1]) => {
       try {
-        await sendPrompt(payload)
+        await sendPrompt(payload, options)
       } catch {
         // Provider health carries the failure detail.
       }
@@ -75,14 +76,23 @@ export function ChatShell() {
 
   const handleRetryMessage = React.useCallback(
     async (message: ACPMessage) => {
-      await retryMessageText(message, handleSendPrompt)
+      if (message.runId !== selectedRunId) return
+      await retryMessageText(message, (payload) =>
+        handleSendPrompt(payload, { providerId: selectedRun?.provider ?? selectedAgent.id }),
+      )
     },
-    [handleSendPrompt],
+    [handleSendPrompt, selectedAgent.id, selectedRun?.provider, selectedRunId],
   )
 
   const handleEditMessage = React.useCallback((message: ACPMessage) => {
     setDraftText(message.text)
+    setAttachmentsResetToken((token) => token + 1)
   }, [])
+
+  React.useEffect(() => {
+    setDraftText('')
+    setAttachmentsResetToken((token) => token + 1)
+  }, [selectedRunId])
 
   React.useEffect(() => {
     const media = window.matchMedia('(max-width: 767px)')
@@ -228,7 +238,7 @@ export function ChatShell() {
             connectionState={connectionState}
             canRetryMessages={providerReady}
             canEditMessages
-            onRetryMessage={(message) => void handleRetryMessage(message)}
+            onRetryMessage={handleRetryMessage}
             onEditMessage={handleEditMessage}
           />
           <ChatInput
@@ -237,6 +247,7 @@ export function ChatShell() {
             disabledReason={providerUnavailableMessage ?? undefined}
             draftText={draftText}
             onDraftTextChange={setDraftText}
+            attachmentsResetToken={attachmentsResetToken}
             selectedAgent={selectedAgent}
             agents={agents.length > 0 ? agents : [selectedAgent]}
             onSelectAgent={selectAgent}

@@ -91,7 +91,7 @@ export type ChatSessionActionsContextValue = {
   selectRun: (runId: string) => void
   sendPrompt: (
     payload: PromptPayload,
-    options?: { includePageContext?: boolean; pageContext?: unknown },
+    options?: { includePageContext?: boolean; pageContext?: unknown; providerId?: string | null },
   ) => Promise<void>
   refreshSessions: () => Promise<void>
   refreshProvider: () => Promise<void>
@@ -378,7 +378,7 @@ export function ChatSessionProvider({
         await sendPromptForSelectedProvider({
           payload,
           selectedRun,
-          selectedProviderId,
+          selectedProviderId: options?.providerId ?? selectedProviderId,
           createSession,
           isMobileViewport,
           fetchAcp,

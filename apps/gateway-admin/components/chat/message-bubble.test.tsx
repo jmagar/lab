@@ -2,37 +2,13 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import React from 'react'
 import { act } from 'react'
-import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { Window } from 'happy-dom'
 
 import { MessageBubble, getMessageActionAvailability, getMessageCopyText } from './message-bubble'
+import { installChatTestDom, renderClient } from './test-utils'
 import type { ACPMessage } from './types'
 
-const window = new Window()
-Object.defineProperty(globalThis, 'window', { value: window, configurable: true })
-Object.defineProperty(globalThis, 'document', { value: window.document, configurable: true })
-Object.defineProperty(globalThis, 'navigator', { value: window.navigator, configurable: true })
-Object.defineProperty(globalThis, 'DOMException', { value: window.DOMException, configurable: true })
-Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { value: true, configurable: true })
-
-async function renderClient(element: React.ReactElement) {
-  const container = document.createElement('div')
-  document.body.appendChild(container)
-  const root = createRoot(container)
-
-  await act(async () => {
-    root.render(element)
-  })
-
-  return {
-    container,
-    unmount: async () => {
-      await act(async () => root.unmount())
-      container.remove()
-    },
-  }
-}
+installChatTestDom()
 
 function assistantMessage(overrides: Partial<ACPMessage> = {}): ACPMessage {
   return {
@@ -258,6 +234,7 @@ test('renders message actions under the bubble and right aligned', () => {
   )
 
   assert.match(markup, /aria-label="Message actions"/)
+  assert.match(markup, /role="group"/)
   assert.match(markup, /Copy message/)
   assert.match(markup, /Retry message/)
   assert.match(markup, /Edit message/)

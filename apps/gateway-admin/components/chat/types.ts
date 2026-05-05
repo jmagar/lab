@@ -78,6 +78,7 @@ export interface ACPMessage {
   runId: string
   role: 'user' | 'assistant' | 'system'
   text: string
+  attachments?: AttachmentRef[]
   createdAt: Date
   isStreaming?: boolean
   thoughts: string[]

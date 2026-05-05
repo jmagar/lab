@@ -134,7 +134,6 @@ export function MessageThread({
             }}
             actionHandlers={{
               onSelect: setSelectedMessageId,
-              onDismiss: () => setSelectedMessageId(null),
               onRetry: onRetryMessage,
               onEdit: onEditMessage,
             }}

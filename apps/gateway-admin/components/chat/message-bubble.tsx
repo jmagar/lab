@@ -97,7 +97,6 @@ export type MessageBubbleActionState = {
 
 export type MessageBubbleActionHandlers = {
   onSelect?: (messageId: string) => void
-  onDismiss?: () => void
   onRetry?: (message: ACPMessage) => void
   onEdit?: (message: ACPMessage) => void
 }
@@ -230,6 +229,7 @@ function MessageActionToolbar({
   return (
     <div
       aria-label="Message actions"
+      role="group"
       data-selected={selected ? 'true' : 'false'}
       className={cn(
         'flex w-full justify-end gap-1 pr-1 transition-opacity',
@@ -421,7 +421,10 @@ function areMessageBubblePropsEqual(
     prev.toolCalls.length === current.toolCalls.length &&
     previous.actionState?.selected === next.actionState?.selected &&
     previous.actionState?.canRetry === next.actionState?.canRetry &&
-    previous.actionState?.canEdit === next.actionState?.canEdit
+    previous.actionState?.canEdit === next.actionState?.canEdit &&
+    previous.actionHandlers?.onSelect === next.actionHandlers?.onSelect &&
+    previous.actionHandlers?.onRetry === next.actionHandlers?.onRetry &&
+    previous.actionHandlers?.onEdit === next.actionHandlers?.onEdit
   )
 }
 
