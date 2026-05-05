@@ -78,10 +78,30 @@ export function shouldShowWorkingAssistantBubble(
 
 export function MessageThread({ run, messages, connectionState }: MessageThreadProps) {
   const bottomRef = React.useRef<HTMLDivElement>(null)
+  const threadRef = React.useRef<HTMLDivElement>(null)
+  const [selectedMessageId, setSelectedMessageId] = React.useState<string | null>(null)
 
   React.useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedMessageId(null)
+    }
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!threadRef.current?.contains(event.target as Node)) {
+        setSelectedMessageId(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [])
 
   if (!run) {
     return <EmptyState />
@@ -89,10 +109,18 @@ export function MessageThread({ run, messages, connectionState }: MessageThreadP
 
   return (
     <ScrollArea className="min-h-0 min-w-0 flex-1 overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[860px] min-w-0 flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-6">
+      <div
+        ref={threadRef}
+        className="mx-auto flex w-full max-w-[860px] min-w-0 flex-col gap-4 px-3 py-4 sm:gap-5 sm:px-6 sm:py-6"
+      >
         <SessionStatusNotice run={run} connectionState={connectionState} />
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            selected={selectedMessageId === message.id}
+            onSelect={setSelectedMessageId}
+          />
         ))}
         {shouldShowWorkingAssistantBubble(run, messages, connectionState) ? (
           <WorkingAssistantBubble />

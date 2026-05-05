@@ -17,6 +17,7 @@ import {
   ChainOfThoughtHeader,
 } from '@/components/ai/chain-of-thought'
 import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai/reasoning'
+import { formatUiDateTime, formatUiTime } from '@/lib/format-ui-time'
 import { ToolCallDisplay } from './tool-call-display'
 import { GroupedToolCallDisplay, groupConsecutiveToolCalls } from './grouped-tool-call-display'
 import { getToolCategory } from './tool-call-presentation'
@@ -50,6 +51,28 @@ function CopyButton({ text }: { text: string }) {
 
 export function getMessageCopyText(message: Pick<ACPMessage, 'text'>) {
   return message.text
+}
+
+export type MessageTimestampLabels = {
+  visible: string
+  detail: string
+}
+
+function hasValidDate(value: Date) {
+  return !Number.isNaN(value.getTime())
+}
+
+export function shouldRenderMessageTimestamp(message: Pick<ACPMessage, 'createdAt'>) {
+  return hasValidDate(message.createdAt)
+}
+
+export function getMessageTimestampLabels(
+  message: Pick<ACPMessage, 'createdAt'>,
+): MessageTimestampLabels {
+  return {
+    visible: formatUiTime(message.createdAt),
+    detail: formatUiDateTime(message.createdAt),
+  }
 }
 
 function StreamingCursor() {
@@ -166,6 +189,33 @@ function AgentActionsPanel({
   )
 }
 
+function MessageTimestamp({
+  message,
+  selected,
+}: {
+  message: ACPMessage
+  selected?: boolean
+}) {
+  if (!shouldRenderMessageTimestamp(message)) return null
+
+  const labels = getMessageTimestampLabels(message)
+
+  return (
+    <div
+      data-message-timestamp
+      aria-label={`Message sent at ${labels.detail}`}
+      title={labels.detail}
+      className={cn(
+        'min-h-4 text-[11px] leading-4 text-aurora-text-muted/60 transition-opacity duration-150',
+        'opacity-0 group-hover/bubble:opacity-100 group-focus-within/bubble:opacity-100',
+        selected && 'opacity-100',
+      )}
+    >
+      {labels.visible}
+    </div>
+  )
+}
+
 export function WorkingAssistantBubble({ label = 'Codex is working' }: { label?: string }) {
   return (
     <div className="group/bubble flex min-w-0 gap-3">
@@ -204,7 +254,17 @@ export function WorkingAssistantBubble({ label = 'Codex is working' }: { label?:
   )
 }
 
-function MessageBubbleComponent({ message }: { message: ACPMessage }) {
+export type MessageBubbleProps = {
+  message: ACPMessage
+  selected?: boolean
+  onSelect?: (messageId: string) => void
+}
+
+function MessageBubbleComponent({
+  message,
+  selected = false,
+  onSelect,
+}: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isStreaming = Boolean(message.isStreaming)
   const [reasoningOpen, setReasoningOpen] = React.useState(isStreaming)
@@ -225,7 +285,15 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
   )
 
   return (
-    <div className={cn('group/bubble flex min-w-0 gap-3', isUser && 'flex-row-reverse')}>
+    <div
+      data-message-id={message.id}
+      className={cn('group/bubble flex min-w-0 gap-3', isUser && 'flex-row-reverse')}
+      onPointerDown={(event) => {
+        const target = event.target as HTMLElement
+        if (target.closest('button,a,input,textarea,select,[role="button"]')) return
+        onSelect?.(message.id)
+      }}
+    >
       <div
         className={cn(
           'mt-1 flex size-6 shrink-0 items-center justify-center rounded-full border',
@@ -287,42 +355,47 @@ function MessageBubbleComponent({ message }: { message: ACPMessage }) {
         )}
 
         {message.text && (
-          <div className={messageContentClass}>
-            {!isUser && (
-              <span
-                aria-hidden="true"
-                className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
-              />
-            )}
-            {isUser ? (
-              <p className="min-w-0 whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere]">
-                {message.text}
-                {message.isStreaming ? <StreamingCursor /> : null}
-              </p>
-            ) : (
-              <AssistantMarkdown text={message.text} isStreaming={isStreaming} />
-            )}
-            <div className="absolute right-2 top-2">
-              <CopyButton text={getMessageCopyText(message)} />
+          <>
+            <div className={messageContentClass}>
+              {!isUser && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 w-[2px] rounded-l-aurora-2 bg-aurora-accent-primary/40"
+                />
+              )}
+              {isUser ? (
+                <p className="min-w-0 whitespace-pre-wrap pr-8 text-[13px] leading-[1.55] text-aurora-text-primary [overflow-wrap:anywhere]">
+                  {message.text}
+                  {message.isStreaming ? <StreamingCursor /> : null}
+                </p>
+              ) : (
+                <AssistantMarkdown text={message.text} isStreaming={isStreaming} />
+              )}
+              <div className="absolute right-2 top-2">
+                <CopyButton text={getMessageCopyText(message)} />
+              </div>
             </div>
-          </div>
+            <MessageTimestamp message={message} selected={selected} />
+          </>
         )}
       </div>
     </div>
   )
 }
 
-function areMessageBubblePropsEqual(
-  previous: Readonly<{ message: ACPMessage }>,
-  next: Readonly<{ message: ACPMessage }>,
+export function areMessageBubblePropsEqual(
+  previous: Readonly<MessageBubbleProps>,
+  next: Readonly<MessageBubbleProps>,
 ) {
   const prev = previous.message
   const current = next.message
 
   return (
     prev.id === current.id &&
+    previous.selected === next.selected &&
     prev.role === current.role &&
     prev.text === current.text &&
+    prev.createdAt.getTime() === current.createdAt.getTime() &&
     prev.isStreaming === current.isStreaming &&
     prev.version === current.version &&
     prev.thoughts.length === current.thoughts.length &&

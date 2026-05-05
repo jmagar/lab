@@ -3,7 +3,14 @@ import assert from 'node:assert/strict'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { MessageBubble, WorkingAssistantBubble, getMessageCopyText } from './message-bubble'
+import {
+  MessageBubble,
+  WorkingAssistantBubble,
+  areMessageBubblePropsEqual,
+  getMessageCopyText,
+  getMessageTimestampLabels,
+  shouldRenderMessageTimestamp,
+} from './message-bubble'
 import type { ACPMessage } from './types'
 
 const MESSAGE_TIMESTAMP = new Date('2026-05-04T12:00:00Z')
@@ -200,6 +207,62 @@ test('copies raw message text rather than rendered markdown text', () => {
   })
 
   assert.equal(getMessageCopyText(message), message.text)
+})
+
+test('formats message timestamp labels from createdAt metadata', () => {
+  const labels = getMessageTimestampLabels(userMessage({
+    createdAt: new Date('2026-05-04T12:34:00Z'),
+  }))
+
+  assert.equal(labels.visible, '12:34 PM UTC')
+  assert.equal(labels.detail, 'May 4, 2026, 12:34 PM UTC')
+})
+
+test('omits timestamp presentation when createdAt is invalid', () => {
+  const message = userMessage({ createdAt: new Date(Number.NaN) })
+
+  assert.equal(shouldRenderMessageTimestamp(message), false)
+})
+
+test('renders timestamp row after message content without overlapping copy action', () => {
+  const markup = renderToStaticMarkup(
+    <MessageBubble message={userMessage({ createdAt: new Date('2026-05-04T12:34:00Z') })} />,
+  )
+
+  assert.match(markup, /aria-label="Message sent at May 4, 2026, 12:34 PM UTC"/)
+  assert.match(markup, /12:34 PM UTC/)
+  assert.match(markup, /data-message-timestamp/)
+  assert.match(markup, /group-hover\/bubble:opacity-100/)
+  assert.match(markup, /group-focus-within\/bubble:opacity-100/)
+  assert.ok(
+    markup.indexOf('Hello.') < markup.indexOf('data-message-timestamp'),
+    'timestamp should render after the message text',
+  )
+  assert.ok(
+    markup.indexOf('Copy message') < markup.indexOf('data-message-timestamp'),
+    'timestamp row should not share the absolute copy-button slot',
+  )
+})
+
+test('selected message renders timestamp as visible for touch interaction', () => {
+  const markup = renderToStaticMarkup(<MessageBubble message={userMessage()} selected />)
+
+  assert.match(markup, /data-message-id="message-user-1"/)
+  assert.match(markup, /opacity-100/)
+})
+
+test('message bubble memo comparison includes timestamp and selected state', () => {
+  const base = userMessage({ createdAt: new Date('2026-05-04T12:00:00Z') })
+  const changedTimestamp = { ...base, createdAt: new Date('2026-05-04T12:01:00Z') }
+
+  assert.equal(
+    areMessageBubblePropsEqual({ message: base, selected: false }, { message: changedTimestamp, selected: false }),
+    false,
+  )
+  assert.equal(
+    areMessageBubblePropsEqual({ message: base, selected: false }, { message: base, selected: true }),
+    false,
+  )
 })
 
 test('keeps the streaming cursor adjacent to assistant markdown content', () => {
