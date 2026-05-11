@@ -83,8 +83,7 @@ impl TokenEndpointError {
 
     fn status(&self) -> StatusCode {
         match self {
-            Self::Auth(AuthError::InvalidGrant(_))
-            | Self::Auth(AuthError::Validation(_))
+            Self::Auth(AuthError::InvalidGrant(_) | AuthError::Validation(_))
             | Self::UnsupportedGrantType(_) => StatusCode::BAD_REQUEST,
             Self::Auth(AuthError::AuthFailed(_) | AuthError::InvalidAccessToken) => {
                 StatusCode::UNAUTHORIZED
