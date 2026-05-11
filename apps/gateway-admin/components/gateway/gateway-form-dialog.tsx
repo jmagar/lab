@@ -599,7 +599,7 @@ export function GatewayFormDialog({
   const handleTest = async () => {
     if (isSaving) return
     if (!gateway || gateway.source === 'in_process') {
-      toast.info('Save and enable the gateway first, then test from the detail page.')
+      toast.info('Save and enable the server first, then test from the detail page.')
       return
     }
 
@@ -663,7 +663,7 @@ export function GatewayFormDialog({
         if (!saved) {
           return
         }
-        toast.success(isEditing ? 'Lab gateway updated successfully' : 'Lab gateway configured successfully')
+        toast.success(isEditing ? 'Lab server updated successfully' : 'Lab server configured successfully')
         onOpenChange(false)
         return
       }
@@ -682,11 +682,11 @@ export function GatewayFormDialog({
       toast.success(
         normalizedProtectedPath
           ? reusedProtectedRoute
-            ? `Gateway saved and joined https://${PROTECTED_MCP_PUBLIC_HOST}${normalizedProtectedPath}`
-            : `Gateway saved and protected at https://${PROTECTED_MCP_PUBLIC_HOST}${normalizedProtectedPath}`
+            ? `Server saved and joined https://${PROTECTED_MCP_PUBLIC_HOST}${normalizedProtectedPath}`
+            : `Server saved and protected at https://${PROTECTED_MCP_PUBLIC_HOST}${normalizedProtectedPath}`
           : isEditing
-            ? 'Gateway updated successfully'
-            : 'Gateway created successfully',
+            ? 'Server updated successfully'
+            : 'Server created successfully',
       )
       onOpenChange(false)
     } catch (error) {
@@ -699,10 +699,10 @@ export function GatewayFormDialog({
         getErrorMessage(
           error,
           mode === 'lab'
-            ? 'Failed to save Lab gateway'
+            ? 'Failed to save Lab server'
             : isEditing
-              ? 'Failed to update gateway'
-              : 'Failed to create gateway',
+              ? 'Failed to update server'
+              : 'Failed to create server',
         ),
       )
     } finally {
@@ -823,10 +823,10 @@ export function GatewayFormDialog({
         <DialogHeader className="shrink-0">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="flex min-w-0 flex-col gap-1">
-              <DialogTitle>{isEditing ? 'Edit Gateway' : 'Add Gateway'}</DialogTitle>
+              <DialogTitle>{isEditing ? 'Edit Server' : 'Add Server'}</DialogTitle>
               <DialogDescription>
                 {isEditing
-                  ? 'Edit gateway settings.'
+                  ? 'Edit server settings.'
                   : mode === 'lab'
                     ? 'Connect a built-in Lab service.'
                     : 'Connect an upstream MCP server.'}
@@ -959,10 +959,10 @@ export function GatewayFormDialog({
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div className="space-y-0.5">
                 <Label htmlFor="enable-virtual-server" className="font-medium">
-                  Enable gateway
+                  Enable server
                 </Label>
                 <p className="text-sm text-aurora-text-muted">
-                  Save canonical service config and expose this Lab service as a visible gateway.
+                  Save canonical service config and expose this Lab service as a visible server.
                 </p>
               </div>
               <Switch
@@ -1091,7 +1091,7 @@ export function GatewayFormDialog({
                   <p className="text-sm text-destructive">{errors.protectedPublicPath}</p>
                 ) : (
                   <FieldDescription>
-                    Optional. When set, Lab publishes this gateway through Google OAuth at that public path.
+                    Optional. When set, Lab publishes this server through Google OAuth at that public path.
                   </FieldDescription>
                 )}
               </Field>
@@ -1103,7 +1103,7 @@ export function GatewayFormDialog({
                 <div className="space-y-1">
                   <FieldLabel>Authentication</FieldLabel>
                   <FieldDescription>
-                    Choose how this gateway should authenticate upstream requests.
+                    Choose how this server should authenticate upstream requests.
                   </FieldDescription>
                 </div>
 
@@ -1176,7 +1176,7 @@ export function GatewayFormDialog({
                             ? 'Enter a URL above, then connect.'
                             : oauthState.kind === 'authorizing'
                               ? 'Complete authorization in the new tab…'
-                              : 'Connect this gateway via OAuth. A popup will open for you to authorize.'}
+                              : 'Connect this server via OAuth. A popup will open for you to authorize.'}
                         </p>
                         {oauthState.kind === 'error' && (
                           <div className="flex items-start gap-2 text-sm text-destructive">
@@ -1309,7 +1309,7 @@ export function GatewayFormDialog({
                       Proxy Resources
                     </Label>
                     <p className="text-sm text-aurora-text-muted">
-                      Forward MCP resource requests to this gateway
+                      Forward MCP resource requests to this server
                     </p>
                   </div>
                   <Switch
@@ -1325,7 +1325,7 @@ export function GatewayFormDialog({
                       Proxy Prompts
                     </Label>
                     <p className="text-sm text-aurora-text-muted">
-                      Forward MCP prompt requests to this gateway
+                      Forward MCP prompt requests to this server
                     </p>
                   </div>
                   <Switch
@@ -1514,7 +1514,7 @@ export function GatewayFormDialog({
                 : 'Configure Service'
               : isEditing
                 ? 'Save Changes'
-                : 'Add Gateway'}
+                : 'Add Server'}
           </Button>
         </DialogFooter>
       </DialogContent>
