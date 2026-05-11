@@ -36,7 +36,7 @@ export function protectedRouteForGateway(
   const matches = routes.filter((route) => {
     if (!route.enabled) return false
     if (route.public_host.toLowerCase() !== host) return false
-    return route.upstream === gatewayName || route.name === gatewayName
+    return route.upstream != null ? route.upstream === gatewayName : route.name === gatewayName
   })
 
   return matches.find((route) => route.upstream === gatewayName) ?? matches[0] ?? null
@@ -50,7 +50,8 @@ export function initialGatewayAuthMode(
   gateway: Gateway,
   protectedRoute: ProtectedMcpRoute | null,
 ): GatewayAuthMode {
-  if (protectedRoute || gateway.config.oauth_enabled) return 'oauth'
+  if (gateway.config.oauth_enabled) return 'oauth'
   if (gateway.config.bearer_token_env) return 'bearer'
+  if (protectedRoute) return 'oauth'
   return 'none'
 }

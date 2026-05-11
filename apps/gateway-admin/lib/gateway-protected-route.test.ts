@@ -72,10 +72,54 @@ test('protectedRouteForGateway falls back to route name for older route records'
   assert.equal(found?.name, 'repomix')
 })
 
+test('protectedRouteForGateway returns null for null gateway', () => {
+  assert.equal(protectedRouteForGateway(null, [route()], 'mcp.tootie.tv'), null)
+})
+
+test('protectedRouteForGateway returns null for in_process gateway', () => {
+  assert.equal(protectedRouteForGateway(gateway({ source: 'in_process' } as any), [route()], 'mcp.tootie.tv'), null)
+})
+
+test('protectedRouteForGateway ignores disabled routes', () => {
+  const found = protectedRouteForGateway(gateway(), [route({ enabled: false })], 'mcp.tootie.tv')
+  assert.equal(found, null)
+})
+
+test('protectedRouteForGateway ignores routes on a different host', () => {
+  const found = protectedRouteForGateway(gateway(), [route({ public_host: 'other.example.com' })], 'mcp.tootie.tv')
+  assert.equal(found, null)
+})
+
+test('protectedRouteForGateway does not match when upstream differs even if name matches', () => {
+  // route.upstream is set to a different gateway — should not match even if route.name === gatewayName
+  const found = protectedRouteForGateway(
+    gateway(),
+    [route({ upstream: 'other-gateway' })],
+    'mcp.tootie.tv',
+  )
+  assert.equal(found, null)
+})
+
 test('initialGatewayAuthMode shows OAuth for protected public routes', () => {
   assert.equal(initialGatewayAuthMode(gateway(), route()), 'oauth')
   assert.equal(initialGatewayAuthMode(gateway({ config: { bearer_token_env: 'TOKEN' } }), null), 'bearer')
   assert.equal(initialGatewayAuthMode(gateway(), null), 'none')
+})
+
+test('initialGatewayAuthMode prefers bearer over route-inferred oauth', () => {
+  // P1: gateway uses bearer auth for backend but also has a protected public route —
+  // bearer_token_env should win so the form does not incorrectly switch to oauth mode.
+  assert.equal(
+    initialGatewayAuthMode(gateway({ config: { bearer_token_env: 'TOKEN' } }), route()),
+    'bearer',
+  )
+})
+
+test('initialGatewayAuthMode returns oauth when oauth_enabled regardless of bearer_token_env', () => {
+  assert.equal(
+    initialGatewayAuthMode(gateway({ config: { oauth_enabled: true, bearer_token_env: 'TOKEN' } }), null),
+    'oauth',
+  )
 })
 
 test('normalizeProtectedPublicPath accepts slugs and URLs', () => {
