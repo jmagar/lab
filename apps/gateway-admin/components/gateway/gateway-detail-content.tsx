@@ -8,6 +8,7 @@ import {
   Pencil,
   Trash2,
   Copy,
+  Check,
   AlertTriangle,
   Clock,
   FileText,
@@ -117,6 +118,7 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
   const [isReloading, setIsReloading] = useState(false)
   const [isCleaningRuntime, setIsCleaningRuntime] = useState(false)
   const [isAggressiveCleanup, setIsAggressiveCleanup] = useState(false)
+  const [configCopied, setConfigCopied] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [disableOpen, setDisableOpen] = useState(false)
@@ -241,6 +243,17 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
       toast.error(getErrorMessage(error, 'Failed to reload server'))
     } finally {
       setIsReloading(false)
+    }
+  }
+
+  const handleCopyConfig = async () => {
+    try {
+      await navigator.clipboard.writeText(clientConfigJson)
+      setConfigCopied(true)
+      toast.success('Configuration copied to clipboard')
+      setTimeout(() => setConfigCopied(false), 2000)
+    } catch {
+      toast.error('Failed to copy configuration to clipboard')
     }
   }
 
@@ -857,8 +870,17 @@ export function GatewayDetailContent({ gatewayId }: GatewayDetailContentProps) {
                 </p>
               </div>
               <div className="overflow-hidden rounded-aurora-2 border bg-aurora-page-bg">
-                <div className="border-b px-4 py-3">
+                <div className="flex items-center justify-between border-b px-4 py-3">
                   <p className="text-xs font-medium uppercase tracking-[0.16em] text-aurora-text-muted">Client JSON</p>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-aurora-text-muted hover:text-aurora-text-primary"
+                    onClick={handleCopyConfig}
+                    title="Copy to clipboard"
+                  >
+                    {configCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                  </Button>
                 </div>
                 <pre className="aurora-scrollbar overflow-x-auto whitespace-pre-wrap break-all px-4 py-4 text-sm leading-6 text-aurora-text-primary">
                   <code>{clientConfigJson}</code>
